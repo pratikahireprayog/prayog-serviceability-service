@@ -2,11 +2,15 @@ package httpapi
 
 import (
 	"context"
-	"net/http"
 	"time"
 
-	"prayog-serviceability-service/internal/infrastructure/logger"
-	"prayog-serviceability-service/internal/service/usecase"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
+
+	httplogger "prayog-serviceability-service/internal/infrastructure/logger"
 )
 
 // ServerConfig holds configuration for the HTTP server.
@@ -15,7 +19,7 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
-	Logger       logger.HTTPLogger
+	Logger       httplogger.HTTPLogger
 	RouterConfig RouterConfig
 }
 
@@ -23,7 +27,7 @@ type ServerConfig struct {
 type RouterConfig struct {
 	UsecaseFactory usecase.Factory
 	Version        string
-	Logger         logger.HTTPLogger
+	Logger         httplogger.HTTPLogger
 	EnableCORS     bool
 	AuthEnabled    bool
 	APIKeys        []string
@@ -31,15 +35,15 @@ type RouterConfig struct {
 	Timeout        time.Duration
 }
 
-// Server represents an HTTP server.
+// Server represents an HTTP server using Fiber.
 type Server struct {
-	server *http.Server
+	app    *fiber.App
 	router *Router
-	logger logger.HTTPLogger
+	logger httplogger.HTTPLogger
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(usecaseFactory usecase.Factory, log logger.Logger) (*Server, error) {
+func NewServer(usecaseFactory usecase.Factory, log httplogger.Logger) (*Server, error) {
 	httpLogger := log.AsHTTPLogger()
 
 	routerConfig := RouterConfig{
@@ -53,18 +57,35 @@ func NewServer(usecaseFactory usecase.Factory, log logger.Logger) (*Server, erro
 		Timeout:        30 * time.Second,
 	}
 
-	router := NewRouter(routerConfig)
-
-	serverConfig := &http.Server{
-		Addr:         ":8080", // TODO: Make this configurable
-		Handler:      router.Handler(),
+	// Create Fiber app with settings
+	app := fiber.New(fiber.Config{
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
+	})
+
+	// Add global middleware
+	app.Use(requestid.New())
+	app.Use(logger.New())
+	app.Use(recover.New())
+
+	// CORS configuration if enabled
+	if routerConfig.EnableCORS {
+		app.Use(cors.New(cors.Config{
+			AllowOrigins:     "*", // TODO: Configure this in production
+			AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+			AllowHeaders:     "Accept,Authorization,Content-Type,X-CSRF-Token",
+			ExposeHeaders:    "Link",
+			AllowCredentials: true,
+			MaxAge:           300, // Maximum value not ignored by any of major browsers
+		}))
 	}
 
+	// Create Router with the app
+	router := NewRouter(app, routerConfig)
+
 	return &Server{
-		server: serverConfig,
+		app:    app,
 		router: router,
 		logger: httpLogger,
 	}, nil
@@ -72,10 +93,10 @@ func NewServer(usecaseFactory usecase.Factory, log logger.Logger) (*Server, erro
 
 // Start starts the HTTP server.
 func (s *Server) Start() error {
-	return s.server.ListenAndServe()
+	return s.app.Listen(":8080") // TODO: Make this configurable
 }
 
 // Shutdown gracefully shuts down the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
+	return s.app.Shutdown()
 }

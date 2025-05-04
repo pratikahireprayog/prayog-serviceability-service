@@ -1,13 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
-	"net/http"
+	"github.com/gofiber/fiber/v2"
 
 	"prayog-serviceability-service/internal/httpapi/middleware"
 	"prayog-serviceability-service/internal/service/usecase"
-
-	"github.com/go-chi/chi/v5"
 )
 
 // ServiceabilityServiceInterface defines the minimal interface required for serviceability checks
@@ -28,17 +25,16 @@ func NewServiceabilityHandler(usecaseFactory usecase.Factory) *ServiceabilityHan
 }
 
 // RegisterRoutes registers the serviceability routes.
-func (h *ServiceabilityHandler) RegisterRoutes(r chi.Router) {
-	r.Get("/check/{postalCode}", h.CheckServiceability)
-	r.Post("/bulk-check", middleware.RateLimiter(http.HandlerFunc(h.BulkCheckServiceability)).ServeHTTP)
+func (h *ServiceabilityHandler) RegisterRoutes(r fiber.Router) {
+	r.Get("/check/:postalCode", h.CheckServiceability)
+	r.Post("/bulk-check", middleware.RateLimiter(), h.BulkCheckServiceability)
 }
 
 // CheckServiceability checks if a location is serviceable.
-func (h *ServiceabilityHandler) CheckServiceability(w http.ResponseWriter, r *http.Request) {
-	postalCode := chi.URLParam(r, "postalCode")
+func (h *ServiceabilityHandler) CheckServiceability(c *fiber.Ctx) error {
+	postalCode := c.Params("postalCode")
 	if postalCode == "" {
-		http.Error(w, "Postal code is required", http.StatusBadRequest)
-		return
+		return c.Status(fiber.StatusBadRequest).SendString("Postal code is required")
 	}
 
 	// TODO: Implement actual serviceability check
@@ -49,19 +45,17 @@ func (h *ServiceabilityHandler) CheckServiceability(w http.ResponseWriter, r *ht
 		"is_serviceable": isServiceable,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	return c.JSON(response)
 }
 
 // BulkCheckServiceability checks if multiple locations are serviceable.
-func (h *ServiceabilityHandler) BulkCheckServiceability(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceabilityHandler) BulkCheckServiceability(c *fiber.Ctx) error {
 	var request struct {
 		PostalCodes []string `json:"postal_codes"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid request body")
 	}
 
 	results := make(map[string]bool)
@@ -74,6 +68,5 @@ func (h *ServiceabilityHandler) BulkCheckServiceability(w http.ResponseWriter, r
 		"results": results,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	return c.JSON(response)
 }

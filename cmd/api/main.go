@@ -3,44 +3,39 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 func main() {
-	// Define HTTP server
-	mux := http.NewServeMux()
+	// Create new Fiber app
+	app := fiber.New(fiber.Config{
+		AppName: "Prayog Serviceability Service",
+	})
 
 	// Add a basic health check endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
 	// Add a basic mock serviceability endpoint
-	mux.HandleFunc("/api/v1/serviceability/check/", func(w http.ResponseWriter, r *http.Request) {
-		postalCode := r.URL.Path[len("/api/v1/serviceability/check/"):]
+	app.Get("/api/v1/serviceability/check/:postalCode", func(c *fiber.Ctx) error {
+		postalCode := c.Params("postalCode")
 		isServiceable := postalCode != "00000" // Just a placeholder check
 
-		response := fmt.Sprintf(`{"postal_code":"%s","is_serviceable":%t}`, postalCode, isServiceable)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
+		return c.JSON(fiber.Map{
+			"postal_code":    postalCode,
+			"is_serviceable": isServiceable,
+		})
 	})
-
-	// Configure the HTTP server
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: mux,
-	}
 
 	// Start the server in a goroutine
 	go func() {
 		fmt.Println("Starting server on :8080")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := app.Listen(":8080"); err != nil {
 			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
@@ -52,7 +47,7 @@ func main() {
 	fmt.Printf("Received signal %s, shutting down...\n", sig.String())
 
 	// Shutdown the server
-	if err := server.Close(); err != nil {
+	if err := app.Shutdown(); err != nil {
 		log.Fatalf("Server shutdown failed: %v", err)
 	}
 
