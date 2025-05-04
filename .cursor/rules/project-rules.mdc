@@ -9,22 +9,67 @@ This project follows the [Standard Go Project Layout](mdc:https:/github.com/gola
 
 ## Directory Structure
 
-- `/cmd` — Main applications for this project. Each application has its own subdirectory.
-- `/internal` — Private application and library code. This code is not importable by other projects.
-- `/pkg` — Public libraries intended to be used by external applications.
-- `/api` — API definitions (OpenAPI/Swagger specs, JSON schema, protocol definitions).
-- `/configs` — Configuration file templates or default configs.
-- `/scripts` — Build, install, analysis, and other scripts.
-- `/build` — Packaging and CI/CD configurations and scripts.
-- `/deployments` — Deployment configurations and templates (e.g., Docker, Kubernetes).
-- `/test` — Additional external test apps and test data.
-- `/docs` — Design and user documentation.
-- `/tools` — Supporting tools for this project.
-- `/examples` — Example applications and/or public libraries.
-- `/third_party` — External helper tools, forked code, and other 3rd party utilities.
-- `/githooks` — Git hooks.
-- `/assets` — Other assets (images, logos, etc).
-- `/website` — Project website data (if not using GitHub Pages).
+service/
+  ├── cmd/                        # Application entry points
+  │   └── api/                    # Main API server
+  │       └── main.go             # Wires everything together with DI
+  │
+  ├── internal/                   # Private application code
+  │   ├── domain/                 # Domain models and core business rules
+  │   │   ├── models/             # Data structures/entities
+  │   │   └── interfaces/         # Service interfaces (ports)
+  │   │
+  │   ├── infrastructure/         # Infrastructure concerns
+  │   │   ├── db/                 # Database connections, migrations
+  │   │   ├── logger/             # Logging utilities
+  │   │   ├── telemetry/          # OpenTelemetry implementation
+  │   │   └── errors/             # Error handling
+  │   │
+  │   ├── repository/             # Data access layer 
+  │   │   ├── interfaces/         # Repository interfaces
+  │   │   └── postgres/           # PostgreSQL implementations
+  │   │
+  │   ├── service/                # Business logic implementation
+  │   │   └── [feature]/          # Feature-specific services
+  │   │
+  │   ├── api/                    # HTTP API handlers and routing
+  │   │   ├── handlers/           # HTTP Request handlers
+  │   │   ├── middleware/         # HTTP middlewares
+  │   │   ├── routes/             # Route definitions
+  │   │   └── server.go           # HTTP Server setup
+  │   │
+  │   ├── grpc/                   # gRPC client and server components
+  │   │   ├── client/             # gRPC clients to other services
+  │   │   │   └── [service]/      # Client for each service
+  │   │   ├── server/             # gRPC server implementation
+  │   │   │   └── handlers/       # gRPC service handlers
+  │   │   └── middleware/         # gRPC interceptors
+  │   │
+  │   ├── adapter/                # Adapters between HTTP/gRPC and domain
+  │   │   ├── http/               # HTTP-to-domain adapters
+  │   │   └── grpc/               # gRPC-to-domain adapters
+  │   │
+  │   └── di/                     # Dependency injection container
+  │       ├── container.go        # DI container definition
+  │       ├── providers.go        # Component providers
+  │       └── wire.go             # Wire DI setup (if using Wire)
+  │
+  ├── pkg/                        # Shared utilities
+  │   ├── config/                 # Configuration utilities
+  │   ├── httputil/               # HTTP helpers
+  │   ├── grpcutil/               # gRPC helpers
+  │   ├── validator/              # Validation helpers
+  │   └── auth/                   # Authentication utilities
+  │
+  ├── proto/                      # Protocol buffer definitions
+  │   └── [service]/              # Proto files by service
+  │       ├── v1/                 # API version
+  │       │   └── service.proto
+  │       └── gen/                # Generated code
+  │
+  ├── configs/                    # Configuration files
+  ├── deployments/                # Deployment files (Docker, K8s)
+  └── go.mod
 
 ## Coding Guidelines
 

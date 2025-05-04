@@ -1,24 +1,44 @@
 # Domain Layer
 
-This directory contains the domain layer components of the application. The domain layer represents the core business entities and rules, independent of any external frameworks or technologies.
+The domain layer is the core of the application and contains:
 
-## Components
+1. **Business Entities**: The core data structures and models that represent the business concepts
+2. **Repository Interfaces**: Abstractions for data access operations
+3. **Domain Services**: Core business logic that is independent of application use cases
+4. **Value Objects**: Immutable objects representing domain concepts without identity
+5. **DTOs (Data Transfer Objects)**: Objects used for data exchange between systems
 
-* Business entities (models)
-* Value objects
-* Repository interfaces
-* Domain services and interfaces
-* Custom errors and types
+## Structure
+
+```
+domain/
+├── entity.go          # Core business entities 
+├── repository.go      # Repository interfaces for data access
+├── dto.go             # Data Transfer Objects for API communication
+└── README.md          # This file
+```
 
 ## Guidelines
 
-* This layer should be framework-independent
-* No import of external packages except standard library
-* No database or external service concerns
-* Define repository interfaces here, implement in the repository layer
-* Focus on business rules and validation
-* Use immutable data structures where possible
-* Document domain concepts thoroughly
+- Domain entities should be independent of any infrastructure concerns
+- Repository interfaces define contracts for data access operations
+- DTOs should be used for external communication and not contain business logic
+- All domain entities should follow DDD (Domain-Driven Design) principles
+- The domain layer should be the most stable layer in the application
+
+## Key Concepts
+
+### Entities
+
+Core business objects with identity that persist over time.
+
+### Repositories
+
+Abstractions over data storage mechanisms, allowing domain objects to be persisted and retrieved without knowledge of database details.
+
+### DTOs
+
+Objects used to transfer data between processes, particularly useful for API requests and responses.
 
 ## Example
 

@@ -1,7 +1,11 @@
+// Package usecase contains application business rules and use cases
 package usecase
 
 import (
+	"context"
+
 	"github.com/prayog/serviceability/internal/domain"
+	"github.com/prayog/serviceability/internal/repository"
 )
 
 // RepositoryFactory defines an interface for creating repositories
@@ -17,45 +21,30 @@ type RepositoryFactory interface {
 }
 
 // Factory creates all the use case services
-type Factory struct {
-	repoFactory RepositoryFactory
+type Factory interface {
+	NewServiceabilityUseCase(ctx context.Context) ServiceabilityUseCase
 }
 
-// NewFactory creates a new use case factory
-func NewFactory(repoFactory RepositoryFactory) *UseCaseFactory {
-	// Create the geo service
-	geoService := NewGeoService(
-		repoFactory.Country(),
-		repoFactory.Region(),
-		repoFactory.City(),
-		repoFactory.Area(),
-		repoFactory.PostalCode(),
-	)
+// factoryImpl implements the Factory interface
+type factoryImpl struct {
+	repoFactory repository.Factory
+}
 
-	// Create the order type service
-	orderTypeService := NewOrderTypeService(
-		repoFactory.OrderType(),
-	)
+// NewFactory creates a new usecase factory
+func NewFactory(repoFactory repository.Factory) Factory {
+	return &factoryImpl{
+		repoFactory: repoFactory,
+	}
+}
 
-	// Create the service type service
-	serviceTypeService := NewServiceTypeService(
-		repoFactory.ServiceType(),
-	)
-
-	// Create the serviceability service
-	serviceabilityService := NewServiceabilityService(
-		repoFactory.ServiceAvailability(),
-		repoFactory.PostalCode(),
-		repoFactory.ServiceType(),
-		repoFactory.OrderType(),
-		repoFactory.Country(),
-	)
-
-	// Return the use case factory with all services
-	return NewUseCaseFactory(
-		geoService,
-		orderTypeService,
-		serviceTypeService,
-		serviceabilityService,
+// NewServiceabilityUseCase creates a new ServiceabilityUseCase
+func (f *factoryImpl) NewServiceabilityUseCase(ctx context.Context) ServiceabilityUseCase {
+	return NewServiceabilityUseCase(
+		ctx,
+		f.repoFactory.LocationRepository(),
+		f.repoFactory.ServiceTypeRepository(),
+		f.repoFactory.OrderTypeRepository(),
+		f.repoFactory.ServiceAvailabilityRepository(),
+		f.repoFactory.TimeRuleRepository(),
 	)
 }

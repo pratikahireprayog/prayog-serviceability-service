@@ -1,60 +1,55 @@
 # Usecase Layer
 
-This directory contains the usecase (or application service) layer. This layer implements the business logic of the application by orchestrating domain entities and services.
+The usecase layer implements application use cases using the domain entities and repositories. Its main responsibilities are:
 
-## Responsibilities
-
-* Implementing business logic and application use cases
-* Orchestrating domain entities and services
-* Transaction coordination
-* Input/output transformation
-* Business validation
-* Authorization checks
+1. **Business Logic**: Implementing application-specific business logic
+2. **Transaction Coordination**: Coordinating operations across multiple repositories
+3. **Input Validation**: Validating input data before processing
+4. **Authorization**: Enforcing access control rules
+5. **Service Composition**: Composing multiple domain services to fulfill a use case
 
 ## Structure
 
-* Each file typically represents a logical group of related use cases
-* Use cases are organized around business capabilities
-* Each use case should be a single self-contained function
+```
+usecase/
+├── admin_usecase.go           # Admin-related use cases
+├── factory.go                 # Factory for creating service instances
+├── geo_service.go             # Geography-related service implementation
+├── interfaces.go              # Service interfaces definitions
+├── location_service.go        # Location service implementation
+├── order_type_service.go      # Order type service implementation
+├── README.md                  # This file
+├── service_type_service.go    # Service type service implementation
+├── serviceability_service.go  # Serviceability service implementation
+├── serviceability_usecase.go  # Serviceability use case definitions
+├── time_rule_service.go       # Time rule service implementation
+└── usecase_factory.go         # Service factory implementation
+```
 
 ## Guidelines
 
-* Use cases should depend on domain interfaces, not concrete implementations
-* Keep use case functions focused on a single responsibility
-* Use dependency injection to provide required services and repositories
-* Handle all business validation and authorization checks
-* Use contexts for cancellation, timeout, and value propagation
-* Document each use case thoroughly with its business purpose
-* Write comprehensive tests with mocked dependencies
+- Use case implementations should be stateless and depend only on interfaces
+- Use dependency injection through constructors
+- Handle authorization and validation before executing business logic
+- Return domain errors rather than technical errors
+- Implement a clear separation between query and command operations
+- Document complex use cases with comments
+- Use concurrency with caution and ensure proper error handling
 
-## Example
+## Usage Example
 
 ```go
-type LocationUseCase struct {
-    repo domain.LocationRepository
-    logger logger.Logger
-}
+// Create a use case factory
+factory := usecase.NewUseCaseFactory(
+    geoService, 
+    orderTypeService, 
+    serviceTypeService,
+    serviceabilityService,
+)
 
-func NewLocationUseCase(repo domain.LocationRepository, logger logger.Logger) *LocationUseCase {
-    return &LocationUseCase{
-        repo: repo,
-        logger: logger,
-    }
-}
+// Get a specific service
+serviceSvc := factory.ServiceabilityService()
 
-func (uc *LocationUseCase) GetLocationById(ctx context.Context, id string) (*domain.Location, error) {
-    // Authorization check
-    if err := auth.CanViewLocation(ctx, id); err != nil {
-        return nil, err
-    }
-    
-    // Get location from repository
-    location, err := uc.repo.FindByID(ctx, id)
-    if err != nil {
-        uc.logger.Error("Failed to get location", logger.Field("id", id), logger.Field("error", err))
-        return nil, err
-    }
-    
-    return location, nil
-}
+// Execute a use case
+isServiceable, err := serviceSvc.CheckServiceability("123456", "delivery", "standard")
 ``` 

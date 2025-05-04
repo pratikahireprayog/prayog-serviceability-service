@@ -1,25 +1,32 @@
+// Package usecase contains application business rules and use cases
 package usecase
 
-// UseCaseFactory provides access to all use cases
-type UseCaseFactory struct {
-	serviceabilityService ServiceabilityService
-	adminService          AdminService
+import (
+	"context"
+
+	"github.com/prayog/serviceability/internal/repository"
+)
+
+// factoryImpl implements the Factory interface
+type factoryImpl struct {
+	repoFactory repository.Factory
 }
 
-// NewUseCaseFactory creates a new use case factory
-func NewUseCaseFactory() *UseCaseFactory {
-	return &UseCaseFactory{
-		serviceabilityService: NewServiceabilityService(),
-		adminService:          NewAdminService(),
+// NewFactory creates a new usecase factory
+func NewFactory(repoFactory repository.Factory) Factory {
+	return &factoryImpl{
+		repoFactory: repoFactory,
 	}
 }
 
-// ServiceabilityService returns the serviceability service
-func (f *UseCaseFactory) ServiceabilityService() ServiceabilityService {
-	return f.serviceabilityService
-}
-
-// AdminService returns the admin service
-func (f *UseCaseFactory) AdminService() AdminService {
-	return f.adminService
+// NewServiceabilityUseCase creates a new ServiceabilityUseCase
+func (f *factoryImpl) NewServiceabilityUseCase(ctx context.Context) ServiceabilityUseCase {
+	return NewServiceabilityUseCase(
+		ctx,
+		f.repoFactory.LocationRepository(),
+		f.repoFactory.ServiceTypeRepository(),
+		f.repoFactory.OrderTypeRepository(),
+		f.repoFactory.ServiceAvailabilityRepository(),
+		f.repoFactory.TimeRuleRepository(),
+	)
 }

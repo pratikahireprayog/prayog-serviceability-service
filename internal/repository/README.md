@@ -1,49 +1,47 @@
 # Repository Layer
 
-This directory contains the repository layer implementations. The repository layer is responsible for data access and storage operations, implementing the repository interfaces defined in the domain layer.
+The repository layer implements the data access interfaces defined in the domain layer. Its main responsibilities are:
+
+1. **Persistence**: Storing and retrieving domain entities
+2. **Data Mapping**: Converting between domain entities and database models
+3. **Query Execution**: Executing database queries and transactions
+4. **Caching**: Optimizing data access through caching mechanisms (optional)
 
 ## Structure
 
-* `/gorm` - GORM-based repository implementations
-
-## Responsibilities
-
-* Implementing domain repository interfaces
-* Database operations (CRUD)
-* Data mapping between domain entities and database models
-* Transaction management
-* Query optimization
-* Database-specific error handling
+```
+repository/
+├── gorm/                      # GORM implementation of repositories
+│   ├── area_repository.go     # Area entity repository implementation
+│   ├── city_repository.go     # City entity repository implementation
+│   ├── country_repository.go  # Country entity repository implementation
+│   ├── factory.go             # Factory for creating repository instances
+│   ├── order_type_repository.go     # Order type repository implementation
+│   ├── postal_code_repository.go    # Postal code repository implementation
+│   ├── region_repository.go         # Region repository implementation
+│   ├── repository.go                # Base repository implementation
+│   └── service_availability_repository.go  # Service availability repository
+└── README.md                  # This file
+```
 
 ## Guidelines
 
-* Repositories should implement interfaces defined in the domain layer
-* Keep SQL queries and database-specific code isolated to this layer
-* Handle database errors and map them to domain errors
-* Use transactions when operations need to be atomic
-* Implement proper data mapping to isolate domain model from database schema
-* Document complex queries
-* Write comprehensive tests with database mocks
+- Repository implementations should follow the interfaces defined in the domain layer
+- Database-specific logic should be contained within the repository implementations
+- Repositories should return domain entities, not database models
+- Error handling should translate database errors to domain-specific errors
+- Connection management and transactions should be handled at this layer
+- Use factory patterns to create repository instances
 
-## Example
+## Usage Example
 
 ```go
-type LocationRepositoryImpl struct {
-    db *gorm.DB
-}
+// Create a repository factory
+factory := gorm.NewRepositoryFactory(db)
 
-func NewLocationRepository(db *gorm.DB) domain.LocationRepository {
-    return &LocationRepositoryImpl{db: db}
-}
+// Get a specific repository
+countryRepo := factory.CountryRepository()
 
-func (r *LocationRepositoryImpl) FindByID(ctx context.Context, id string) (*domain.Location, error) {
-    var model Model
-    if err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error; err != nil {
-        if errors.Is(err, gorm.ErrRecordNotFound) {
-            return nil, domain.ErrLocationNotFound
-        }
-        return nil, err
-    }
-    return mapModelToDomain(&model), nil
-}
+// Use the repository
+countries, err := countryRepo.List(ctx)
 ``` 
