@@ -31,7 +31,7 @@ func main() {
 	repositories := repository.New(db)
 
 	// Initialize services
-	serviceabilityService := services.NewServiceabilityService(repositories)
+	serviceabilityService := services.NewServiceabilityService(repositories.(*repository.RepositoryFactory))
 
 	// Create HTTP server
 	server := api.NewServer(serviceabilityService)
