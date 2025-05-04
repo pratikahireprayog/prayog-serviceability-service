@@ -1,0 +1,63 @@
+# Database Schema Implementation for Serviceability Service
+
+## Background
+The serviceability service needs to implement the complete database schema as defined in the schema.mmd file. This schema includes location-related entities (countries, regions, cities, areas, postal codes) and service-related entities (order types, service types, service availability).
+
+## Requirements
+
+1. Create database migrations for all tables defined in the schema.mmd
+   - Implement proper indexes and constraints
+   - Set up appropriate data types for each column
+   - Ensure foreign key relationships are correctly defined
+
+2. Document the database schema
+   - Create inline documentation in the migration files
+   - Generate a human-readable schema documentation
+
+3. Create seed data for development and testing
+   - Add sample data for all tables
+   - Include real-world examples for proper testing
+
+4. Configure the service to use the schema
+   - Update configuration as needed
+   - Ensure proper connection and initialization
+
+## Technical Specifications
+
+### Database Tables
+The following tables need to be implemented:
+
+1. countries
+2. administrative_regions
+3. cities
+4. areas
+5. postal_codes
+6. country_aliases
+7. administrative_regions_aliases
+8. city_aliases
+9. area_aliases
+10. order_types
+11. service_types
+12. service_availability
+
+### Data Requirements
+- Countries: At least 5 countries with complete data
+- Regions: At least 10 administrative regions across countries
+- Cities: At least 15 cities
+- Areas: At least 20 areas
+- Order Types: At least 3 different order types
+- Service Types: At least 5 different service types
+- Service Availability: At least 15 different availability rules
+
+### Implementation Details
+- Use GORM for migration definition
+- Implement proper indexing for frequently queried fields
+- Use UUID as the primary key type for all tables
+- Add appropriate timestamp fields (created_at, updated_at)
+- Ensure all necessary constraints are applied
+
+## Deliverables
+1. Migration files for all tables
+2. Documentation of the database schema
+3. Seed data scripts
+4. Configuration updates 

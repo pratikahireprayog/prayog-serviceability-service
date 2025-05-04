@@ -1,0 +1,152 @@
+erDiagram
+    countries {
+        uuid id PK
+        string name
+        string code
+        string currency_code
+        string phone_code
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    administrative_regions {
+        uuid id PK
+        uuid country_id FK
+        string name "State/Province/County/Region"
+        string code
+        string region_type "STATE|PROVINCE|COUNTY|REGION|TERRITORY"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    cities {
+        uuid id PK
+        uuid country_id FK "For countries without regions"
+        uuid region_id FK "Optional - for hierarchical countries"
+        string name
+        string code
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    areas {
+        uuid id PK
+        uuid city_id FK
+        string name "Neighborhood/Locality/Ward"
+        string area_type "NEIGHBORHOOD|LOCALITY|WARD|ZONE"
+        point geo_location
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    postal_codes {
+        uuid id PK
+        uuid country_id FK "Always required"
+        uuid region_id FK "Optional"
+        uuid city_id FK "Optional"
+        uuid area_id FK "Optional"
+        string code
+        point geo_location
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    country_aliases {
+        uuid id PK
+        uuid country_id FK
+        string alias_name
+        string language_code
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    administrative_regions_aliases {
+        uuid id PK
+        uuid region_id FK
+        string alias_name
+        string language_code
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    city_aliases {
+        uuid id PK
+        uuid city_id FK
+        string alias_name
+        string language_code
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    area_aliases {
+        uuid id PK
+        uuid area_id FK
+        string alias_name
+        string language_code
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    order_types {
+        uuid id PK
+        string name
+        string code
+        string description
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    service_types {
+        uuid id PK
+        string name
+        string code
+        integer sla_hours
+        string description
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    service_availability {
+        uuid id PK
+        enum location_type "COUNTRY|REGION|CITY|AREA|POSTAL_CODE"
+        uuid location_id
+        uuid order_type_id FK
+        uuid service_type_id FK
+        boolean is_available
+        jsonb constraints
+        timestamp effective_from
+        timestamp effective_to
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    countries ||--o{ administrative_regions : contains
+    countries ||--o{ cities : "directly contains"
+    administrative_regions ||--o{ cities : contains
+    cities ||--o{ areas : contains
+    countries ||--o{ postal_codes : links
+    administrative_regions ||--o{ postal_codes : links
+    cities ||--o{ postal_codes : links
+    areas ||--o{ postal_codes : links
+    countries ||--o{ country_aliases : "has alias"
+    administrative_regions ||--o{ administrative_regions_aliases : "has alias"
+    cities ||--o{ city_aliases : "has alias"
+    areas ||--o{ area_aliases : "has alias"
+    order_types ||--o{ service_availability : supports
+    service_types ||--o{ service_availability : provides

@@ -1,122 +1,116 @@
+// Package domain contains the core business entities and interfaces
 package domain
 
 import (
 	"context"
-	"time"
 )
 
-// CountryRepository defines the operations for Country entities
+// CountryRepository defines the interface for country data operations
 type CountryRepository interface {
-	Create(ctx context.Context, country *Country) error
 	GetByID(ctx context.Context, id uint) (*Country, error)
 	GetByCode(ctx context.Context, code string) (*Country, error)
-	GetAll(ctx context.Context) ([]*Country, error)
+	List(ctx context.Context) ([]*Country, error)
+	Create(ctx context.Context, country *Country) error
 	Update(ctx context.Context, country *Country) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// AdministrativeRegionRepository defines the operations for AdministrativeRegion entities
-type AdministrativeRegionRepository interface {
-	Create(ctx context.Context, region *AdministrativeRegion) error
+// RegionRepository defines the interface for administrative region data operations
+type RegionRepository interface {
 	GetByID(ctx context.Context, id uint) (*AdministrativeRegion, error)
 	GetByCode(ctx context.Context, code string) (*AdministrativeRegion, error)
 	GetByCountryID(ctx context.Context, countryID uint) ([]*AdministrativeRegion, error)
-	GetAll(ctx context.Context) ([]*AdministrativeRegion, error)
+	List(ctx context.Context) ([]*AdministrativeRegion, error)
+	Create(ctx context.Context, region *AdministrativeRegion) error
 	Update(ctx context.Context, region *AdministrativeRegion) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// CityRepository defines the operations for City entities
+// CityRepository defines the interface for city data operations
 type CityRepository interface {
-	Create(ctx context.Context, city *City) error
 	GetByID(ctx context.Context, id uint) (*City, error)
 	GetByRegionID(ctx context.Context, regionID uint) ([]*City, error)
-	GetAll(ctx context.Context) ([]*City, error)
+	List(ctx context.Context) ([]*City, error)
+	Create(ctx context.Context, city *City) error
 	Update(ctx context.Context, city *City) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// AreaRepository defines the operations for Area entities
+// AreaRepository defines the interface for area data operations
 type AreaRepository interface {
-	Create(ctx context.Context, area *Area) error
 	GetByID(ctx context.Context, id uint) (*Area, error)
 	GetByCityID(ctx context.Context, cityID uint) ([]*Area, error)
-	GetAll(ctx context.Context) ([]*Area, error)
+	List(ctx context.Context) ([]*Area, error)
+	Create(ctx context.Context, area *Area) error
 	Update(ctx context.Context, area *Area) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// PostalCodeRepository defines the operations for PostalCode entities
+// PostalCodeRepository defines the interface for postal code data operations
 type PostalCodeRepository interface {
-	Create(ctx context.Context, postalCode *PostalCode) error
 	GetByID(ctx context.Context, id uint) (*PostalCode, error)
 	GetByCode(ctx context.Context, code string) (*PostalCode, error)
 	GetByAreaID(ctx context.Context, areaID uint) ([]*PostalCode, error)
-	GetAll(ctx context.Context) ([]*PostalCode, error)
+	List(ctx context.Context) ([]*PostalCode, error)
+	Create(ctx context.Context, postalCode *PostalCode) error
 	Update(ctx context.Context, postalCode *PostalCode) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// OrderTypeRepository defines the operations for OrderType entities
+// OrderTypeRepository defines the interface for order type data operations
 type OrderTypeRepository interface {
-	Create(ctx context.Context, orderType *OrderType) error
 	GetByID(ctx context.Context, id uint) (*OrderType, error)
 	GetByCode(ctx context.Context, code string) (*OrderType, error)
-	GetAll(ctx context.Context) ([]*OrderType, error)
+	List(ctx context.Context) ([]*OrderType, error)
+	Create(ctx context.Context, orderType *OrderType) error
 	Update(ctx context.Context, orderType *OrderType) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// ServiceTypeRepository defines the operations for ServiceType entities
+// ServiceTypeRepository defines the interface for service type data operations
 type ServiceTypeRepository interface {
-	Create(ctx context.Context, serviceType *ServiceType) error
 	GetByID(ctx context.Context, id uint) (*ServiceType, error)
 	GetByCode(ctx context.Context, code string) (*ServiceType, error)
-	GetAll(ctx context.Context) ([]*ServiceType, error)
+	List(ctx context.Context) ([]*ServiceType, error)
+	Create(ctx context.Context, serviceType *ServiceType) error
 	Update(ctx context.Context, serviceType *ServiceType) error
 	Delete(ctx context.Context, id uint) error
 }
 
-// ServiceAvailabilityRepository defines the operations for ServiceAvailability entities
+// ServiceAvailabilityRepository defines the interface for service availability data operations
 type ServiceAvailabilityRepository interface {
-	Create(ctx context.Context, availability *ServiceAvailability) error
 	GetByID(ctx context.Context, id uint) (*ServiceAvailability, error)
-
-	// Find service availability based on location, order type, and service type
-	FindByLocation(ctx context.Context, locationType string, locationID uint, orderTypeID, serviceTypeID uint) (*ServiceAvailability, error)
-
-	// Get all service availabilities for a specific location
 	GetByLocation(ctx context.Context, locationType string, locationID uint) ([]*ServiceAvailability, error)
-
-	// Get all service availabilities for a specific order type
+	GetByService(ctx context.Context, serviceTypeID uint) ([]*ServiceAvailability, error)
 	GetByOrderType(ctx context.Context, orderTypeID uint) ([]*ServiceAvailability, error)
-
-	// Get all service availabilities for a specific service type
-	GetByServiceType(ctx context.Context, serviceTypeID uint) ([]*ServiceAvailability, error)
-
-	// Update a service availability record
-	Update(ctx context.Context, availability *ServiceAvailability) error
-
-	// Delete a service availability record
+	CheckAvailability(ctx context.Context, postalCode string, orderTypeCode string, serviceTypeCode string) (bool, error)
+	BulkCheckAvailability(ctx context.Context, requests []ServiceabilityRequest) ([]ServiceabilityResult, error)
+	List(ctx context.Context) ([]*ServiceAvailability, error)
+	Create(ctx context.Context, serviceAvailability *ServiceAvailability) error
+	Update(ctx context.Context, serviceAvailability *ServiceAvailability) error
 	Delete(ctx context.Context, id uint) error
-
-	// Bulk check service availability for multiple locations, order types, and service types
-	BulkCheck(ctx context.Context, requests []ServiceAvailabilityRequest) ([]ServiceAvailabilityResponse, error)
 }
 
-// ServiceAvailabilityRequest represents a request to check service availability
-type ServiceAvailabilityRequest struct {
-	LocationType  string `json:"location_type"`
-	LocationID    uint   `json:"location_id"`
-	OrderTypeID   uint   `json:"order_type_id"`
-	ServiceTypeID uint   `json:"service_type_id"`
+// ServiceabilityRequest represents a request to check service availability
+type ServiceabilityRequest struct {
+	PostalCode      string `json:"postal_code"`
+	CountryCode     string `json:"country_code"`
+	OrderTypeCode   string `json:"order_type_code"`
+	ServiceTypeCode string `json:"service_type_code,omitempty"` // Optional, if not provided, all services are checked
 }
 
-// ServiceAvailabilityResponse represents the response to a service availability check
-type ServiceAvailabilityResponse struct {
-	Request        ServiceAvailabilityRequest `json:"request"`
-	IsAvailable    bool                       `json:"is_available"`
-	EffectiveFrom  time.Time                  `json:"effective_from,omitempty"`
-	EffectiveTo    time.Time                  `json:"effective_to,omitempty"`
-	AdditionalData string                     `json:"additional_data,omitempty"`
+// ServiceabilityResult represents the result of a serviceability check
+type ServiceabilityResult struct {
+	PostalCode    string             `json:"postal_code"`
+	CountryCode   string             `json:"country_code"`
+	OrderTypeCode string             `json:"order_type_code"`
+	Services      []ServiceAvailable `json:"services"`
+	IsServiceable bool               `json:"is_serviceable"`
+}
+
+// ServiceAvailable represents the availability of a specific service
+type ServiceAvailable struct {
+	ServiceTypeCode string `json:"service_type_code"`
+	ServiceTypeName string `json:"service_type_name"`
+	IsAvailable     bool   `json:"is_available"`
 }
