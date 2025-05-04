@@ -51,4 +51,13 @@ delivery -> usecase -> domain
 repository --┘
 ```
 
-This ensures that the domain layer is independent of frameworks and external concerns. 
+This ensures that the domain layer is independent of frameworks and external concerns.
+
+## Best Practices
+
+* Keep business logic in the domain and usecase layers
+* Delivery and repository layers should be thin adapters
+* Use dependency injection to provide implementations to higher layers
+* Avoid importing external packages in the domain layer
+* Follow interface segregation principle to keep interfaces small and focused
+* Write unit tests for each layer independently 

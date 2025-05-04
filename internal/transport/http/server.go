@@ -29,6 +29,16 @@ func (l *stdLogger) Error(msg string, _ ...interface{}) {
 	l.logger.Println("ERROR:", msg)
 }
 
+// ServerConfig holds all configuration for the HTTP server
+type ServerConfig struct {
+	Addr         string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
+	Logger       Logger
+	RouterConfig RouterConfig
+}
+
 // Server represents the HTTP server
 type Server struct {
 	server *http.Server
@@ -66,22 +76,31 @@ func WithIdleTimeout(timeout time.Duration) ServerOption {
 	}
 }
 
-// NewServer creates a new HTTP server
-func NewServer(addr string, handler http.Handler, opts ...ServerOption) *Server {
+// DefaultServerConfig returns a default server configuration
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		Addr:         ":8080",
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		Logger:       &stdLogger{log.New(log.Writer(), "[HTTP] ", log.LstdFlags)},
+	}
+}
+
+// NewServer creates a new HTTP server with configuration
+func NewServer(config ServerConfig) *Server {
+	// Create the router with the provided config
+	handler := NewRouter(config.RouterConfig)
+
 	srv := &Server{
 		server: &http.Server{
-			Addr:         addr,
+			Addr:         config.Addr,
 			Handler:      handler,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			ReadTimeout:  config.ReadTimeout,
+			WriteTimeout: config.WriteTimeout,
+			IdleTimeout:  config.IdleTimeout,
 		},
-		logger: &stdLogger{log.New(log.Writer(), "[HTTP] ", log.LstdFlags)},
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(srv)
+		logger: config.Logger,
 	}
 
 	return srv

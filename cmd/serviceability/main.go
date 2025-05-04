@@ -11,9 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
-	httpserver "github.com/prayog/serviceability/internal/delivery/http"
-	"github.com/prayog/serviceability/internal/delivery/http/handlers"
-	"github.com/prayog/serviceability/internal/delivery/http/middleware"
+	httpserver "github.com/prayog/serviceability/internal/transport/http"
+	"github.com/prayog/serviceability/internal/usecase"
 	"github.com/prayog/serviceability/pkg/config"
 	"github.com/prayog/serviceability/pkg/database"
 	"github.com/prayog/serviceability/pkg/logger"
@@ -58,32 +57,29 @@ func main() {
 
 	log.Info("Database setup completed successfully")
 
-	// Setup router and handlers
-	mux := http.NewServeMux()
+	// Initialize use cases
+	usecases := usecase.NewUseCaseFactory()
 
-	// Register handlers
-	mux.Handle("/health", handlers.HealthHandler(version))
-
-	// Setup middleware
-	// TODO: Load API keys from configuration
-	allowedOrigins := []string{"http://localhost:3000"}
-	middlewareChain := middleware.Chain(
-		mux,
-		log.RecoveryMiddleware,
-		log.HTTPMiddleware,
-		middleware.CORS(allowedOrigins),
-	)
-
-	// Create HTTP server
+	// Create HTTP server with the new config structure
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	server := httpserver.NewServer(
-		addr,
-		middlewareChain,
-		httpserver.WithLogger(log.AsHTTPLogger()),
-		httpserver.WithReadTimeout(cfg.Server.ReadTimeout),
-		httpserver.WithWriteTimeout(cfg.Server.WriteTimeout),
-		httpserver.WithIdleTimeout(cfg.Server.IdleTimeout),
-	)
+	serverConfig := httpserver.ServerConfig{
+		Addr:         addr,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
+		Logger:       log.AsHTTPLogger(),
+		RouterConfig: httpserver.RouterConfig{
+			UseCases:     usecases,
+			Version:      version,
+			Logger:       log.AsHTTPLogger(),
+			EnableCORS:   true,
+			AuthEnabled:  false,
+			APIKeys:      []string{}, // TODO: Load from config
+			RateLimiting: true,
+		},
+	}
+
+	server := httpserver.NewServer(serverConfig)
 
 	// Start server in a goroutine
 	go func() {
@@ -91,6 +87,9 @@ func main() {
 			log.Fatal("Server failed to start", zap.Error(err))
 		}
 	}()
+
+	log.Info("Server started successfully on " + addr)
+	log.Info("API endpoints available at http://localhost" + addr + "/api/v1/serviceability/...")
 
 	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)

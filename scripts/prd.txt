@@ -1,212 +1,82 @@
-Technical Architecture
-System Components
-API Package (/cmd/api): Main entry point for the HTTP server using standard library net/http
-Domain Layer (/internal/domain): Core entity definitions and repository interfaces
-Use Case Layer (/internal/usecase): Business logic implementing service interfaces
-Delivery Layer (/internal/delivery/http): HTTP handlers for REST endpoints
-Repository Layer (/internal/repository/postgres): Data access implementation using sqlx
-Common Utilities (/internal/common): Shared functionality (config, logging, errors)
-Public Client (/pkg/client): Go client library for external consumers
-Data Models
-go
-Copy Code
-// Geographic entities in /internal/domain/entity
-type Country struct {
-    ID          uuid.UUID `db:"id"`
-    Name        string    `db:"name"`
-    Code        string    `db:"code"`
-    CurrencyCode string   `db:"currency_code"`
-    PhoneCode   string    `db:"phone_code"`
-    IsActive    bool      `db:"is_active"`
-    CreatedAt   time.Time `db:"created_at"`
-    UpdatedAt   time.Time `db:"updated_at"`
-}
+# Serviceability Service PRD
 
-// Similar structs for AdministrativeRegion, City, Area, PostalCode
+## Overview
+The Serviceability Service is a critical component that determines whether delivery services are available to customers in specific geographic locations. It provides fast, accurate serviceability checks by evaluating location data against configurable rules.
 
-// Service configuration
-type OrderType struct {
-    ID          uuid.UUID `db:"id"`
-    Name        string    `db:"name"`
-    Code        string    `db:"code"`
-    Description string    `db:"description"`
-    IsActive    bool      `db:"is_active"`
-    CreatedAt   time.Time `db:"created_at"`
-    UpdatedAt   time.Time `db:"updated_at"`
-}
+## Problem Statement
+E-commerce and delivery businesses need to accurately determine if they can deliver to a customer's location before accepting orders. This determination depends on multiple factors:
+- Geographic location (postal code, area, city, region, country)
+- Type of service requested (standard, express, same-day)
+- Order characteristics (size, weight, value)
+- Business rules and operational constraints
 
-// Similar struct for ServiceType
+## User Stories
 
-type ServiceAvailability struct {
-    ID            uuid.UUID          `db:"id"`
-    LocationType  string             `db:"location_type"`
-    LocationID    uuid.UUID          `db:"location_id"`
-    OrderTypeID   uuid.UUID          `db:"order_type_id"`
-    ServiceTypeID uuid.UUID          `db:"service_type_id"`
-    IsAvailable   bool               `db:"is_available"`
-    Constraints   pgtype.JSONB       `db:"constraints"`
-    EffectiveFrom time.Time          `db:"effective_from"`
-    EffectiveTo   time.Time          `db:"effective_to"`
-    IsActive      bool               `db:"is_active"`
-    CreatedAt     time.Time          `db:"created_at"`
-    UpdatedAt     time.Time          `db:"updated_at"`
-}
-API Interface Design
-go
-Copy Code
-// /internal/delivery/http/handler/serviceability_handler.go
-func (h *ServiceabilityHandler) CheckServiceability(w http.ResponseWriter, r *http.Request) {
-    // Extract query parameters
-    postalCode := r.URL.Query().Get("postal_code")
-    countryCode := r.URL.Query().Get("country_code")
-    orderTypeCode := r.URL.Query().Get("order_type")
-    
-    // Process request through use case
-    result, err := h.serviceabilityUseCase.CheckServiceability(r.Context(), &dto.ServiceabilityRequest{
-        PostalCode:    postalCode,
-        CountryCode:   countryCode,
-        OrderTypeCode: orderTypeCode,
-    })
-    
-    // Handle response
-    if err != nil {
-        h.errorResponse(w, err)
-        return
-    }
-    
-    h.responseJSON(w, http.StatusOK, result)
-}
-Infrastructure Requirements
-Database: PostgreSQL 14+ with Go driver and sqlx extension
-Runtime: Go 1.24.2 in containerized environments
-Caching: go-redis/redis client for performance optimization
-Configuration: viper for environment-based configuration
-Logging: zap for structured logging
-Metrics: Prometheus client for Go with custom instrumentation
-Development Roadmap
-Phase 1: Core Infrastructure
-Set up standard Go project layout (/cmd, /internal, /pkg)
-Implement domain models and repository interfaces
-Create database migrations for geographic schema
-Develop basic PostgreSQL repositories using sqlx
-Build foundational HTTP server with health check endpoints
-Implement configuration and logging systems
-Phase 2: Geographic Foundation
-Develop country, region, city, and postal code CRUD operations
-Implement repository implementations with proper indexing
-Create data import tooling for India-focused geographic data
-Add validation middleware for request parameters
-Develop simple postal code lookup API
-Write unit and integration tests for geographic operations
-Phase 3: Serviceability Core
-Implement order type and service type management
-Develop serviceability determination logic
-Create public API for serviceability checks
-Build admin handlers for rule management
-Add client package in /pkg for external consumers
-Implement context-aware cancellation for long operations
-Phase 4: Advanced Features
-Add bulk serviceability check endpoints with concurrency
-Implement complex constraint rule engine
-Develop caching layer using Redis
-Create background workers for data validation
-Add comprehensive logging and error tracking
-Implement rate limiting and circuit breaking
-Phase 5: Integration & Scale
-Build client libraries for partner and vehicle services
-Develop health check and dependency monitoring
-Implement database connection pooling optimizations
-Add metrics collection and Prometheus endpoints
-Create deployment configurations for Kubernetes
-Develop documentation with Go examples
-Logical Dependency Chain
-Foundation Layer
-Project structure setup with Go modules
-Domain entity models with proper struct tags
-Interface definitions following ISP principle
-Database connection and migration framework
-Base HTTP server with middleware chain
-Initial Usable Features
-Geographic data management API endpoints
-Postal code lookup functionality
-Simple serviceability check
-Authentication middleware
-Basic admin interface for configuration
-Feature Expansion
-Bulk operations with proper Go concurrency patterns
-Caching implementation with consistent hashing
-Advanced rule engine using Go interfaces
-Complete integration with partner services
-Metrics and observability instrumentation
-Risks and Mitigations
-Technical Challenges
-Risk: Performance bottlenecks with complex geographic queries
-Mitigation: Use SQL prepared statements, implement query optimization, leverage Go's concurrency for bulk operations
-Risk: Managing complex database transactions in Go
-Mitigation: Implement repository pattern with explicit transaction support, use context for cancellation
-Risk: Memory management with large result sets
-Mitigation: Implement pagination, use stream processing, leverage Go's efficient memory model
-MVP Scoping
-Risk: Expanding beyond core functionality too quickly
-Mitigation: Follow YAGNI principle, implement interfaces first pattern, focus on single responsibility
-Risk: Overengineering database layer
-Mitigation: Start with simple SQL queries, avoid premature optimization, use benchmarks to guide improvements
-Resource Constraints
-Risk: Go expertise for spatial data handling
-Mitigation: Leverage existing Go spatial libraries, document patterns for team knowledge sharing
-Risk: Integration complexity with other microservices
-Mitigation: Define clear interface contracts, create mock servers for development, implement circuit breakers
-Appendix
-Go-Specific Implementation Details
-go
-Copy Code
-// Example repository interface
-// /internal/domain/repository/serviceability_repository.go
-type ServiceabilityRepository interface {
-    CheckAvailability(ctx context.Context, request *entity.ServiceabilityRequest) (*entity.ServiceabilityResult, error)
-    GetAvailableServices(ctx context.Context, locationID uuid.UUID, locationType string) ([]*entity.ServiceType, error)
-    SaveServiceAvailability(ctx context.Context, availability *entity.ServiceAvailability) error
-    BulkCheckAvailability(ctx context.Context, requests []*entity.ServiceabilityRequest) ([]*entity.ServiceabilityResult, error)
-}
+### As an API consumer, I want to:
+1. Check if a specific location is serviceable for a given service and order type
+2. Get a list of serviceable areas for a specific service type
+3. Receive clear responses with relevant serviceability information
+4. Experience low-latency responses for serviceability checks
 
-// Example concurrent implementation
-// /internal/repository/postgres/serviceability_repository.go
-func (r *PostgresServiceabilityRepository) BulkCheckAvailability(ctx context.Context, requests []*entity.ServiceabilityRequest) ([]*entity.ServiceabilityResult, error) {
-    results := make([]*entity.ServiceabilityResult, len(requests))
-    errChan := make(chan error, len(requests))
-    var wg sync.WaitGroup
-    
-    for i, req := range requests {
-        wg.Add(1)
-        go func(idx int, request *entity.ServiceabilityRequest) {
-            defer wg.Done()
-            result, err := r.CheckAvailability(ctx, request)
-            if err != nil {
-                errChan <- err
-                return
-            }
-            results[idx] = result
-        }(i, req)
-    }
-    
-    wg.Wait()
-    close(errChan)
-    
-    if len(errChan) > 0 {
-        return nil, <-errChan
-    }
-    
-    return results, nil
-}
-Database Optimization Techniques
-Go-specific indexing strategies for PostgreSQL
-Connection pooling configuration for Go applications
-Transaction management patterns in Go repositories
-Efficient bulk operations with pgx batch support
-JSONB handling for constraint storage
-Testing Strategy
-Table-driven tests for repository implementations
-HTTP handler testing with httptest package
-Mock generation with mockgen for interfaces
-Integration tests with testcontainers-go
-Benchmarking critical path operations
+### As a service administrator, I want to:
+1. Create, update, and delete serviceability rules
+2. Import location data in bulk
+3. View the complete location hierarchy for any postal code
+4. Manage different types of services and order types
+5. Define time-based rules for seasonal or promotional availability
+
+## Technical Requirements
+
+### Data Model
+- Location entities (countries, regions, cities, areas, postal codes)
+- Service entities (service types, order types)
+- Serviceability rules linking locations to services
+
+### API Endpoints
+- `/api/v1/serviceability/check` - Check if a location is serviceable
+- `/api/v1/serviceability/areas` - Get serviceable areas
+- `/api/v1/serviceability/rules/*` - CRUD for serviceability rules
+- `/api/v1/admin/*` - Administrative endpoints
+
+### Performance Requirements
+- Response time < 200ms for serviceability checks
+- Support for at least 100 concurrent requests
+- Database optimized for read-heavy operations
+
+### Security Requirements
+- Administrative endpoints protected by API key authentication
+- Rate limiting for public endpoints
+- Input validation to prevent injection attacks
+
+## Technical Specifications
+
+### Technology Stack
+- Language: Go 1.24.2
+- Database: PostgreSQL
+- Caching: Redis (optional)
+
+### Database Schema
+- As defined in the current project's db-schema.md document
+- Optimized for query performance with appropriate indexes
+
+### Code Structure
+- Follow standard Go project layout conventions
+- Use clean architecture principles (domain, repository, usecase, transport layers)
+- Ensure comprehensive test coverage
+
+## Implementation Plan
+1. Set up project structure and basic HTTP server
+2. Implement domain models and database schema
+3. Create repository layer for data access
+4. Develop core serviceability logic in usecase layer
+5. Build HTTP handlers for API endpoints
+6. Implement authentication and security features
+7. Add caching for performance optimization
+8. Write comprehensive tests
+9. Deploy and integrate with other services
+
+## Success Metrics
+- API response time consistently below 200ms
+- 99.9% uptime
+- Zero incorrect serviceability determinations
+- Comprehensive test coverage > 80%
