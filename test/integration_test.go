@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prayog/serviceability/pkg/config"
-	"github.com/prayog/serviceability/pkg/logger"
+	"prayog-serviceability-service/pkg/config"
+	"prayog-serviceability-service/pkg/logger"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/viper"
@@ -97,4 +99,31 @@ func setDefaults() {
 	viper.SetDefault("SERVER_READ_TIMEOUT", "10s")
 	viper.SetDefault("SERVER_WRITE_TIMEOUT", "10s")
 	viper.SetDefault("SERVER_IDLE_TIMEOUT", "120s")
+}
+
+// Helper functions for reading environment variables
+func getEnv(key, defaultValue string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		return defaultValue
+	}
+	return value
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	valueStr := getEnv(key, strconv.Itoa(defaultValue))
+	value, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
+}
+
+func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
+	valueStr := getEnv(key, defaultValue.String())
+	value, err := time.ParseDuration(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
 }

@@ -119,3 +119,42 @@ cp .env-local/dev.env .env
 ```bash
 go run cmd/serviceability/main.go
 ```
+
+## Project Structure
+
+This project follows the Standard Go Project Layout:
+
+```
+project-root/
+  ├── api/                  # API definitions and specs
+  ├── build/                # Build and CI/CD files
+  ├── cmd/                  # Application entry points
+  │   ├── api/              # Main API server
+  │   └── migrations/       # Database migrations
+  ├── docs/                 # Documentation
+  ├── internal/             # Private application code
+  │   ├── api/              # HTTP API handlers and routing
+  │   ├── di/               # Dependency Injection
+  │   ├── domain/           # Domain models and core business rules
+  │   ├── infrastructure/   # Infrastructure concerns
+  │   ├── repository/       # Data access layer
+  │   └── service/          # Business logic implementation
+  ├── pkg/                  # Shared utilities
+  │   ├── config/           # Configuration utilities
+  │   └── other/            # Other shared libraries
+  ├── scripts/              # Build scripts and tools
+  ├── test/                 # Additional test files
+  ├── third_party/          # Third-party code
+  └── tools/                # Tool dependencies
+```
+
+## Architecture
+
+This project uses a clean architecture with dependency injection:
+
+1. **Domain Layer**: Core business entities and interfaces, defined in `internal/domain`.
+2. **Repository Layer**: Data access implementations, defined in `internal/repository`.
+3. **Service Layer**: Business logic, defined in `internal/service`.
+4. **API Layer**: HTTP handlers and routes, defined in `internal/api`.
+5. **Infrastructure Layer**: Cross-cutting concerns like database, logging, defined in `internal/infrastructure`.
+6. **Dependency Injection**: Wiring everything together, defined in `internal/di`.

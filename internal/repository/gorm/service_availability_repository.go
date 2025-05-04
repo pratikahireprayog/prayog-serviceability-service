@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prayog/serviceability/internal/domain"
-	"github.com/prayog/serviceability/pkg/database"
+	"prayog-serviceability-service/internal/domain"
+	"prayog-serviceability-service/pkg/database"
+
 	"gorm.io/gorm"
 )
 

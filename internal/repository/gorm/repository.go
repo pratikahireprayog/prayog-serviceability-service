@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/prayog/serviceability/pkg/database"
+	"prayog-serviceability-service/pkg/database"
+
 	"gorm.io/gorm"
 )
 

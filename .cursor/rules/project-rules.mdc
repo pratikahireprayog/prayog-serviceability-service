@@ -66,6 +66,7 @@ service/
   │       ├── v1/                 # API version
   │       │   └── service.proto
   │       └── gen/                # Generated code
+  |__ docs/                       # schema, lld or any docs     
   │
   ├── configs/                    # Configuration files
   ├── deployments/                # Deployment files (Docker, K8s)

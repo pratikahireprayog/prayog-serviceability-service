@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/prayog/serviceability/pkg/config"
-	"github.com/prayog/serviceability/pkg/database"
+	"prayog-serviceability-service/pkg/config"
+	"prayog-serviceability-service/pkg/database"
 )
 
 func main() {

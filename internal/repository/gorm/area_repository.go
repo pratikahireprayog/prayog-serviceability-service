@@ -3,8 +3,8 @@ package gorm
 import (
 	"context"
 
-	"github.com/prayog/serviceability/internal/domain"
-	"github.com/prayog/serviceability/pkg/database"
+	"prayog-serviceability-service/internal/domain"
+	"prayog-serviceability-service/pkg/database"
 )
 
 // AreaRepository implements domain.AreaRepository using GORM

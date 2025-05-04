@@ -1,8 +1,8 @@
 package gorm
 
 import (
-	"github.com/prayog/serviceability/internal/domain"
-	"github.com/prayog/serviceability/pkg/database"
+	"prayog-serviceability-service/internal/domain"
+	"prayog-serviceability-service/pkg/database"
 )
 
 // RepositoryFactory creates and provides access to all repositories

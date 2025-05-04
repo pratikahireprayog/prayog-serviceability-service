@@ -1,16 +1,63 @@
-# Internal Package Architecture
+# Internal Package
 
-This directory contains the core components of the application, organized in a clean architecture pattern with clear separation of concerns.
+This directory contains the private application code that is specific to this service.
 
 ## Directory Structure
 
 ```
 internal/
-├── domain/       # Core business entities, repository interfaces, and DTOs
-├── repository/   # Repository implementations for data storage and retrieval
-├── usecase/      # Application use cases and business logic
-└── transport/    # External interfaces (HTTP, gRPC, etc.)
+  ├── api/                  # HTTP API handlers and routing
+  │   ├── handlers/         # HTTP Request handlers
+  │   ├── middleware/       # HTTP middlewares
+  │   ├── router.go         # Router configuration
+  │   └── server.go         # HTTP Server setup
+  │
+  ├── di/                   # Dependency Injection
+  │   ├── container.go      # DI container definition
+  │   ├── providers.go      # Component providers
+  │   └── wire.go           # Wire DI setup (if using Wire)
+  │
+  ├── domain/               # Domain models and core business rules
+  │   ├── models/           # Data structures/entities
+  │   └── interfaces/       # Service interfaces (ports)
+  │
+  ├── infrastructure/       # Infrastructure concerns
+  │   ├── db/               # Database connections, migrations
+  │   ├── logger/           # Logging utilities
+  │   └── errors/           # Error handling
+  │
+  ├── repository/           # Data access layer
+  │   └── interfaces/       # Repository interfaces
+  │
+  └── service/              # Business logic implementation
+      └── [feature]/        # Feature-specific services
 ```
+
+## Package Descriptions
+
+### api
+
+The `api` package contains all HTTP-related code, including handlers, middleware, the router, and the server.
+
+### di
+
+The `di` package contains the dependency injection container and component providers.
+
+### domain
+
+The `domain` package contains the core domain models and business logic interfaces.
+
+### infrastructure
+
+The `infrastructure` package contains infrastructure concerns such as database connections, logging, and error handling.
+
+### repository
+
+The `repository` package contains the data access layer.
+
+### service
+
+The `service` package contains the business logic implementation.
 
 ## Architectural Layers
 

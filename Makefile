@@ -3,7 +3,7 @@
 # Build variables
 BINARY_NAME=serviceability
 BUILD_DIR=./build
-CMD_DIR=./cmd/serviceability
+CMD_DIR=./cmd/api
 MIGRATION_DIR=./cmd/migrations
 
 # Go variables
