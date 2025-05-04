@@ -7,35 +7,39 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gofiber/fiber/v2"
+	"prayog-serviceability-service/api"
+	"prayog-serviceability-service/pkg/config"
+	database "prayog-serviceability-service/pkg/infrastructure/db"
+	"prayog-serviceability-service/pkg/repository"
+	"prayog-serviceability-service/pkg/services"
 )
 
 func main() {
-	// Create new Fiber app
-	app := fiber.New(fiber.Config{
-		AppName: "Prayog Serviceability Service",
-	})
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
 
-	// Add a basic health check endpoint
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
+	// Initialize database
+	db, err := database.NewDatabase(cfg)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
 
-	// Add a basic mock serviceability endpoint
-	app.Get("/api/v1/serviceability/check/:postalCode", func(c *fiber.Ctx) error {
-		postalCode := c.Params("postalCode")
-		isServiceable := postalCode != "00000" // Just a placeholder check
+	// Initialize repositories
+	repositories := repository.New(db)
 
-		return c.JSON(fiber.Map{
-			"postal_code":    postalCode,
-			"is_serviceable": isServiceable,
-		})
-	})
+	// Initialize services
+	serviceabilityService := services.NewServiceabilityService(repositories)
+
+	// Create HTTP server
+	server := api.NewServer(serviceabilityService)
 
 	// Start the server in a goroutine
 	go func() {
 		fmt.Println("Starting server on :8080")
-		if err := app.Listen(":8080"); err != nil {
+		if err := server.Listen(":8080"); err != nil {
 			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
@@ -47,7 +51,7 @@ func main() {
 	fmt.Printf("Received signal %s, shutting down...\n", sig.String())
 
 	// Shutdown the server
-	if err := app.Shutdown(); err != nil {
+	if err := server.Shutdown(); err != nil {
 		log.Fatalf("Server shutdown failed: %v", err)
 	}
 
