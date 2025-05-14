@@ -1,0 +1,403 @@
+erDiagram
+    %% ====== SERVICEABILITY SERVICE ======
+    %% Location hierarchy 
+    countries {
+        uuid id PK
+        varchar code UK
+        varchar name
+        varchar currency_code
+        varchar phone_code
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    regions {
+        uuid id PK
+        uuid country_id FK
+        varchar code
+        varchar name
+        varchar region_type
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    cities {
+        uuid id PK
+        uuid region_id FK
+        uuid country_id FK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    areas {
+        uuid id PK
+        uuid city_id FK
+        varchar code
+        varchar name
+        varchar area_type
+        decimal latitude
+        decimal longitude
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    postal_codes {
+        uuid id PK
+        varchar code
+        uuid country_id FK
+        uuid region_id FK
+        uuid city_id FK
+        uuid area_id FK
+        decimal latitude
+        decimal longitude
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    location_aliases {
+        uuid id PK
+        varchar entity_type
+        uuid entity_id
+        varchar alias_name
+        varchar language_code
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Catalog/Partner references in Serviceability Service
+    catalog_refs {
+        uuid id PK
+        varchar type_code
+        uuid catalog_id
+        varchar code
+        varchar name
+        uuid parent_id
+        boolean is_active
+        timestamp sync_at
+    }
+    
+    partner_refs {
+        uuid id PK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp sync_at
+    }
+    
+    %% ====== PARTNER SERVICE ======
+    %% Service Catalog
+    catalog_types {
+        uuid id PK
+        varchar code UK "ORDER_TYPE|SERVICE_TYPE|TRAVEL_MODE"
+        varchar name
+        text description
+        boolean allows_hierarchy
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    catalog {
+        uuid id PK
+        uuid catalog_type_id FK
+        varchar code UK
+        varchar name
+        text description
+        uuid parent_id FK
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Partner Management
+    partner_types {
+        uuid id PK
+        varchar code UK
+        varchar name
+        text description
+        uuid parent_id FK
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    partners {
+        uuid id PK
+        varchar code UK
+        varchar name
+        uuid partner_type_id FK
+        uuid parent_id FK
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Partner Capabilities
+    partner_capabilities {
+        uuid id PK
+        uuid partner_id FK
+        uuid catalog_entry_id FK
+        boolean is_capable
+        timestamp effective_from
+        timestamp effective_to
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Constraints System
+    constraint_definitions {
+        uuid id PK
+        varchar code UK
+        varchar name
+        text description
+        varchar data_type
+        text validation_rules
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    partner_constraints {
+        uuid id PK
+        uuid partner_id FK
+        uuid constraint_id FK
+        uuid catalog_entry_id FK
+        varchar string_value
+        decimal numeric_value
+        boolean boolean_value
+        date date_value
+        time time_value
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Location references in Partner Service
+    location_refs {
+        uuid id PK
+        varchar type "COUNTRY|REGION|CITY|AREA|POSTAL_CODE"
+        uuid location_id
+        varchar code
+        varchar name
+        uuid parent_id
+        boolean is_active
+        timestamp sync_at
+    }
+    
+    %% Partner Service Areas
+    partner_service_areas {
+        uuid id PK
+        uuid partner_id FK
+        uuid location_id FK
+        varchar location_type
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ====== VEHICLE SERVICE ======
+    vehicle_types {
+        uuid id PK
+        varchar code UK
+        varchar name
+        text description
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    vehicles {
+        uuid id PK
+        varchar registration_number UK
+        uuid vehicle_type_id FK
+        varchar make
+        varchar model
+        decimal capacity_weight
+        decimal capacity_volume
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% Partner references in Vehicle Service
+    v_partner_refs {
+        uuid id PK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp sync_at
+    }
+    
+    partner_vehicles {
+        uuid id PK
+        uuid partner_id FK
+        uuid vehicle_id FK
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    vehicle_attribute_definitions {
+        uuid id PK
+        varchar code UK
+        varchar name
+        text description
+        varchar data_type
+        varchar validation_regex
+        decimal min_value
+        decimal max_value
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    vehicle_attributes {
+        uuid id PK
+        uuid vehicle_id FK
+        uuid attribute_id FK
+        varchar string_value
+        decimal numeric_value
+        boolean boolean_value
+        date date_value
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% ====== TIMETABLE SERVICE ======
+    time_slots {
+        uuid id PK
+        varchar code UK
+        varchar name
+        time start_time
+        time end_time
+        integer duration_minutes
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    days_of_week {
+        smallint id PK
+        varchar name UK
+        varchar short_name UK
+    }
+    
+    schedule_patterns {
+        uuid id PK
+        varchar code UK
+        varchar name
+        text description
+        varchar recurrence_type
+        integer recurrence_interval
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    schedule_pattern_days {
+        uuid schedule_pattern_id PK,FK
+        smallint day_id PK,FK
+    }
+    
+    %% Partner references in Timetable Service
+    t_partner_refs {
+        uuid id PK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp sync_at
+    }
+    
+    partner_schedules {
+        uuid id PK
+        uuid partner_id FK
+        uuid schedule_pattern_id FK
+        uuid time_slot_id FK
+        date effective_from
+        date effective_to
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    schedule_exceptions {
+        uuid id PK
+        uuid partner_id FK
+        date exception_date
+        uuid original_time_slot_id FK
+        uuid alternative_time_slot_id FK
+        boolean is_available
+        text reason
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    %% RELATIONSHIPS
+    
+    %% Partner Service Internal Relationships
+    catalog_types ||--o{ catalog : contains
+    catalog ||--o{ catalog : parent_of
+    partner_types ||--o{ partner_types : parent_of
+    partner_types ||--o{ partners : categorizes
+    partners ||--o{ partners : parent_of
+    partners ||--o{ partner_capabilities : provides
+    catalog ||--o{ partner_capabilities : offered_as
+    constraint_definitions ||--o{ partner_constraints : defines
+    partners ||--o{ partner_constraints : limited_by
+    catalog ||--o{ partner_constraints : applies_to
+    partners ||--o{ partner_service_areas : serves
+    location_refs ||--o{ partner_service_areas : covered_by
+    
+    %% Serviceability Service Internal Relationships
+    countries ||--o{ regions : contains
+    regions ||--o{ cities : contains
+    cities ||--o{ areas : contains
+    countries ||--o{ postal_codes : has
+    regions ||--o{ postal_codes : has
+    cities ||--o{ postal_codes : has
+    areas ||--o{ postal_codes : has
+    countries ||--o{ location_aliases : "has_alias"
+    regions ||--o{ location_aliases : "has_alias"
+    cities ||--o{ location_aliases : "has_alias"
+    areas ||--o{ location_aliases : "has_alias"
+    
+    %% Vehicle Service Internal Relationships
+    vehicle_types ||--o{ vehicles : categorizes
+    v_partner_refs ||--o{ partner_vehicles : has
+    vehicles ||--o{ partner_vehicles : assigned_to
+    vehicle_attribute_definitions ||--o{ vehicle_attributes : defines
+    vehicles ||--o{ vehicle_attributes : has
+    
+    %% Timetable Service Internal Relationships
+    schedule_patterns ||--o{ schedule_pattern_days : has
+    days_of_week ||--o{ schedule_pattern_days : used_in
+    t_partner_refs ||--o{ partner_schedules : has_schedule
+    schedule_patterns ||--o{ partner_schedules : used_in
+    time_slots ||--o{ partner_schedules : defines_time
+    t_partner_refs ||--o{ schedule_exceptions : has_exception
+    time_slots ||--o{ schedule_exceptions : original_slot
+    time_slots ||--o{ schedule_exceptions : alternative_slot
+    
+    %% Cross-Service References (logical relations)
+    partners ||..o{ v_partner_refs : "sync to"
+    partners ||..o{ t_partner_refs : "sync to"
+    partners ||..o{ partner_refs : "sync to"
+    catalog ||..o{ catalog_refs : "sync to"
+    countries ||..o{ location_refs : "sync to"
+    regions ||..o{ location_refs : "sync to"
+    cities ||..o{ location_refs : "sync to"
+    areas ||..o{ location_refs : "sync to"
+    postal_codes ||..o{ location_refs : "sync to"
