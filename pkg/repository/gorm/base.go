@@ -1,8 +1,10 @@
-package repository
+package gorm
 
 import (
 	"context"
 	"errors"
+	"fmt"
+
 	database "prayog-serviceability-service/pkg/infrastructure/db"
 
 	"github.com/google/uuid"
@@ -11,13 +13,13 @@ import (
 
 // Common repository errors
 var (
-	ErrNotFound = errors.New("entity not found")
-	ErrDatabase = errors.New("database error")
-	ErrInvalid  = errors.New("invalid entity")
-	ErrConflict = errors.New("entity already exists")
+	ErrNotFound = fmt.Errorf("entity not found")
+	ErrDatabase = fmt.Errorf("database error")
+	ErrInvalid  = fmt.Errorf("invalid entity")
+	ErrConflict = fmt.Errorf("entity already exists")
 )
 
-// BaseRepository provides the common functionality for all repositories
+// BaseRepository provides the common functionality for repositories using GORM
 type BaseRepository[T any, M any] struct {
 	db *database.DB
 }
@@ -25,11 +27,6 @@ type BaseRepository[T any, M any] struct {
 // NewBaseRepository creates a new base repository
 func NewBaseRepository[T any, M any](db *database.DB) *BaseRepository[T, M] {
 	return &BaseRepository[T, M]{db: db}
-}
-
-// DB returns the underlying database instance
-func (r *BaseRepository[T, M]) DB() *database.DB {
-	return r.db
 }
 
 // WithContext returns a GORM DB instance with the given context

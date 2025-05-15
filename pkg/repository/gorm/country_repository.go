@@ -5,20 +5,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
-// CountryRepository implements repository.CountryRepository using GORM
+// CountryRepository implements CountryRepository interface
 type CountryRepository struct {
-	*repository.BaseRepository[domain.Country, database.Country]
+	*BaseRepository[domain.Country, database.Country]
 }
 
 // NewCountryRepository creates a new country repository
 func NewCountryRepository(db *database.DB) *CountryRepository {
 	return &CountryRepository{
-		BaseRepository: repository.NewBaseRepository[domain.Country, database.Country](db),
+		BaseRepository: NewBaseRepository[domain.Country, database.Country](db),
 	}
 }
 
@@ -29,11 +29,9 @@ func (r *CountryRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.C
 
 // GetByCode retrieves a country by its code
 func (r *CountryRepository) GetByCode(ctx context.Context, code string) (domain.Country, error) {
-	var dbCountry database.Country
-	if err := r.BaseRepository.WithContext(ctx).Where("code = ?", code).First(&dbCountry).Error; err != nil {
-		return domain.Country{}, repository.HandleError(err)
-	}
-	return mapDatabaseCountryToDomain(&dbCountry), nil
+	return r.BaseRepository.FindOne(ctx, func(db *gorm.DB) *gorm.DB {
+		return db.Where("code = ?", code)
+	}, mapDatabaseCountryToDomain)
 }
 
 // List retrieves all countries
@@ -63,6 +61,7 @@ func mapDatabaseCountryToDomain(dbCountry *database.Country) domain.Country {
 		ID:        dbCountry.ID,
 		Name:      dbCountry.Name,
 		Code:      dbCountry.Code,
+		IsActive:  true, // Default value, could be stored in DB in the future
 		CreatedAt: dbCountry.CreatedAt,
 		UpdatedAt: dbCountry.UpdatedAt,
 	}

@@ -8,16 +8,38 @@ The repository pattern is an abstraction that separates the domain model from th
 
 ## Structure
 
-- `interfaces.go`: Defines the repository interfaces that each implementation must adhere to
-- `repository.go`: Contains the generic base repository implementation with common CRUD operations
+- `interfaces.go`: Defines repository interfaces using Go's generics for common CRUD operations
 - `factory.go`: Provides a factory for creating and accessing repositories
 - `gorm/`: Directory containing GORM-specific implementations of the repository interfaces
 
 ## Key Components
 
-### BaseRepository
+### Generic Repository Interface
 
-The `BaseRepository` provides a generic implementation of common CRUD operations for all entity types:
+The base `Repository` interface uses Go generics to provide a common contract for CRUD operations:
+
+```go
+type Repository[T any] interface {
+    GetByID(ctx context.Context, id uuid.UUID) (T, error)
+    List(ctx context.Context) ([]T, error)
+    Create(ctx context.Context, entity T) error
+    Update(ctx context.Context, entity T) error
+    Delete(ctx context.Context, id uuid.UUID) error
+}
+```
+
+Entity-specific repository interfaces extend this generic interface with additional methods:
+
+```go
+type CountryRepository interface {
+    Repository[domain.Country]
+    GetByCode(ctx context.Context, code string) (domain.Country, error)
+}
+```
+
+### BaseRepository Implementation
+
+The `BaseRepository` is implemented in `gorm/base.go` and provides the concrete implementation of common operations:
 
 ```go
 type BaseRepository[T any, M any] struct {
@@ -25,7 +47,7 @@ type BaseRepository[T any, M any] struct {
 }
 ```
 
-where:
+Where:
 
 - `T` is the domain model type
 - `M` is the database model type
@@ -37,6 +59,23 @@ The BaseRepository offers:
 - Transaction support
 - Consistent error handling
 
+### Repository Factory
+
+The `RepositoryFactory` provides a clean way to create and access repository instances:
+
+```go
+type RepositoryFactory struct {
+    db *database.DB
+
+    // Repositories instances (lazy initialization)
+    countryRepo CountryRepository
+    regionRepo  RegionRepository
+    // Other repositories...
+}
+```
+
+It implements lazy initialization to create repositories only when they're first requested.
+
 ### RepositoryProvider Interface
 
 The `RepositoryProvider` interface defines the contract for repository providers, making it easier to inject repositories into services:
@@ -45,55 +84,9 @@ The `RepositoryProvider` interface defines the contract for repository providers
 type RepositoryProvider interface {
     CountryRepository() CountryRepository
     RegionRepository() RegionRepository
-    CityRepository() CityRepository
-    // ...other repositories
+    // Other repository accessors...
 }
 ```
-
-### Repository Factory
-
-The `RepositoryFactory` provides a thread-safe way to create and access repository instances:
-
-```go
-type RepositoryFactory struct {
-    db *database.DB
-    mu sync.RWMutex
-    repositories map[string]interface{}
-}
-```
-
-It implements the Service Locator pattern and uses lazy initialization with double-checked locking to create repositories only when needed.
-
-### Repository Interfaces
-
-Each domain entity has a corresponding repository interface that defines the operations that can be performed on that entity.
-
-Example:
-
-```go
-type CountryRepository interface {
-    GetByID(ctx context.Context, id uuid.UUID) (domain.Country, error)
-    GetByCode(ctx context.Context, code string) (domain.Country, error)
-    List(ctx context.Context) ([]domain.Country, error)
-    Create(ctx context.Context, country domain.Country) error
-    Update(ctx context.Context, country domain.Country) error
-    Delete(ctx context.Context, id uuid.UUID) error
-}
-```
-
-### Implementation
-
-Each repository interface has a GORM-specific implementation in the `gorm/` directory that extends the `BaseRepository`.
-
-Example:
-
-```go
-type CountryRepository struct {
-    *repository.BaseRepository[domain.Country, database.Country]
-}
-```
-
-Repositories can add custom methods for entity-specific operations beyond the standard CRUD operations provided by the BaseRepository.
 
 ## Usage Examples
 
@@ -161,3 +154,12 @@ func TestCountryService(t *testing.T) {
     // Test service methods
 }
 ```
+
+## Best Practices
+
+1. **Use the generic Repository interface** when defining new repository interfaces
+2. **Add only essential methods** to entity-specific repositories
+3. **Keep mapping logic** in the repository implementation
+4. **Use dependency injection** via the RepositoryProvider interface
+5. **Handle all database errors** in the repository layer
+6. **Prefer composition over inheritance** when implementing repositories

@@ -5,21 +5,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// OrderTypeRepository implements repository.OrderTypeRepository using GORM
+// OrderTypeRepository implements the OrderTypeRepository interface
 type OrderTypeRepository struct {
-	*repository.BaseRepository[domain.OrderType, database.OrderType]
+	*BaseRepository[domain.OrderType, database.OrderType]
 }
 
 // NewOrderTypeRepository creates a new order type repository
 func NewOrderTypeRepository(db *database.DB) *OrderTypeRepository {
 	return &OrderTypeRepository{
-		BaseRepository: repository.NewBaseRepository[domain.OrderType, database.OrderType](db),
+		BaseRepository: NewBaseRepository[domain.OrderType, database.OrderType](db),
 	}
 }
 

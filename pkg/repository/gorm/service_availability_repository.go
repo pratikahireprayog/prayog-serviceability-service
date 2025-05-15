@@ -6,21 +6,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// ServiceAvailabilityRepository implements repository.ServiceAvailabilityRepository using GORM
+// ServiceAvailabilityRepository implements the ServiceAvailabilityRepository interface
 type ServiceAvailabilityRepository struct {
-	*repository.BaseRepository[domain.ServiceAvailability, database.ServiceAvailability]
+	*BaseRepository[domain.ServiceAvailability, database.ServiceAvailability]
 }
 
 // NewServiceAvailabilityRepository creates a new service availability repository
 func NewServiceAvailabilityRepository(db *database.DB) *ServiceAvailabilityRepository {
 	return &ServiceAvailabilityRepository{
-		BaseRepository: repository.NewBaseRepository[domain.ServiceAvailability, database.ServiceAvailability](db),
+		BaseRepository: NewBaseRepository[domain.ServiceAvailability, database.ServiceAvailability](db),
 	}
 }
 

@@ -6,21 +6,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// AreaRepository implements repository.AreaRepository using GORM
+// AreaRepository implements the area repository interface
 type AreaRepository struct {
-	*repository.BaseRepository[domain.Area, database.Area]
+	*BaseRepository[domain.Area, database.Area]
 }
 
 // NewAreaRepository creates a new area repository
 func NewAreaRepository(db *database.DB) *AreaRepository {
 	return &AreaRepository{
-		BaseRepository: repository.NewBaseRepository[domain.Area, database.Area](db),
+		BaseRepository: NewBaseRepository[domain.Area, database.Area](db),
 	}
 }
 

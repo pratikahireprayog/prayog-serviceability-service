@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"prayog-serviceability-service/pkg/models"
 	"prayog-serviceability-service/pkg/services"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,7 +28,12 @@ func (h *ServiceabilityHandler) CheckServiceability(c *fiber.Ctx) error {
 		})
 	}
 
-	result, err := h.service.CheckServiceability(c.Context(), postalCode)
+	// Create a serviceability request with the postal code
+	request := models.ServiceabilityRequest{
+		PostalCode: postalCode,
+	}
+
+	result, err := h.service.CheckServiceability(c.Context(), request)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),

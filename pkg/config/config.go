@@ -54,51 +54,79 @@ func (db *DBConfig) DSN() string {
 
 // LoadConfig loads configuration from .env file and environment variables
 func LoadConfig() (*Config, error) {
-	viper.SetConfigFile(".env")
-	viper.AddConfigPath(".")
-	viper.AutomaticEnv()
+	// Initialize new viper instance
+	v := viper.New()
 
-	// Set default values
-	setDefaults()
+	// Enable viper to read environment variables
+	v.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err != nil {
-		// It's okay if config file doesn't exist
+	// Try to load from .env file
+	v.SetConfigFile(".env")
+	v.AddConfigPath(".")
+
+	// It's okay if we can't find the .env file
+	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// Only return error if it's not a file not found error
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
 
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("unable to decode config: %w", err)
+	// Set default values
+	setDefaultsForViper(v)
+
+	// Create config instance
+	config := &Config{
+		DB: DBConfig{
+			Host:            v.GetString("DB_HOST"),
+			Port:            v.GetInt("DB_PORT"),
+			User:            v.GetString("DB_USER"),
+			Password:        v.GetString("DB_PASSWORD"),
+			Name:            v.GetString("DB_NAME"),
+			SSLMode:         v.GetString("DB_SSL_MODE"),
+			MaxOpenConns:    v.GetInt("DB_MAX_OPEN_CONNS"),
+			MaxIdleConns:    v.GetInt("DB_MAX_IDLE_CONNS"),
+			ConnMaxLifetime: v.GetDuration("DB_CONN_MAX_LIFETIME"),
+		},
+		Log: LogConfig{
+			Level:      v.GetString("LOG_LEVEL"),
+			Format:     v.GetString("LOG_FORMAT"),
+			OutputPath: v.GetString("LOG_OUTPUT_PATH"),
+		},
+		Server: ServerConfig{
+			Port:         v.GetInt("SERVER_PORT"),
+			ReadTimeout:  v.GetDuration("SERVER_READ_TIMEOUT"),
+			WriteTimeout: v.GetDuration("SERVER_WRITE_TIMEOUT"),
+			IdleTimeout:  v.GetDuration("SERVER_IDLE_TIMEOUT"),
+		},
 	}
 
-	return &config, nil
+	return config, nil
 }
 
-// setDefaults sets default values for configuration
-func setDefaults() {
+// setDefaultsForViper sets default values for configuration
+func setDefaultsForViper(v *viper.Viper) {
 	// Database defaults
-	viper.SetDefault("DB_HOST", "localhost")
-	viper.SetDefault("DB_PORT", 5432)
-	viper.SetDefault("DB_USER", "postgres")
-	viper.SetDefault("DB_PASSWORD", "postgres")
-	viper.SetDefault("DB_NAME", "serviceability")
-	viper.SetDefault("DB_SSL_MODE", "disable")
-	viper.SetDefault("DB_MAX_OPEN_CONNS", 25)
-	viper.SetDefault("DB_MAX_IDLE_CONNS", 25)
-	viper.SetDefault("DB_CONN_MAX_LIFETIME", "5m")
+	v.SetDefault("DB_HOST", "localhost")
+	v.SetDefault("DB_PORT", 5432)
+	v.SetDefault("DB_USER", "postgres")
+	v.SetDefault("DB_PASSWORD", "postgres")
+	v.SetDefault("DB_NAME", "serviceability")
+	v.SetDefault("DB_SSL_MODE", "disable")
+	v.SetDefault("DB_MAX_OPEN_CONNS", 25)
+	v.SetDefault("DB_MAX_IDLE_CONNS", 25)
+	v.SetDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute)
 
 	// Logging defaults
-	viper.SetDefault("LOG_LEVEL", "info")
-	viper.SetDefault("LOG_FORMAT", "json")
-	viper.SetDefault("LOG_OUTPUT_PATH", "stdout")
+	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("LOG_FORMAT", "json")
+	v.SetDefault("LOG_OUTPUT_PATH", "stdout")
 
 	// Server defaults
-	viper.SetDefault("SERVER_PORT", 8080)
-	viper.SetDefault("SERVER_READ_TIMEOUT", "10s")
-	viper.SetDefault("SERVER_WRITE_TIMEOUT", "10s")
-	viper.SetDefault("SERVER_IDLE_TIMEOUT", "120s")
+	v.SetDefault("SERVER_PORT", 8080)
+	v.SetDefault("SERVER_READ_TIMEOUT", 10*time.Second)
+	v.SetDefault("SERVER_WRITE_TIMEOUT", 10*time.Second)
+	v.SetDefault("SERVER_IDLE_TIMEOUT", 120*time.Second)
 }
 
 // Helper functions for reading environment variables

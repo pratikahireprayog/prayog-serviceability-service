@@ -5,21 +5,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// PostalCodeRepository implements repository.PostalCodeRepository using GORM
+// PostalCodeRepository implements the PostalCodeRepository interface
 type PostalCodeRepository struct {
-	*repository.BaseRepository[domain.PostalCode, database.PostalCode]
+	*BaseRepository[domain.PostalCode, database.PostalCode]
 }
 
 // NewPostalCodeRepository creates a new postal code repository
 func NewPostalCodeRepository(db *database.DB) *PostalCodeRepository {
 	return &PostalCodeRepository{
-		BaseRepository: repository.NewBaseRepository[domain.PostalCode, database.PostalCode](db),
+		BaseRepository: NewBaseRepository[domain.PostalCode, database.PostalCode](db),
 	}
 }
 

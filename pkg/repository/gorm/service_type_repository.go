@@ -5,21 +5,20 @@ import (
 
 	"prayog-serviceability-service/pkg/domain"
 	database "prayog-serviceability-service/pkg/infrastructure/db"
-	"prayog-serviceability-service/pkg/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// ServiceTypeRepository implements repository.ServiceTypeRepository using GORM
+// ServiceTypeRepository implements the ServiceTypeRepository interface
 type ServiceTypeRepository struct {
-	*repository.BaseRepository[domain.ServiceType, database.ServiceType]
+	*BaseRepository[domain.ServiceType, database.ServiceType]
 }
 
 // NewServiceTypeRepository creates a new service type repository
 func NewServiceTypeRepository(db *database.DB) *ServiceTypeRepository {
 	return &ServiceTypeRepository{
-		BaseRepository: repository.NewBaseRepository[domain.ServiceType, database.ServiceType](db),
+		BaseRepository: NewBaseRepository[domain.ServiceType, database.ServiceType](db),
 	}
 }
 
