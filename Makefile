@@ -13,14 +13,35 @@ GOTEST=$(GOCMD) test
 GOMOD=$(GOCMD) mod
 GOLINT=golangci-lint
 
+# Version variables
+VERSION_PKG=prayog-serviceability-service/pkg/version
+MAJOR=1
+MINOR=0
+PATCH=0
+PRE_RELEASE=
+BUILD_METADATA=
+# Get git commit and build time
+GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY=$(shell git status --porcelain 2>/dev/null || echo "")
+BUILD_TIME=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+BUILD_FLAGS=-ldflags "\
+	-X '$(VERSION_PKG).Major=$(MAJOR)' \
+	-X '$(VERSION_PKG).Minor=$(MINOR)' \
+	-X '$(VERSION_PKG).Patch=$(PATCH)' \
+	-X '$(VERSION_PKG).PreRelease=$(PRE_RELEASE)' \
+	-X '$(VERSION_PKG).BuildMetadata=$(BUILD_METADATA)' \
+	-X '$(VERSION_PKG).Commit=$(GIT_COMMIT)' \
+	-X '$(VERSION_PKG).BuildTime=$(BUILD_TIME)' \
+	-X '$(VERSION_PKG).Dirty=$(GIT_DIRTY)'"
+
 # Default target
 all: test build
 
 # Build the application
 build:
 	mkdir -p $(BUILD_DIR)
-	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
-	$(GOBUILD) -o $(BUILD_DIR)/migrate $(MIGRATION_DIR)
+	$(GOBUILD) $(BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
+	$(GOBUILD) $(BUILD_FLAGS) -o $(BUILD_DIR)/migrate $(MIGRATION_DIR)
 
 # Clean build artifacts
 clean:
@@ -32,7 +53,7 @@ test:
 
 # Run the application
 run:
-	$(GOCMD) run $(CMD_DIR)
+	$(GOCMD) run $(BUILD_FLAGS) $(CMD_DIR)
 
 # Tidy go modules
 tidy:
@@ -48,15 +69,21 @@ lint:
 
 # Database migrations
 db-migrate:
-	$(GOCMD) run $(MIGRATION_DIR) -migrate
+	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -migrate
 
 # Seed database with initial data
 db-seed:
-	$(GOCMD) run $(MIGRATION_DIR) -seed
+	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -seed
 
 # Reset database: drop all tables and run migrations
 db-reset:
-	$(GOCMD) run $(MIGRATION_DIR) -drop -migrate -seed
+	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -drop -migrate -seed
+
+# Get version info
+version:
+	@echo "Version: $(MAJOR).$(MINOR).$(PATCH)$(if $(PRE_RELEASE),-$(PRE_RELEASE))$(if $(BUILD_METADATA),+$(BUILD_METADATA))"
+	@echo "Commit: $(GIT_COMMIT)$(if $(GIT_DIRTY), (dirty))"
+	@echo "Build Time: $(BUILD_TIME)"
 
 # Help command
 help:
@@ -71,5 +98,6 @@ help:
 	@echo "make db-migrate - Run database migrations"
 	@echo "make db-seed    - Seed database with initial data"
 	@echo "make db-reset   - Reset database (drop, migrate, seed)"
+	@echo "make version    - Show version information"
 	@echo "make all        - Run tests and build"
 	@echo "make help       - Show this help message" 

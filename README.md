@@ -4,25 +4,57 @@ A service to determine if a customer's location is serviceable for delivery.
 
 ## What is this repository for?
 
-* Providing fast, accurate serviceability checks for delivery to customer locations
-* Integration with logistics systems and pin code databases
-* Supporting different delivery timeframes (standard, express, same-day)
+- Providing fast, accurate serviceability checks for delivery to customer locations
+- Integration with logistics systems and pin code databases
+- Supporting different delivery timeframes (standard, express, same-day)
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/) (SemVer):
+
+- **MAJOR** version for incompatible API changes (v1.x.x)
+- **MINOR** version for backward-compatible functionality additions (vx.1.x)
+- **PATCH** version for backward-compatible bug fixes (vx.x.1)
+
+### Version Information
+
+- Current version: v1.0.0
+- API versioning is reflected in the URL path: `/api/v1/...`
+- Every response includes an `X-API-Version` header with the current version
+- Version details are available at the `/version` endpoint
+- Check [CHANGELOG.md](CHANGELOG.md) for detailed version history
+
+### Build Versioning
+
+Version information is injected at build time:
+
+```bash
+# Check current version information
+make version
+
+# Build with version information
+make build
+```
 
 ## How do I get set up?
 
 ### Prerequisites
-* Go 1.24.2 or later
-* PostgreSQL 14 or later (for development)
-* Redis (optional, for caching)
+
+- Go 1.24.2 or later
+- PostgreSQL 14 or later (for development)
+- Redis (optional, for caching)
 
 ### Installing Go 1.24.2
+
 This project requires Go 1.24.2. Here are several ways to install it:
 
 #### Using the official installer
+
 1. Download Go 1.24.2 from [golang.org/dl](https://golang.org/dl/)
 2. Follow the installation instructions for your operating system
 
 #### Using a package manager
+
 - **macOS with Homebrew**:
   ```bash
   brew install go@1.24
@@ -36,42 +68,51 @@ This project requires Go 1.24.2. Here are several ways to install it:
   ```
 
 #### Using asdf version manager
+
 We provide a `.tool-versions` file that specifies Go 1.24.2 for asdf users:
+
 ```bash
 asdf plugin add golang
 asdf install
 ```
 
 ### Setup Steps
+
 1. Clone the repository
+
 ```bash
 git clone https://github.com/prayog/serviceability.git
 cd serviceability
 ```
 
 2. Install dependencies
+
 ```bash
 make deps
 ```
 
 3. Configure the application
+
 ```bash
 cp configs/example.env configs/.env
 # Edit .env file with your configuration
 ```
 
 4. Run the application
+
 ```bash
 make run
 ```
 
 ### Available Make Commands
-* `make build` - Build the application
-* `make test` - Run tests
-* `make run` - Run the application
-* `make clean` - Clean build artifacts
-* `make tidy` - Tidy go modules
-* See `make help` for all available commands
+
+- `make build` - Build the application
+- `make test` - Run tests
+- `make run` - Run the application
+- `make clean` - Clean build artifacts
+- `make tidy` - Tidy go modules
+- `make version` - Display version information
+- See `make help` for all available commands
 
 ## Task Management
 
@@ -81,18 +122,19 @@ For detailed instructions on setting up and using Task Master, see [README-task-
 
 ## Contribution guidelines
 
-* Follow Go coding standards and project structure
-* Write tests for new features
-* Update documentation
+- Follow Go coding standards and project structure
+- Write tests for new features
+- Update documentation
 
 ## Who do I talk to?
 
-* Repo owner or admin
-* Other community or team contact
+- Repo owner or admin
+- Other community or team contact
 
 ## Database Setup
 
 ### Create a PostgreSQL Database
+
 ```bash
 # Create the database
 psql -U postgres -c "CREATE DATABASE \"serviceability-dev\";"
@@ -102,20 +144,25 @@ migrate -path cmd/migrations/migrations -database "postgresql://postgres:postgre
 ```
 
 The migration will create and populate the following tables:
+
 - Location entities: countries, administrative_regions, cities, areas, postal_codes
 - Location aliases: country_aliases, administrative_region_aliases, city_aliases, area_aliases
 - Service entities: order_types, service_types, service_availabilities
 
 ### Database Schema
+
 The schema documentation is available in the [docs/db-schema.md](docs/db-schema.md) file.
 
 ## Environment Setup
+
 Copy the `.env-local/dev.env` file to `.env` in the project root:
+
 ```bash
 cp .env-local/dev.env .env
 ```
 
 ## Run the Application
+
 ```bash
 go run cmd/serviceability/main.go
 ```
