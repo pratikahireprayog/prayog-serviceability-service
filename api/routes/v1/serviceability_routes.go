@@ -8,9 +8,7 @@ import (
 
 // RegisterServiceabilityRoutes registers serviceability routes with the provided router.
 func RegisterServiceabilityRoutes(router fiber.Router, handler *v1.ServiceabilityHandler) {
-	serviceability := router.Group("/serviceability")
-
-	// Register routes
-	serviceability.Get("/check/:postalCode", handler.CheckServiceability)
-	serviceability.Post("/bulk-check", handler.BulkCheckServiceability)
+	// Register routes directly on the provided router (which is already /serviceability/api/v1)
+	router.Get("/check/:postalCode", handler.CheckServiceability)
+	router.Post("/bulk-check", handler.BulkCheckServiceability)
 }

@@ -1,4 +1,4 @@
-.PHONY: build clean test run lint db-migrate db-seed db-reset
+.PHONY: build clean test run lint db-migrate db-seed db-reset docker-build docker-run
 
 # Build variables
 BINARY_NAME=serviceability
@@ -85,19 +85,28 @@ version:
 	@echo "Commit: $(GIT_COMMIT)$(if $(GIT_DIRTY), (dirty))"
 	@echo "Build Time: $(BUILD_TIME)"
 
+# Docker commands
+docker-build:
+	docker build -t serviceability-service .
+
+docker-run:
+	docker run -p 8080:8080 serviceability-service
+
 # Help command
 help:
 	@echo "Available commands:"
-	@echo "make build      - Build the application"
-	@echo "make clean      - Remove build artifacts"
-	@echo "make test       - Run tests"
-	@echo "make run        - Run the application"
-	@echo "make tidy       - Tidy go modules"
-	@echo "make deps       - Install dependencies"
-	@echo "make lint       - Run linter"
-	@echo "make db-migrate - Run database migrations"
-	@echo "make db-seed    - Seed database with initial data"
-	@echo "make db-reset   - Reset database (drop, migrate, seed)"
-	@echo "make version    - Show version information"
-	@echo "make all        - Run tests and build"
-	@echo "make help       - Show this help message" 
+	@echo "make build        - Build the application"
+	@echo "make clean        - Remove build artifacts"
+	@echo "make test         - Run tests"
+	@echo "make run          - Run the application"
+	@echo "make tidy         - Tidy go modules"
+	@echo "make deps         - Install dependencies"
+	@echo "make lint         - Run linter"
+	@echo "make db-migrate   - Run database migrations"
+	@echo "make db-seed      - Seed database with initial data"
+	@echo "make db-reset     - Reset database (drop, migrate, seed)"
+	@echo "make version      - Show version information"
+	@echo "make docker-build - Build Docker image"
+	@echo "make docker-run   - Run Docker container"
+	@echo "make all          - Run tests and build"
+	@echo "make help         - Show this help message" 

@@ -33,17 +33,20 @@ func NewServer(serviceabilityService services.ServiceabilityService) *Server {
 		return c.Next()
 	})
 
-	// Add a health check endpoint
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
+	// Create serviceability group with global prefix
+	serviceabilityGroup := app.Group("/serviceability")
+
+	// Add health check endpoint under serviceability prefix
+	serviceabilityGroup.Get("/ping", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "pong"})
 	})
 
-	// Add version endpoint
+	// Add version endpoint under serviceability prefix
 	versionHandler := handlers.NewVersionHandler()
-	app.Get("/version", versionHandler.GetVersion)
+	serviceabilityGroup.Get("/version", versionHandler.GetVersion)
 
-	// Set up API v1 routes
-	apiV1 := app.Group("/api/v1")
+	// Set up API v1 routes under serviceability prefix
+	apiV1 := serviceabilityGroup.Group("/api/v1")
 
 	// Initialize handlers with services
 	serviceabilityHandler := v1.NewServiceabilityHandler(serviceabilityService)

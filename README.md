@@ -112,7 +112,24 @@ make run
 - `make clean` - Clean build artifacts
 - `make tidy` - Tidy go modules
 - `make version` - Display version information
+- `make docker-build` - Build Docker image
+- `make docker-run` - Run Docker container
 - See `make help` for all available commands
+
+### Docker Usage
+
+Build and run the service using Docker:
+
+```bash
+# Build the Docker image
+docker build -t serviceability-service .
+
+# Run the container
+docker run -p 8080:8080 serviceability-service
+
+# Run with environment variables
+docker run -p 8080:8080 -e DB_HOST=localhost -e DB_PORT=5432 serviceability-service
+```
 
 ## Task Management
 
@@ -164,7 +181,41 @@ cp .env-local/dev.env .env
 ## Run the Application
 
 ```bash
-go run cmd/serviceability/main.go
+go run cmd/api/main.go
+```
+
+The service will start on port 8080 (configurable via environment variables).
+
+## API Endpoints
+
+All API endpoints are prefixed with `/serviceability` for easy identification and routing:
+
+### Health Check & System Information
+
+- `GET /serviceability/ping` - Health check endpoint (returns {"status": "pong"})
+- `GET /serviceability/version` - Service version information
+
+### Serviceability Check APIs
+
+- `GET /serviceability/api/v1/check/{postalCode}` - Check serviceability for a specific postal code
+- `POST /serviceability/api/v1/bulk-check` - Bulk serviceability check for multiple postal codes
+
+### Example Usage
+
+```bash
+# Health check
+curl http://localhost:8080/serviceability/ping
+
+# Version information
+curl http://localhost:8080/serviceability/version
+
+# Check serviceability for a postal code
+curl http://localhost:8080/serviceability/api/v1/check/400001
+
+# Bulk check
+curl -X POST http://localhost:8080/serviceability/api/v1/bulk-check \
+  -H "Content-Type: application/json" \
+  -d '{"requests": [{"postal_code": "400001", "country_code": "IN"}]}'
 ```
 
 ## Project Structure
