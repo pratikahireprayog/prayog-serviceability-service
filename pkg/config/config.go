@@ -123,7 +123,7 @@ func setDefaultsForViper(v *viper.Viper) {
 	v.SetDefault("LOG_OUTPUT_PATH", "stdout")
 
 	// Server defaults
-	v.SetDefault("SERVER_PORT", 8080)
+	v.SetDefault("SERVER_PORT", 3048)
 	v.SetDefault("SERVER_READ_TIMEOUT", 10*time.Second)
 	v.SetDefault("SERVER_WRITE_TIMEOUT", 10*time.Second)
 	v.SetDefault("SERVER_IDLE_TIMEOUT", 120*time.Second)
