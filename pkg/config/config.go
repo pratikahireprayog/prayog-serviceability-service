@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/spf13/viper"
+	"github.com/joho/godotenv"
 )
 
 // DBConfig contains database configuration
@@ -52,101 +52,89 @@ func (db *DBConfig) DSN() string {
 	)
 }
 
-// LoadConfig loads configuration from .env file and environment variables
+// LoadConfig loads configuration from system environment variables
 func LoadConfig() (*Config, error) {
-	// Initialize new viper instance
-	v := viper.New()
+	// Load .env file - fail if it doesn't exist
+	if err := godotenv.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load .env file: %w", err)
+	}
 
-	// Enable viper to read environment variables
-	v.AutomaticEnv()
-
-	// Try to load from .env file
-	v.SetConfigFile(".env")
-	v.AddConfigPath(".")
-
-	// It's okay if we can't find the .env file - just ignore any errors
-	_ = v.ReadInConfig()
-
-	// Set default values
-	// setDefaultsForViper(v)
-
-	// Create config instance
+	// Read configuration directly from system environment variables using os.Getenv()
 	config := &Config{
 		DB: DBConfig{
-			Host:            v.GetString("DB_HOST"),
-			Port:            v.GetInt("DB_PORT"),
-			User:            v.GetString("DB_USER"),
-			Password:        v.GetString("DB_PASSWORD"),
-			Name:            v.GetString("DB_NAME"),
-			SSLMode:         v.GetString("DB_SSL_MODE"),
-			MaxOpenConns:    v.GetInt("DB_MAX_OPEN_CONNS"),
-			MaxIdleConns:    v.GetInt("DB_MAX_IDLE_CONNS"),
-			ConnMaxLifetime: v.GetDuration("DB_CONN_MAX_LIFETIME"),
+			Host:            getEnvOrError("DB_HOST"),
+			Port:            getEnvAsIntOrDefault("DB_PORT", 5432),
+			User:            getEnvOrError("DB_USER"),
+			Password:        getEnvOrError("DB_PASSWORD"),
+			Name:            getEnvOrError("DB_NAME"),
+			SSLMode:         getEnvOrDefault("DB_SSL_MODE", "disable"),
+			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
+			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Log: LogConfig{
-			Level:      v.GetString("LOG_LEVEL"),
-			Format:     v.GetString("LOG_FORMAT"),
-			OutputPath: v.GetString("LOG_OUTPUT_PATH"),
+			Level:      getEnvOrDefault("LOG_LEVEL", "info"),
+			Format:     getEnvOrDefault("LOG_FORMAT", "json"),
+			OutputPath: getEnvOrDefault("LOG_OUTPUT_PATH", "stdout"),
 		},
 		Server: ServerConfig{
-			Port:         v.GetInt("SERVER_PORT"),
-			ReadTimeout:  v.GetDuration("SERVER_READ_TIMEOUT"),
-			WriteTimeout: v.GetDuration("SERVER_WRITE_TIMEOUT"),
-			IdleTimeout:  v.GetDuration("SERVER_IDLE_TIMEOUT"),
+			Port:         getEnvAsIntOrDefault("SERVER_PORT", 8080),
+			ReadTimeout:  getEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
+			WriteTimeout: getEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
+	}
+
+	// Validate that all required environment variables are set
+	var missingVars []string
+
+	if config.DB.Host == "" {
+		missingVars = append(missingVars, "DB_HOST")
+	}
+	if config.DB.User == "" {
+		missingVars = append(missingVars, "DB_USER")
+	}
+	if config.DB.Password == "" {
+		missingVars = append(missingVars, "DB_PASSWORD")
+	}
+	if config.DB.Name == "" {
+		missingVars = append(missingVars, "DB_NAME")
+	}
+
+	// Return error if required environment variables are missing
+	if len(missingVars) > 0 {
+		return nil, fmt.Errorf("required environment variables not set: %v", missingVars)
 	}
 
 	return config, nil
 }
 
-// setDefaultsForViper sets default values for configuration
-func setDefaultsForViper(v *viper.Viper) {
-	// Database defaults
-	v.SetDefault("DB_HOST", "localhost")
-	v.SetDefault("DB_PORT", 5432)
-	v.SetDefault("DB_USER", "postgres")
-	v.SetDefault("DB_PASSWORD", "postgres")
-	v.SetDefault("DB_NAME", "serviceability")
-	v.SetDefault("DB_SSL_MODE", "disable")
-	v.SetDefault("DB_MAX_OPEN_CONNS", 25)
-	v.SetDefault("DB_MAX_IDLE_CONNS", 25)
-	v.SetDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute)
-
-	// Logging defaults
-	v.SetDefault("LOG_LEVEL", "info")
-	v.SetDefault("LOG_FORMAT", "json")
-	v.SetDefault("LOG_OUTPUT_PATH", "stdout")
-
-	// Server defaults
-	v.SetDefault("SERVER_PORT", 9022)
-	v.SetDefault("SERVER_READ_TIMEOUT", 10*time.Second)
-	v.SetDefault("SERVER_WRITE_TIMEOUT", 10*time.Second)
-	v.SetDefault("SERVER_IDLE_TIMEOUT", 120*time.Second)
+// Helper functions using os.Getenv() directly
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
-// Helper functions for reading environment variables
-func getEnv(key, defaultValue string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists {
-		return defaultValue
+func getEnvAsIntOrDefault(key string, defaultValue int) int {
+	if valueStr := os.Getenv(key); valueStr != "" {
+		if value, err := strconv.Atoi(valueStr); err == nil {
+			return value
+		}
 	}
-	return value
+	return defaultValue
 }
 
-func getEnvAsInt(key string, defaultValue int) int {
-	valueStr := getEnv(key, strconv.Itoa(defaultValue))
-	value, err := strconv.Atoi(valueStr)
-	if err != nil {
-		return defaultValue
+func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
+	if valueStr := os.Getenv(key); valueStr != "" {
+		if value, err := time.ParseDuration(valueStr); err == nil {
+			return value
+		}
 	}
-	return value
+	return defaultValue
 }
 
-func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
-	valueStr := getEnv(key, defaultValue.String())
-	value, err := time.ParseDuration(valueStr)
-	if err != nil {
-		return defaultValue
-	}
-	return value
+func getEnvOrError(key string) string {
+	return os.Getenv(key)
 }
