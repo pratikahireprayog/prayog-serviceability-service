@@ -53,7 +53,7 @@ Thumbs.db
 tasks/
 tasks.json
 task-complexity-report.json
-# .env
+.env
 
 # Added by Claude Task Master
 # Logs
