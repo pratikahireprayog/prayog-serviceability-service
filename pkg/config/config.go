@@ -47,8 +47,8 @@ type Config struct {
 // DSN returns the PostgreSQL connection string
 func (db *DBConfig) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		db.Host, db.Port, db.User, db.Password, db.Name, db.SSLMode,
+		"host=%s port=%s user=%s dbname=%s password=%s sslmode=require",
+		db.Host, fmt.Sprintf("%d", db.Port), db.User, db.Name, db.Password,
 	)
 }
 
