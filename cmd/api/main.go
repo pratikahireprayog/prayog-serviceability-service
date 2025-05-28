@@ -45,10 +45,10 @@ func main() {
 	// Start the server in a goroutine
 	go func() {
 		// Debug point 3: Server starting
-		log.Println("About to start server on port 8080") // Set a breakpoint on this line
+		log.Printf("About to start server on port %d", cfg.Server.Port) // Set a breakpoint on this line
 
-		fmt.Println("Starting server on :8080")
-		if err := server.Listen(":8080"); err != nil {
+		fmt.Printf("Starting server on :%d\n", cfg.Server.Port)
+		if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
