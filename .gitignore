@@ -53,7 +53,7 @@ Thumbs.db
 tasks/
 tasks.json
 task-complexity-report.json
-.env
+# .env
 
 # Added by Claude Task Master
 # Logs
@@ -104,10 +104,10 @@ go.work
 *~
 
 # Environment variables
-.env
-.env.*
-!.env.example
-!configs/example.env
+# .env
+# .env.*
+# !.env.example
+# !configs/example.env
 
 # System files
 .DS_Store
