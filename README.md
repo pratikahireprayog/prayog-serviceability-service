@@ -1,29 +1,258 @@
-# README #
+# Prayog Serviceability Service
 
-This README would normally document whatever steps are necessary to get your application up and running.
+A service to determine if a customer's location is serviceable for delivery.
 
-### What is this repository for? ###
+## What is this repository for?
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+- Providing fast, accurate serviceability checks for delivery to customer locations
+- Integration with logistics systems and pin code databases
+- Supporting different delivery timeframes (standard, express, same-day)
 
-### How do I get set up? ###
+## Versioning
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+This project follows [Semantic Versioning](https://semver.org/) (SemVer):
 
-### Contribution guidelines ###
+- **MAJOR** version for incompatible API changes (v1.x.x)
+- **MINOR** version for backward-compatible functionality additions (vx.1.x)
+- **PATCH** version for backward-compatible bug fixes (vx.x.1)
 
-* Writing tests
-* Code review
-* Other guidelines
+### Version Information
 
-### Who do I talk to? ###
+- Current version: v1.0.0
+- API versioning is reflected in the URL path: `/api/v1/...`
+- Every response includes an `X-API-Version` header with the current version
+- Version details are available at the `/version` endpoint
+- Check [CHANGELOG.md](CHANGELOG.md) for detailed version history
 
-* Repo owner or admin
-* Other community or team contact
+### Build Versioning
+
+Version information is injected at build time:
+
+```bash
+# Check current version information
+make version
+
+# Build with version information
+make build
+```
+
+## How do I get set up?
+
+### Prerequisites
+
+- Go 1.24.2 or later
+- PostgreSQL 14 or later (for development)
+- Redis (optional, for caching)
+
+### Installing Go 1.24.2
+
+This project requires Go 1.24.2. Here are several ways to install it:
+
+#### Using the official installer
+
+1. Download Go 1.24.2 from [golang.org/dl](https://golang.org/dl/)
+2. Follow the installation instructions for your operating system
+
+#### Using a package manager
+
+- **macOS with Homebrew**:
+  ```bash
+  brew install go@1.24
+  ```
+- **Linux with apt**:
+  ```bash
+  wget https://golang.org/dl/go1.24.2.linux-amd64.tar.gz
+  sudo tar -C /usr/local -xzf go1.24.2.linux-amd64.tar.gz
+  echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
+  source ~/.profile
+  ```
+
+#### Using asdf version manager
+
+We provide a `.tool-versions` file that specifies Go 1.24.2 for asdf users:
+
+```bash
+asdf plugin add golang
+asdf install
+```
+
+### Setup Steps
+
+1. Clone the repository
+
+```bash
+git clone https://github.com/prayog/serviceability.git
+cd serviceability
+```
+
+2. Install dependencies
+
+```bash
+make deps
+```
+
+3. Configure the application
+
+```bash
+cp configs/example.env configs/.env
+# Edit .env file with your configuration
+```
+
+4. Run the application
+
+```bash
+make run
+```
+
+### Available Make Commands
+
+- `make build` - Build the application
+- `make test` - Run tests
+- `make run` - Run the application
+- `make clean` - Clean build artifacts
+- `make tidy` - Tidy go modules
+- `make version` - Display version information
+- `make docker-build` - Build Docker image
+- `make docker-run` - Run Docker container
+- See `make help` for all available commands
+
+### Docker Usage
+
+Build and run the service using Docker:
+
+```bash
+# Build the Docker image
+docker build -t serviceability-service .
+
+# Run the container
+docker run -p 8080:8080 serviceability-service
+
+# Run with environment variables
+docker run -p 8080:8080 -e DB_HOST=localhost -e DB_PORT=5432 serviceability-service
+```
+
+## Task Management
+
+This project uses Task Master AI for task management. Task Master helps break down complex requirements into manageable tasks and track their implementation.
+
+For detailed instructions on setting up and using Task Master, see [README-task-master.md](README-task-master.md).
+
+## Contribution guidelines
+
+- Follow Go coding standards and project structure
+- Write tests for new features
+- Update documentation
+
+## Who do I talk to?
+
+- Repo owner or admin
+- Other community or team contact
+
+## Database Setup
+
+### Create a PostgreSQL Database
+
+```bash
+# Create the database
+psql -U postgres -c "CREATE DATABASE \"serviceability-dev\";"
+
+# Run migrations
+migrate -path cmd/migrations/migrations -database "postgresql://postgres:postgres@localhost:5432/serviceability-dev?sslmode=disable" up
+```
+
+The migration will create and populate the following tables:
+
+- Location entities: countries, administrative_regions, cities, areas, postal_codes
+- Location aliases: country_aliases, administrative_region_aliases, city_aliases, area_aliases
+- Service entities: order_types, service_types, service_availabilities
+
+### Database Schema
+
+The schema documentation is available in the [docs/db-schema.md](docs/db-schema.md) file.
+
+## Environment Setup
+
+Copy the `.env-local/dev.env` file to `.env` in the project root:
+
+```bash
+cp .env-local/dev.env .env
+```
+
+## Run the Application
+
+```bash
+go run cmd/api/main.go
+```
+
+The service will start on port 8080 (configurable via environment variables).
+
+## API Endpoints
+
+All API endpoints are prefixed with `/serviceability` for easy identification and routing:
+
+### Health Check & System Information
+
+- `GET /serviceability/ping` - Health check endpoint (returns {"status": "pong"})
+- `GET /serviceability/version` - Service version information
+
+### Serviceability Check APIs
+
+- `GET /serviceability/api/v1/check/{postalCode}` - Check serviceability for a specific postal code
+- `POST /serviceability/api/v1/bulk-check` - Bulk serviceability check for multiple postal codes
+
+### Example Usage
+
+```bash
+# Health check
+curl http://localhost:8080/serviceability/ping
+
+# Version information
+curl http://localhost:8080/serviceability/version
+
+# Check serviceability for a postal code
+curl http://localhost:8080/serviceability/api/v1/check/400001
+
+# Bulk check
+curl -X POST http://localhost:8080/serviceability/api/v1/bulk-check \
+  -H "Content-Type: application/json" \
+  -d '{"requests": [{"postal_code": "400001", "country_code": "IN"}]}'
+```
+
+## Project Structure
+
+This project follows the Standard Go Project Layout:
+
+```
+project-root/
+  ├── api/                  # API definitions and specs
+  ├── build/                # Build and CI/CD files
+  ├── cmd/                  # Application entry points
+  │   ├── api/              # Main API server
+  │   └── migrations/       # Database migrations
+  ├── docs/                 # Documentation
+  ├── internal/             # Private application code
+  │   ├── api/              # HTTP API handlers and routing
+  │   ├── di/               # Dependency Injection
+  │   ├── domain/           # Domain models and core business rules
+  │   ├── infrastructure/   # Infrastructure concerns
+  │   ├── repository/       # Data access layer
+  │   └── service/          # Business logic implementation
+  ├── pkg/                  # Shared utilities
+  │   ├── config/           # Configuration utilities
+  │   └── other/            # Other shared libraries
+  ├── scripts/              # Build scripts and tools
+  ├── test/                 # Additional test files
+  ├── third_party/          # Third-party code
+  └── tools/                # Tool dependencies
+```
+
+## Architecture
+
+This project uses a clean architecture with dependency injection:
+
+1. **Domain Layer**: Core business entities and interfaces, defined in `internal/domain`.
+2. **Repository Layer**: Data access implementations, defined in `internal/repository`.
+3. **Service Layer**: Business logic, defined in `internal/service`.
+4. **API Layer**: HTTP handlers and routes, defined in `internal/api`.
+5. **Infrastructure Layer**: Cross-cutting concerns like database, logging, defined in `internal/infrastructure`.
+6. **Dependency Injection**: Wiring everything together, defined in `internal/di`.

@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+CHANGELOG.md
+docs/
+
+# Development files
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test/
+*_test.go
+
+# Build artifacts
+bin/
+build/
+dist/
+
+# Task Master files
+.taskmasterconfig
+tasks/
+scripts/
+
+# Tools and development
+tools/
+.tool-versions
+Makefile
+
+# Roo Code files
+.roo/
+.roomodes
+.windsurfrules
+
+# Cursor files
+.cursor/ 

@@ -1,0 +1,91 @@
+erDiagram
+
+    country {
+        uuid id PK
+        varchar code UK
+        varchar name
+        varchar currency_code
+        varchar phone_code
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    region_type {
+        uuid id PK
+        varchar code UK
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    region {
+        uuid id PK
+        uuid country_id FK
+        uuid region_type_id FK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    city {
+        uuid id PK
+        uuid region_id FK
+        uuid country_id FK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    area {
+        uuid id PK
+        uuid city_id FK
+        varchar code
+        varchar name
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    postal_code {
+        uuid id PK
+        varchar code
+        uuid country_id FK
+        uuid region_id FK "nullable"
+        uuid city_id FK "nullable"
+        uuid area_id FK "nullable"
+        varchar location_scope "e.g. country, region, city, area"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    location_entity_type {
+        varchar code PK
+        varchar description
+    }
+
+    location_alias {
+        uuid id PK
+        varchar entity_type FK
+        uuid entity_id
+        varchar alias_name
+        boolean is_primary
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    country ||--o{ region : contains
+    region_type ||--o{ region : has_type
+    region ||--o{ city : contains
+    city ||--o{ area : contains
+    area ||--o{ postal_code : has
+    region ||--o{ postal_code : has
+    city ||--o{ postal_code : has
+    country ||--o{ postal_code : has
+    location_entity_type ||--o{ location_alias : defines_type
