@@ -64,16 +64,11 @@ func LoadConfig() (*Config, error) {
 	v.SetConfigFile(".env")
 	v.AddConfigPath(".")
 
-	// It's okay if we can't find the .env file
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			// Only return error if it's not a file not found error
-			return nil, fmt.Errorf("error reading config file: %w", err)
-		}
-	}
+	// It's okay if we can't find the .env file - just ignore any errors
+	_ = v.ReadInConfig()
 
 	// Set default values
-	setDefaultsForViper(v)
+	// setDefaultsForViper(v)
 
 	// Create config instance
 	config := &Config{
