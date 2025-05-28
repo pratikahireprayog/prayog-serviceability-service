@@ -16,7 +16,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o serviceability ./cmd/api
 
 # Expose the application port
-EXPOSE 8080
+EXPOSE 9022
 
 # Command to run the executable
 CMD ["./serviceability"] 
