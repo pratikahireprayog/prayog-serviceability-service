@@ -55,9 +55,7 @@ func (db *DBConfig) DSN() string {
 // LoadConfig loads configuration from system environment variables
 func LoadConfig() (*Config, error) {
 	// Load .env file - fail if it doesn't exist
-	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf("failed to load .env file: %w", err)
-	}
+	godotenv.Load()
 
 	// Read configuration directly from system environment variables using os.Getenv()
 	config := &Config{
@@ -78,7 +76,7 @@ func LoadConfig() (*Config, error) {
 			OutputPath: getEnvOrDefault("LOG_OUTPUT_PATH", "stdout"),
 		},
 		Server: ServerConfig{
-			Port:         getEnvAsIntOrDefault("SERVER_PORT", 8080),
+			Port:         getEnvAsIntOrDefault("SERVER_PORT", 9022),
 			ReadTimeout:  getEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
