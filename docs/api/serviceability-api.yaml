@@ -1,0 +1,560 @@
+openapi: 3.0.3
+info:
+  title: Prayog Serviceability Service API
+  description: |
+    The Prayog Serviceability Service provides endpoints to check service availability for postal codes and origin-destination pairs.
+
+    This API supports two main operations:
+    - **Single Location Check**: Check serviceability for a specific postal code
+    - **Origin-Destination Check**: Check serviceability between pickup and delivery locations
+    - **Bulk Operations**: Process multiple serviceability checks in a single request
+
+    ## Rate Limiting
+    - Standard endpoints: 100 requests per minute per IP
+    - Bulk endpoints: 20 requests per minute per IP
+
+    ## Request Limits
+    - Maximum request body size: 10MB
+    - Content-Type must be `application/json`
+
+    ## Error Handling
+    All errors follow a standardized format with appropriate HTTP status codes and detailed error messages.
+  version: 1.0.0
+  contact:
+    name: Prayog Engineering Team
+    email: engineering@prayog.com
+  license:
+    name: Proprietary
+    url: https://prayog.com/license
+
+servers:
+  - url: http://localhost:8080/api/v1/serviceability
+    description: Local development server
+  - url: https://staging-serviceability.prayog.com/api/v1/serviceability
+    description: Staging environment
+  - url: https://api.prayog.com/api/v1/serviceability
+    description: Production environment
+
+paths:
+  /check:
+    post:
+      summary: Check serviceability for a location
+      description: |
+        Check if a postal code or origin-destination pair is serviceable.
+
+        **Request Types:**
+        1. **Single Location**: Provide only `postal_code` to check serviceability for that location
+        2. **Origin-Destination**: Provide both `pickup_postal_code` and `delivery_postal_code` to check serviceability between locations
+
+        **Note**: You cannot provide both `postal_code` and pickup/delivery codes in the same request.
+      operationId: checkServiceability
+      tags:
+        - Serviceability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceabilityCheckRequest"
+            examples:
+              single_location:
+                summary: Single location check
+                value:
+                  postal_code: "110001"
+                  country_code: "IN"
+                  service_types: ["STANDARD", "EXPRESS"]
+              origin_destination:
+                summary: Origin-destination check
+                value:
+                  pickup_postal_code: "110001"
+                  delivery_postal_code: "560001"
+                  country_code: "IN"
+                  service_types: ["STANDARD"]
+                  partner_ids: ["partner-123"]
+      responses:
+        "200":
+          description: Serviceability check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceabilityResponse"
+              examples:
+                success:
+                  summary: Successful serviceability check
+                  value:
+                    success: true
+                    data:
+                      serviceable: true
+                      services:
+                        - service_type: "STANDARD"
+                          partner_id: "partner-123"
+                          partner_name: "Express Logistics"
+                          estimated_delivery_days: 3
+                          service_available: true
+                        - service_type: "EXPRESS"
+                          partner_id: "partner-456"
+                          partner_name: "FastTrack Delivery"
+                          estimated_delivery_days: 1
+                          service_available: true
+                      location_info:
+                        postal_code: "110001"
+                        city: "New Delhi"
+                        state: "Delhi"
+                        country: "IN"
+        "400":
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                validation_error:
+                  summary: Validation error
+                  value:
+                    success: false
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "Request validation failed"
+                      details: "postal_code is required"
+                invalid_request_type:
+                  summary: Invalid request type
+                  value:
+                    success: false
+                    error:
+                      code: "INVALID_REQUEST_TYPE"
+                      message: "Invalid request type"
+                      details: "Cannot specify both postal_code and pickup/delivery postal codes"
+        "413":
+          description: Request entity too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "REQUEST_TOO_LARGE"
+                  message: "Request body size exceeds maximum allowed limit"
+                  details: "Maximum request size is 10MB"
+        "415":
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "INVALID_CONTENT_TYPE"
+                  message: "Invalid content type"
+                  details: "Content-Type must be application/json"
+        "422":
+          description: Unprocessable entity - business logic error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "POSTAL_CODE_INACTIVE"
+                  message: "Postal code is not active for serviceability"
+                  details: "Postal code 110001 is not active"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "RATE_LIMIT_EXCEEDED"
+                  message: "Rate limit exceeded"
+                  details: "Maximum 100 requests per minute allowed"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "SERVICEABILITY_CHECK_FAILED"
+                  message: "Failed to check serviceability"
+                  details: "Service temporarily unavailable"
+
+  /bulk-check:
+    post:
+      summary: Bulk serviceability check
+      description: |
+        Check serviceability for multiple locations in a single request.
+
+        Each request in the bulk can be either a single location check or an origin-destination check.
+
+        **Rate Limiting**: This endpoint has stricter rate limiting (20 requests per minute) due to the potential for high load.
+      operationId: bulkCheckServiceability
+      tags:
+        - Serviceability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkServiceabilityRequest"
+            example:
+              requests:
+                - postal_code: "110001"
+                  country_code: "IN"
+                  service_types: ["STANDARD"]
+                - pickup_postal_code: "110001"
+                  delivery_postal_code: "560001"
+                  country_code: "IN"
+                  service_types: ["EXPRESS"]
+                - postal_code: "400001"
+                  country_code: "IN"
+      responses:
+        "200":
+          description: Bulk serviceability check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkServiceabilityResponse"
+              example:
+                success: true
+                data:
+                  - success: true
+                    data:
+                      serviceable: true
+                      services:
+                        - service_type: "STANDARD"
+                          partner_id: "partner-123"
+                          service_available: true
+                  - success: true
+                    data:
+                      serviceable: false
+                      services: []
+                  - success: false
+                    error:
+                      code: "POSTAL_CODE_INACTIVE"
+                      message: "Postal code is not active"
+        "207":
+          description: Multi-status - partial success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkServiceabilityResponse"
+              example:
+                success: false
+                data:
+                  - success: true
+                    data:
+                      serviceable: true
+                  - success: false
+                    error:
+                      code: "SERVICEABILITY_CHECK_FAILED"
+                      message: "Service error"
+                error:
+                  code: "PARTIAL_FAILURE"
+                  message: "Processed 2 requests with 1 errors"
+        "400":
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkErrorResponse"
+              example:
+                success: false
+                error:
+                  code: "RATE_LIMIT_EXCEEDED"
+                  message: "Bulk request rate limit exceeded"
+                  details: "Maximum 20 bulk requests per minute allowed"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkErrorResponse"
+
+  /status:
+    get:
+      summary: Service status
+      description: Check if the serviceability service is available and ready to handle requests
+      operationId: getServiceStatus
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: "serviceability"
+                  status:
+                    type: string
+                    example: "available"
+                  message:
+                    type: string
+                    example: "Serviceability API is ready"
+
+components:
+  schemas:
+    ServiceabilityCheckRequest:
+      type: object
+      description: Request for checking serviceability of a location or route
+      properties:
+        postal_code:
+          type: string
+          pattern: '^[A-Z0-9\s\-]{3,10}$'
+          description: Postal code for single location check (mutually exclusive with pickup/delivery codes)
+          example: "110001"
+        pickup_postal_code:
+          type: string
+          pattern: '^[A-Z0-9\s\-]{3,10}$'
+          description: Pickup postal code for origin-destination check
+          example: "110001"
+        delivery_postal_code:
+          type: string
+          pattern: '^[A-Z0-9\s\-]{3,10}$'
+          description: Delivery postal code for origin-destination check
+          example: "560001"
+        country_code:
+          type: string
+          pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 country code
+          example: "IN"
+          default: "IN"
+        service_types:
+          type: array
+          items:
+            type: string
+            enum: [STANDARD, EXPRESS, OVERNIGHT, SAME_DAY]
+          description: List of service types to check
+          example: ["STANDARD", "EXPRESS"]
+        partner_ids:
+          type: array
+          items:
+            type: string
+          description: Optional list of specific partner IDs to check
+          example: ["partner-123", "partner-456"]
+      anyOf:
+        - required: [postal_code, country_code]
+        - required: [pickup_postal_code, delivery_postal_code, country_code]
+
+    BulkServiceabilityRequest:
+      type: object
+      description: Request for bulk serviceability checking
+      required:
+        - requests
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceabilityCheckRequest"
+          minItems: 1
+          maxItems: 100
+          description: Array of serviceability check requests
+
+    ServiceabilityResponse:
+      type: object
+      description: Response for serviceability check
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          description: Whether the request was processed successfully
+        data:
+          $ref: "#/components/schemas/ServiceabilityData"
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    BulkServiceabilityResponse:
+      type: object
+      description: Response for bulk serviceability check
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          description: Whether all requests were processed successfully
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceabilityResponse"
+          description: Array of individual serviceability responses
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ServiceabilityData:
+      type: object
+      description: Serviceability data for a location or route
+      properties:
+        serviceable:
+          type: boolean
+          description: Whether the location/route is serviceable
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceDetail"
+          description: Available services for the location/route
+        location_info:
+          $ref: "#/components/schemas/LocationInfo"
+
+    ServiceDetail:
+      type: object
+      description: Details of a specific service
+      properties:
+        service_type:
+          type: string
+          enum: [STANDARD, EXPRESS, OVERNIGHT, SAME_DAY]
+          description: Type of service
+        partner_id:
+          type: string
+          description: Partner providing the service
+        partner_name:
+          type: string
+          description: Name of the partner
+        service_available:
+          type: boolean
+          description: Whether this service is currently available
+        estimated_delivery_days:
+          type: integer
+          minimum: 0
+          description: Estimated delivery time in days
+        additional_info:
+          type: object
+          description: Additional service-specific information
+          additionalProperties: true
+
+    LocationInfo:
+      type: object
+      description: Information about a location
+      properties:
+        postal_code:
+          type: string
+          description: Postal code
+        city:
+          type: string
+          description: City name
+        state:
+          type: string
+          description: State/province name
+        country:
+          type: string
+          description: Country code
+        coordinates:
+          $ref: "#/components/schemas/Coordinates"
+
+    Coordinates:
+      type: object
+      description: Geographic coordinates
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    ErrorResponse:
+      type: object
+      description: Standard error response for single requests
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    BulkErrorResponse:
+      type: object
+      description: Standard error response for bulk requests
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorDetail:
+      type: object
+      description: Detailed error information
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            # Client errors (4xx)
+            - INVALID_REQUEST_BODY
+            - VALIDATION_ERROR
+            - INVALID_REQUEST_TYPE
+            - MISSING_REQUIRED_FIELDS
+            - INVALID_POSTAL_CODE
+            - INVALID_COUNTRY_CODE
+            - POSTAL_CODE_INACTIVE
+            - REQUEST_TOO_LARGE
+            - RATE_LIMIT_EXCEEDED
+            - INVALID_CONTENT_TYPE
+            # Server errors (5xx)
+            - SERVICEABILITY_CHECK_FAILED
+            - BULK_SERVICEABILITY_CHECK_FAILED
+            - INTERNAL_SERVER_ERROR
+            - SERVICE_UNAVAILABLE
+            - DEPENDENCY_FAILURE
+            - PARTIAL_FAILURE
+          description: Standardized error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error details
+        request_id:
+          type: string
+          description: Request ID for tracking and debugging
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the error occurred
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (if required)
+
+tags:
+  - name: Serviceability
+    description: Operations for checking service availability
+  - name: Health
+    description: Health check and status operations
+
+externalDocs:
+  description: Prayog Serviceability Service Documentation
+  url: https://docs.prayog.com/serviceability

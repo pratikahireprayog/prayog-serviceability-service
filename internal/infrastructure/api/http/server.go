@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
@@ -17,6 +18,7 @@ import (
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
+	"prayog-serviceability-service/internal/shared/interfaces/v1"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -25,6 +27,7 @@ type Server struct {
 	config             *config.ConfigManager
 	dbManager          *db.DatabaseManager
 	integrationFactory *services.IntegrationFactory
+	orchestrator       interfaces.ServiceabilityOrchestrator
 	logger             *logrus.Logger
 }
 
@@ -33,6 +36,7 @@ type ServerDependencies struct {
 	Config             *config.ConfigManager
 	DBManager          *db.DatabaseManager
 	IntegrationFactory *services.IntegrationFactory
+	Orchestrator       interfaces.ServiceabilityOrchestrator
 	Logger             *logrus.Logger
 }
 
@@ -61,6 +65,7 @@ func NewServer(deps *ServerDependencies) (*Server, error) {
 		config:             deps.Config,
 		dbManager:          deps.DBManager,
 		integrationFactory: deps.IntegrationFactory,
+		orchestrator:       deps.Orchestrator,
 		logger:             deps.Logger,
 	}
 
@@ -124,11 +129,16 @@ func (s *Server) setupRoutes() error {
 	// Create serviceability group
 	serviceabilityGroup := v1.Group("/serviceability")
 
-	// TODO: Add serviceability-specific routes here
-	// serviceabilityHandler := handlers.NewServiceabilityHandler(...)
-	// routes.RegisterServiceabilityRoutes(serviceabilityGroup, serviceabilityHandler)
+	// Create serviceability handler with all dependencies
+	serviceabilityHandler, err := s.createServiceabilityHandler()
+	if err != nil {
+		return fmt.Errorf("failed to create serviceability handler: %w", err)
+	}
 
-	// Add a placeholder route for now
+	// Register serviceability routes
+	routes.RegisterServiceabilityRoutes(serviceabilityGroup, serviceabilityHandler, s.logger)
+
+	// Add a status route for the serviceability service
 	serviceabilityGroup.Get("/status", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"service": "serviceability",
@@ -139,6 +149,21 @@ func (s *Server) setupRoutes() error {
 
 	s.logger.Info("All routes configured successfully")
 	return nil
+}
+
+// createServiceabilityHandler creates a serviceability handler with all dependencies
+func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler, error) {
+	// Create validator instance
+	validator := validator.New()
+
+	// Create serviceability handler
+	serviceabilityHandler := handlers.NewServiceabilityHandler(
+		s.orchestrator,
+		validator,
+		s.logger,
+	)
+
+	return serviceabilityHandler, nil
 }
 
 // customErrorHandler creates a custom error handler for Fiber

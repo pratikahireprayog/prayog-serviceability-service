@@ -67,6 +67,33 @@ type SpecificationEndpoints struct {
 	ValidateSpecification   string `yaml:"validate_specification" json:"validate_specification"`
 }
 
+// ServiceDefinitionResolverConfig holds configuration for the Service Definition Resolver
+type ServiceDefinitionResolverConfig struct {
+	// Cache configuration
+	CacheEnabled bool          `yaml:"cache_enabled" json:"cache_enabled"`
+	CacheTTL     time.Duration `yaml:"cache_ttl" json:"cache_ttl"`
+
+	// Circuit breaker configuration
+	CircuitBreakerEnabled bool          `yaml:"circuit_breaker_enabled" json:"circuit_breaker_enabled"`
+	FailureThreshold      int           `yaml:"failure_threshold" json:"failure_threshold"`
+	RecoveryTimeout       time.Duration `yaml:"recovery_timeout" json:"recovery_timeout"`
+
+	// Validation configuration
+	ValidateResponses bool `yaml:"validate_responses" json:"validate_responses"`
+	StrictValidation  bool `yaml:"strict_validation" json:"strict_validation"`
+
+	// Transformation configuration
+	EnableTransformation    bool `yaml:"enable_transformation" json:"enable_transformation"`
+	TransformCatalogToLists bool `yaml:"transform_catalog_to_lists" json:"transform_catalog_to_lists"`
+
+	// Concurrency configuration
+	MaxConcurrentRequests int           `yaml:"max_concurrent_requests" json:"max_concurrent_requests"`
+	RequestTimeout        time.Duration `yaml:"request_timeout" json:"request_timeout"`
+
+	// Category cache configuration
+	CategoryCacheTTL time.Duration `yaml:"category_cache_ttl" json:"category_cache_ttl"`
+}
+
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
 	// Load .env file
