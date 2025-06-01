@@ -38,6 +38,7 @@ func (s *PartnerIntegrationService) GetPartnersByLocation(ctx context.Context, l
 		Query: map[string]string{
 			"location_type": locationType,
 			"location_id":   locationID,
+			"limit":         "50",
 		},
 	}
 

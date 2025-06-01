@@ -128,7 +128,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			IdleTimeout:       90 * time.Second,
 		},
 		Endpoints: PartnerEndpoints{
-			GetPartnersByLocation:       "/api/v1/partners/location",
+			GetPartnersByLocation:       "/api/v1/partners",
 			GetPartnerDetails:           "/api/v1/partners/:id",
 			GetPartnerCapabilities:      "/api/v1/partners/:id/capabilities",
 			ValidatePartnerAvailability: "/api/v1/partners/:id/availability",
@@ -164,9 +164,9 @@ func LoadIntegrationConfig() IntegrationConfig {
 			IdleTimeout:       90 * time.Second,
 		},
 		Endpoints: SpecificationEndpoints{
-			GetCatalogs:             "/api/v1/catalogs",
-			GetSpecificationsByType: "/api/v1/specifications/type/:type",
-			ValidateSpecification:   "/api/v1/specifications/validate",
+			GetCatalogs:             "/specification/api/v1/catalogs",
+			GetSpecificationsByType: "/specification/api/v1/specifications/type/:type",
+			ValidateSpecification:   "/specification/api/v1/specifications/validate",
 		},
 	}
 

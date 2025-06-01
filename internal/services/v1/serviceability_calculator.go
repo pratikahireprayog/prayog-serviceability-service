@@ -22,27 +22,141 @@ func (sc *serviceabilityCalculator) CalculateServiceability(ctx context.Context,
 		return nil, fmt.Errorf("calculation request cannot be nil")
 	}
 
-	// Step 1: Validate we have partners
-	if len(request.PartnerCapabilities) == 0 {
-		return &models.ServiceabilityData{}, nil
-	}
-
-	// Step 2: Create service options from partner capabilities and service definitions
-	serviceOptions := sc.buildServiceOptions(request)
-
-	// Step 3: Apply filters if provided
-	if request.Filters != nil {
-		serviceOptions = sc.applyFilters(serviceOptions, request.Filters)
-	}
-
-	// Step 4: Apply preferences for ranking (basic implementation)
-	serviceOptions = sc.applyBasicPreferences(serviceOptions)
-
-	// Step 5: Build final response - we'll populate the location and services later
-	// For now, just return basic structure
+	// Step 1: Determine query type and build basic response structure
 	result := &models.ServiceabilityData{}
 
+	// Determine query type based on what locations we have
+	if request.LocationHierarchy != nil {
+		// Single location query
+		result.QueryType = "generic_location"
+		result.Location = sc.buildLocationData(request.LocationHierarchy, request.PartnerCapabilities, request.ServiceDefinitions, request.Filters)
+	} else if request.PickupHierarchy != nil && request.DeliveryHierarchy != nil {
+		// Origin-destination query
+		result.QueryType = "point_to_point"
+		result.PickupLocation = sc.buildLocationData(request.PickupHierarchy, request.PartnerCapabilities, request.ServiceDefinitions, request.Filters)
+		result.DeliveryLocation = sc.buildLocationData(request.DeliveryHierarchy, request.PartnerCapabilities, request.ServiceDefinitions, request.Filters)
+	} else {
+		return nil, fmt.Errorf("invalid request: missing location hierarchies")
+	}
+
 	return result, nil
+}
+
+// buildLocationData creates location data with serviceability information
+func (sc *serviceabilityCalculator) buildLocationData(
+	locationHierarchy *models.LocationHierarchy,
+	partnerCapabilities []interfaces.PartnerCapability,
+	serviceDefinitions []interfaces.ServiceDefinition,
+	filters *interfaces.ServiceFilters,
+) *models.LocationData {
+	if locationHierarchy == nil {
+		return nil
+	}
+
+	// Step 1: Create service options from partner capabilities
+	serviceOptions := sc.buildServiceOptionsForLocation(partnerCapabilities)
+
+	// Step 2: Apply filters if provided
+	if filters != nil {
+		serviceOptions = sc.applyFilters(serviceOptions, filters)
+	}
+
+	// Step 3: Apply basic preferences for ranking
+	serviceOptions = sc.applyBasicPreferences(serviceOptions)
+
+	// Step 4: Group services by parcel category
+	parcelCategoryServices := sc.groupServicesByParcelCategory(serviceOptions)
+
+	// Step 5: Build location data
+	locationData := &models.LocationData{
+		PostalCode:     locationHierarchy.PostalCode,
+		CountryCode:    locationHierarchy.CountryCode,
+		Serviceability: parcelCategoryServices,
+	}
+
+	return locationData
+}
+
+// buildServiceOptionsForLocation creates service options for a specific location
+func (sc *serviceabilityCalculator) buildServiceOptionsForLocation(partnerCapabilities []interfaces.PartnerCapability) []interfaces.ServiceOption {
+	if len(partnerCapabilities) == 0 {
+		return []interfaces.ServiceOption{}
+	}
+
+	// Create basic service options - for now we'll create standard services
+	// In a real implementation, this would be based on actual partner capabilities
+	serviceOptions := []interfaces.ServiceOption{
+		{
+			ServiceType:       "Standard",
+			ParcelCategory:    "ecom",
+			OperationTypes:    []string{"pickup", "delivery"},
+			PaymentModes:      []string{"COD", "ONLINE"},
+			DeliveryModes:     []string{"SURFACE"},
+			AvailablePartners: sc.extractPartnerIDs(partnerCapabilities),
+			Rating:            4.0,
+		},
+		{
+			ServiceType:       "Express",
+			ParcelCategory:    "ecom",
+			OperationTypes:    []string{"pickup", "delivery"},
+			PaymentModes:      []string{"COD", "ONLINE"},
+			DeliveryModes:     []string{"AIR"},
+			AvailablePartners: sc.extractPartnerIDs(partnerCapabilities),
+			Rating:            4.2,
+		},
+	}
+
+	// Add courier services if we have partners
+	if len(partnerCapabilities) > 0 {
+		serviceOptions = append(serviceOptions, interfaces.ServiceOption{
+			ServiceType:       "SDD",
+			ParcelCategory:    "courier",
+			OperationTypes:    []string{"pickup", "delivery"},
+			PaymentModes:      []string{"COD", "ONLINE"},
+			DeliveryModes:     []string{"SURFACE"},
+			AvailablePartners: sc.extractPartnerIDs(partnerCapabilities),
+			Rating:            4.5,
+		})
+	}
+
+	return serviceOptions
+}
+
+// groupServicesByParcelCategory groups service options by parcel category
+func (sc *serviceabilityCalculator) groupServicesByParcelCategory(serviceOptions []interfaces.ServiceOption) []models.ParcelCategoryService {
+	categoryMap := make(map[string][]models.Service)
+
+	// Group services by category
+	for _, option := range serviceOptions {
+		service := models.Service{
+			ServiceType:    option.ServiceType,
+			OperationTypes: option.OperationTypes,
+			PaymentModes:   option.PaymentModes,
+			DeliveryModes:  option.DeliveryModes,
+		}
+
+		categoryMap[option.ParcelCategory] = append(categoryMap[option.ParcelCategory], service)
+	}
+
+	// Convert map to slice
+	var parcelCategoryServices []models.ParcelCategoryService
+	for category, services := range categoryMap {
+		parcelCategoryServices = append(parcelCategoryServices, models.ParcelCategoryService{
+			ParcelCategory: category,
+			Services:       services,
+		})
+	}
+
+	return parcelCategoryServices
+}
+
+// extractPartnerIDs extracts partner IDs from capabilities
+func (sc *serviceabilityCalculator) extractPartnerIDs(capabilities []interfaces.PartnerCapability) []uint {
+	var partnerIDs []uint
+	for _, capability := range capabilities {
+		partnerIDs = append(partnerIDs, capability.PartnerID)
+	}
+	return partnerIDs
 }
 
 // FilterServicesByPreferences applies partner preferences to service options
@@ -90,48 +204,6 @@ func (sc *serviceabilityCalculator) CombineRouteCapabilities(ctx context.Context
 	}
 
 	return combinedServices, nil
-}
-
-// buildServiceOptions creates service options from partner capabilities and definitions
-func (sc *serviceabilityCalculator) buildServiceOptions(request *interfaces.ServiceabilityCalculationRequest) []interfaces.ServiceOption {
-	var serviceOptions []interfaces.ServiceOption
-
-	// Create a map to avoid duplicates
-	serviceMap := make(map[string]*interfaces.ServiceOption)
-
-	// Iterate through each partner capability
-	for _, partner := range request.PartnerCapabilities {
-		// Create basic service options from partner capabilities
-		serviceOption := interfaces.ServiceOption{
-			ServiceType:       "standard", // Default service type for catalog-based approach
-			ParcelCategory:    "ecom",     // Default category
-			OperationTypes:    []string{"pickup", "delivery"},
-			PaymentModes:      []string{"cod", "prepaid"},
-			DeliveryModes:     []string{"standard"},
-			AvailablePartners: []uint{partner.PartnerID},
-			Rating:            4.0, // Default rating
-		}
-
-		// Check if we already have this service type
-		key := fmt.Sprintf("%s_%s", serviceOption.ServiceType, serviceOption.ParcelCategory)
-		if existing, exists := serviceMap[key]; exists {
-			// Add partner to existing service
-			existing.AvailablePartners = append(existing.AvailablePartners, partner.PartnerID)
-			// Update rating if this partner has better coverage
-			if len(existing.AvailablePartners) > 1 {
-				existing.Rating = 4.5 // Improve rating with more partners
-			}
-		} else {
-			serviceMap[key] = &serviceOption
-		}
-	}
-
-	// Convert map to slice
-	for _, service := range serviceMap {
-		serviceOptions = append(serviceOptions, *service)
-	}
-
-	return serviceOptions
 }
 
 // applyFilters applies service filters to the options

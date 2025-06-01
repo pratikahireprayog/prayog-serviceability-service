@@ -15,37 +15,7 @@ import (
 	"prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
-	"prayog-serviceability-service/internal/shared/models/v1"
 )
-
-// simpleServiceabilityOrchestrator is a minimal implementation for testing
-type simpleServiceabilityOrchestrator struct {
-	partnerCapabilityAggregator interfaces.PartnerCapabilityAggregator
-	serviceabilityCalculator    interfaces.ServiceabilityCalculator
-	logger                      *logrus.Logger
-}
-
-func (s *simpleServiceabilityOrchestrator) CheckServiceability(ctx context.Context, req *models.ServiceabilityCheckRequest) (*models.ServiceabilityResponse, error) {
-	s.logger.Info("Serviceability check endpoint called - simplified implementation")
-
-	// For now, return a basic response indicating the service is working
-	return &models.ServiceabilityResponse{
-		Success: true,
-		Data: &models.ServiceabilityData{
-			QueryType: "generic_location",
-		},
-	}, nil
-}
-
-func (s *simpleServiceabilityOrchestrator) BulkCheckServiceability(ctx context.Context, req *models.BulkServiceabilityRequest) (*models.BulkServiceabilityResponse, error) {
-	s.logger.Info("Bulk serviceability check endpoint called - simplified implementation")
-
-	// For now, return a basic response indicating the service is working
-	return &models.BulkServiceabilityResponse{
-		Success: true,
-		Data:    []models.ServiceabilityResponse{},
-	}, nil
-}
 
 func main() {
 	// Initialize logger
@@ -194,7 +164,7 @@ func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) 
 
 // initOrchestrator initializes the serviceability orchestrator with all dependencies
 func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
-	logger.Info("Initializing serviceability orchestrator...")
+	logger.Info("Initializing serviceability orchestrator with real service integrations...")
 
 	// Create external service clients
 	partnerService, err := integrationFactory.CreatePartnerServiceClient()
@@ -207,18 +177,27 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 		return nil, fmt.Errorf("failed to create specification service client: %w", err)
 	}
 
-	// Create core services
+	// Create core services with real implementations
+	locationResolver := services.NewLocationResolver(partnerService)
+
+	// Create service definition resolver
+	serviceDefinitionResolver := services.NewServiceDefinitionResolver(specService)
+
+	// Create partner capability aggregator
 	partnerCapabilityAggregator := services.NewPartnerCapabilityAggregator(partnerService, specService)
+
+	// Create serviceability calculator
 	serviceabilityCalculator := services.NewServiceabilityCalculator()
 
-	// Create a simple orchestrator that uses the available components
-	orchestrator := &simpleServiceabilityOrchestrator{
-		partnerCapabilityAggregator: partnerCapabilityAggregator,
-		serviceabilityCalculator:    serviceabilityCalculator,
-		logger:                      logger,
-	}
+	// Create and return the real orchestrator
+	orchestrator := services.NewServiceabilityOrchestrator(
+		locationResolver,
+		partnerCapabilityAggregator,
+		serviceDefinitionResolver,
+		serviceabilityCalculator,
+	)
 
-	logger.Info("Serviceability orchestrator initialized successfully")
+	logger.Info("Successfully initialized real serviceability orchestrator")
 	return orchestrator, nil
 }
 
