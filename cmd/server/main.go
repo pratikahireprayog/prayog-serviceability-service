@@ -91,9 +91,6 @@ func initLogger() *logrus.Logger {
 func initConfig(logger *logrus.Logger) (*config.AppConfig, error) {
 	logger.Info("Initializing configuration...")
 
-	// Set default environment variables if not set
-	setDefaultEnvVars()
-
 	appConfig, err := config.LoadAppConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
@@ -101,27 +98,6 @@ func initConfig(logger *logrus.Logger) (*config.AppConfig, error) {
 
 	logger.Info("Configuration initialized successfully")
 	return appConfig, nil
-}
-
-// setDefaultEnvVars sets default environment variables for development
-func setDefaultEnvVars() {
-	defaults := map[string]string{
-		"DB_HOST":                        "localhost",
-		"DB_PORT":                        "5432",
-		"DB_USER":                        "postgres",
-		"DB_PASSWORD":                    "postgres",
-		"DB_NAME":                        "serviceability_db",
-		"DB_SSL_MODE":                    "disable",
-		"SERVER_PORT":                    "8080",
-		"PARTNER_SERVICE_BASE_URL":       "http://localhost:8081",
-		"SPECIFICATION_SERVICE_BASE_URL": "http://localhost:8082",
-	}
-
-	for key, value := range defaults {
-		if os.Getenv(key) == "" {
-			os.Setenv(key, value)
-		}
-	}
 }
 
 // initDatabase initializes the database manager

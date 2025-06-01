@@ -60,11 +60,11 @@ func LoadAppConfig() (*AppConfig, error) {
 
 	config := &AppConfig{
 		DB: DBConfig{
-			Host:            getAppEnvOrError("DB_HOST"),
+			Host:            getAppEnvOrDefault("DB_HOST", "localhost"),
 			Port:            getAppEnvAsIntOrDefault("DB_PORT", 5432),
-			User:            getAppEnvOrError("DB_USER"),
-			Password:        getAppEnvOrError("DB_PASSWORD"),
-			Name:            getAppEnvOrError("DB_NAME"),
+			User:            getAppEnvOrDefault("DB_USER", "postgres"),
+			Password:        getAppEnvOrDefault("DB_PASSWORD", "postgres"),
+			Name:            getAppEnvOrDefault("DB_NAME", "serviceability_db"),
 			SSLMode:         getAppEnvOrDefault("DB_SSL_MODE", "disable"),
 			MaxOpenConns:    getAppEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getAppEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
@@ -82,26 +82,6 @@ func LoadAppConfig() (*AppConfig, error) {
 			IdleTimeout:  getAppEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Integration: LoadIntegrationConfig(),
-	}
-
-	// Validate required environment variables
-	var missingVars []string
-
-	if config.DB.Host == "" {
-		missingVars = append(missingVars, "DB_HOST")
-	}
-	if config.DB.User == "" {
-		missingVars = append(missingVars, "DB_USER")
-	}
-	if config.DB.Password == "" {
-		missingVars = append(missingVars, "DB_PASSWORD")
-	}
-	if config.DB.Name == "" {
-		missingVars = append(missingVars, "DB_NAME")
-	}
-
-	if len(missingVars) > 0 {
-		return nil, fmt.Errorf("required environment variables not set: %v", missingVars)
 	}
 
 	return config, nil

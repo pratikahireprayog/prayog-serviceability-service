@@ -77,18 +77,27 @@ type Response struct {
 	Body       interface{}         `json:"body,omitempty"`
 }
 
-// Execute performs an HTTP request with full resilience protection
+// Execute performs an HTTP request with resilience protection (circuit breaker temporarily disabled)
 func (ht *HTTPTransport) Execute(ctx context.Context, req Request, target interface{}) error {
-	// Wrap the operation with circuit breaker
-	return ht.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
-		// Wrap with retry logic
-		return ht.retryHandler.Execute(ctx, func(ctx context.Context) error {
-			// Wrap with timeout
-			return ht.timeoutManager.WithTimeout(ctx, func(ctx context.Context) error {
-				return ht.executeHTTPRequest(ctx, req, target)
-			})
+	// TEMPORARY: Circuit breaker disabled - directly use retry handler
+	// Original: return ht.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+
+	// Wrap with retry logic
+	return ht.retryHandler.Execute(ctx, func(ctx context.Context) error {
+		// Wrap with timeout
+		return ht.timeoutManager.WithTimeout(ctx, func(ctx context.Context) error {
+			return ht.executeHTTPRequest(ctx, req, target)
 		})
 	})
+
+	// Original circuit breaker implementation (commented out):
+	// return ht.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+	//     return ht.retryHandler.Execute(ctx, func(ctx context.Context) error {
+	//         return ht.timeoutManager.WithTimeout(ctx, func(ctx context.Context) error {
+	//             return ht.executeHTTPRequest(ctx, req, target)
+	//         })
+	//     })
+	// })
 }
 
 // executeHTTPRequest performs the actual HTTP request

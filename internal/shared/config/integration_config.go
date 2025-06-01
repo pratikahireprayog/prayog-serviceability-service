@@ -100,7 +100,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 	godotenv.Load()
 
 	partnerConfig := PartnerServiceConfig{
-		BaseURL:       getEnvOrDefault("PARTNER_SERVICE_BASE_URL", "http://localhost:8081"),
+		BaseURL:       getEnvOrDefault("PARTNER_SERVICE_BASE_URL", "http://localhost:9024"),
 		APIKey:        getEnvOrDefault("PARTNER_SERVICE_API_KEY", ""),
 		Timeout:       getEnvAsDurationOrDefault("PARTNER_SERVICE_TIMEOUT", 30*time.Second),
 		EnableLogging: getEnvAsBoolOrDefault("PARTNER_SERVICE_ENABLE_LOGGING", true),
@@ -136,7 +136,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 	}
 
 	specConfig := SpecificationServiceConfig{
-		BaseURL:       getEnvOrDefault("SPECIFICATION_SERVICE_BASE_URL", "http://localhost:8082"),
+		BaseURL:       getEnvOrDefault("SPECIFICATION_SERVICE_BASE_URL", "http://localhost:9023"),
 		APIKey:        getEnvOrDefault("SPECIFICATION_SERVICE_API_KEY", ""),
 		Timeout:       getEnvAsDurationOrDefault("SPECIFICATION_SERVICE_TIMEOUT", 30*time.Second),
 		EnableLogging: getEnvAsBoolOrDefault("SPECIFICATION_SERVICE_ENABLE_LOGGING", true),
