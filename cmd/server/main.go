@@ -156,20 +156,14 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 	// Create core services with real implementations
 	locationResolver := services.NewLocationResolver(partnerService)
 
-	// Create service definition resolver
-	serviceDefinitionResolver := services.NewServiceDefinitionResolver(specService)
-
-	// Create partner capability aggregator
-	partnerCapabilityAggregator := services.NewPartnerCapabilityAggregator(partnerService, specService)
-
 	// Create serviceability calculator
 	serviceabilityCalculator := services.NewServiceabilityCalculator()
 
 	// Create and return the real orchestrator
-	orchestrator := services.NewServiceabilityOrchestrator(
+	orchestrator := services.NewOptimizedServiceabilityOrchestrator(
 		locationResolver,
-		partnerCapabilityAggregator,
-		serviceDefinitionResolver,
+		partnerService,
+		specService,
 		serviceabilityCalculator,
 	)
 
