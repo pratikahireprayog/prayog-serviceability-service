@@ -1,5 +1,6 @@
 erDiagram
 
+    %% ===== Location Hierarchy =====
     country {
         uuid id PK
         varchar code UK
@@ -55,16 +56,17 @@ erDiagram
         uuid id PK
         varchar code
         uuid country_id FK
-        uuid region_id FK "nullable"
-        uuid city_id FK "nullable"
-        uuid area_id FK "nullable"
+        uuid region_id FK nullable
+        uuid city_id FK nullable
+        uuid area_id FK nullable
         varchar location_scope "e.g. country, region, city, area"
         boolean is_active
         timestamp created_at
         timestamp updated_at
     }
 
-    location_entity_type {
+    %% ===== Location Metadata & Aliasing =====
+    location_type {
         varchar code PK
         varchar description
     }
@@ -80,12 +82,37 @@ erDiagram
         timestamp updated_at
     }
 
+    %% ===== Partner to Location Mapping =====
+    partner_location_coverage {
+        uuid id PK
+        uuid partner_id "Ref to Partner Service"
+        varchar location_scope "POSTAL_CODE | AREA | CITY | REGION | COUNTRY"
+        uuid location_id
+        varchar zone_type "PRIMARY | SECONDARY | BUFFER"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ===== Relationships =====
     country ||--o{ region : contains
     region_type ||--o{ region : has_type
     region ||--o{ city : contains
     city ||--o{ area : contains
+
     area ||--o{ postal_code : has
-    region ||--o{ postal_code : has
     city ||--o{ postal_code : has
+    region ||--o{ postal_code : has
     country ||--o{ postal_code : has
-    location_entity_type ||--o{ location_alias : defines_type
+
+    location_type ||--o{ location_alias : defines_type
+    country ||--o{ location_alias : aliases
+    region ||--o{ location_alias : aliases
+    city ||--o{ location_alias : aliases
+    area ||--o{ location_alias : aliases
+
+    postal_code ||--o{ partner_location_coverage : mapped_by
+    area ||--o{ partner_location_coverage : mapped_by
+    city ||--o{ partner_location_coverage : mapped_by
+    region ||--o{ partner_location_coverage : mapped_by
+    country ||--o{ partner_location_coverage : mapped_by

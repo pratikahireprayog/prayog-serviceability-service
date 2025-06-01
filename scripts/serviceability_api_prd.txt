@@ -1,0 +1,396 @@
+# Serviceability API Product Requirements Document (PRD)
+
+## Overview
+
+The Serviceability API is a comprehensive service that determines available logistics services for given postal codes by coordinating with Partner and Specification services. It provides unified serviceability information including parcel categories, service types, operation types, payment modes, and delivery modes for both single postal code queries and origin-destination queries.
+
+The API serves as the front-facing orchestrator that aggregates data from:
+1. **Serviceability Service**: Location hierarchy and postal code management
+2. **Partner Service**: Partner capabilities and preferences 
+3. **Specification Service**: Service definitions, catalogs, and entity specifications
+
+## Core Features
+
+### 1. Unified Serviceability Check API
+
+**What it does**: Provides a single API endpoint that handles both single postal code and pickup/delivery postal code queries, returning detailed serviceability information.
+
+**Why it's important**: Eliminates the need for multiple API calls and provides a consistent interface for all serviceability queries. Enables applications to get comprehensive service availability in a single request.
+
+**How it works at a high level**:
+- Single Mode: `/serviceability/api/v1/check` with `postal_code` parameter returns all available services for that location
+- Origin-Destination Mode: `/serviceability/api/v1/check` with both `pickup_postal_code` and `delivery_postal_code` parameters returns services available for the route
+- Coordinates with Partner and Specification services to determine capabilities
+- Returns structured response with service hierarchies and options
+
+### 2. Service Capability Aggregation
+
+**What it does**: Aggregates service capabilities from partners and specifications to determine what services are available for each location.
+
+**Why it's important**: Provides real-time service availability based on actual partner capabilities rather than static configurations.
+
+**How it works at a high level**:
+- Queries Partner Service for active partners serving the location
+- Fetches partner preferences and effective ratings for specific services
+- Queries Specification Service for service definitions and catalogs
+- Applies business rules to determine final service availability
+- Handles service hierarchies (parcel_category -> services -> options)
+
+### 3. Dynamic Response Format
+
+**What it does**: Returns responses in a structured format that includes service hierarchies with parcel categories, service types, and capability arrays.
+
+**Why it's important**: Provides consistent, comprehensive data structure that applications can easily parse and use for decision making.
+
+**How it works at a high level**:
+- Groups services by parcel categories (ecom, courier, cargo)
+- Lists available service types for each category
+- Includes operation types (pickup, delivery), payment modes (ONLINE, COD), and delivery modes (AIR, SURFACE, RAIL)
+- Adapts response format based on query type (single vs origin-destination)
+
+## User Experience
+
+### Target Users
+
+**External API Consumers**: Frontend applications, mobile apps, and third-party integrations that need serviceability information for order processing, logistics planning, or service availability display.
+
+**Internal Services**: Other microservices within the ecosystem that require serviceability data for business logic.
+
+### Key User Flows
+
+#### Flow 1: Single Location Serviceability Check
+```
+Request: GET /serviceability/api/v1/check?postal_code=110001&country_code=IN
+```
+1. User/Application sends request with postal code
+2. API validates location and fetches location hierarchy
+3. API queries Partner Service for partners serving this location
+4. API queries Specification Service for available service definitions
+5. API aggregates and filters capabilities based on partner preferences
+6. API returns comprehensive serviceability response with all available options
+
+#### Flow 2: Origin-Destination Serviceability Check
+```
+Request: GET /serviceability/api/v1/check?pickup_postal_code=110001&delivery_postal_code=400001&country_code=IN
+```
+1. User/Application sends request with pickup and delivery locations
+2. API validates both locations
+3. API determines partners capable of serving the route
+4. API calculates intersection of capabilities between origin and destination
+5. API returns route-specific serviceability response
+
+#### Flow 3: Bulk Serviceability Check
+```
+Request: POST /serviceability/api/v1/bulk-check
+Body: {"requests": [{"postal_code": "110001"}, {"pickup_postal_code": "110001", "delivery_postal_code": "400001"}]}
+```
+1. User/Application sends multiple serviceability requests
+2. API processes each request individually
+3. API returns array of responses maintaining request order
+
+## Technical Architecture
+
+### System Components
+
+#### API Layer (HTTP Handlers)
+- **ServiceabilityHandler**: Handles HTTP requests, validates input, orchestrates service calls
+- Endpoints: `/check`, `/bulk-check`
+- Response formatting and error handling
+- Rate limiting and authentication (future)
+
+#### Service Layer (Business Logic)
+- **ServiceabilityOrchestrator**: Main business logic for determining serviceability
+- **LocationResolver**: Resolves and validates postal codes using location hierarchy
+- **PartnerCapabilityAggregator**: Fetches and processes partner capabilities
+- **ServiceDefinitionResolver**: Retrieves service definitions and catalogs
+- **ServiceabilityCalculator**: Applies business rules to determine final availability
+
+#### Integration Layer (External Service Clients)
+- **PartnerServiceClient**: Communicates with Partner Service APIs
+- **SpecificationServiceClient**: Communicates with Specification Service APIs
+- HTTP clients with retry logic, circuit breakers, and timeout handling
+
+#### Data Models
+
+**Request Models:**
+```go
+type ServiceabilityCheckRequest struct {
+    PostalCode         *string `json:"postal_code,omitempty"`
+    PickupPostalCode   *string `json:"pickup_postal_code,omitempty"`
+    DeliveryPostalCode *string `json:"delivery_postal_code,omitempty"`
+    CountryCode        string  `json:"country_code"`
+    ServiceTypeCode    *string `json:"service_type_code,omitempty"`
+    ParcelCategory     *string `json:"parcel_category,omitempty"`
+}
+```
+
+**Response Models:**
+```go
+type ServiceabilityResponse struct {
+    Success bool                    `json:"success"`
+    Data    ServiceabilityData      `json:"data"`
+}
+
+type ServiceabilityData struct {
+    QueryType        string           `json:"query_type"`
+    Location         *LocationData    `json:"location,omitempty"`
+    PickupLocation   *LocationData    `json:"pickup_location,omitempty"`
+    DeliveryLocation *LocationData    `json:"delivery_location,omitempty"`
+}
+
+type LocationData struct {
+    PostalCode      string                  `json:"postal_code"`
+    CountryCode     string                  `json:"country_code"`
+    Serviceability []ParcelCategoryService `json:"serviceability"`
+}
+
+type ParcelCategoryService struct {
+    ParcelCategory string    `json:"parcel_category"`
+    Services       []Service `json:"services"`
+}
+
+type Service struct {
+    ServiceType     string   `json:"service_type"`
+    OperationTypes  []string `json:"operation_types,omitempty"`
+    PaymentModes    []string `json:"payment_modes"`
+    DeliveryModes   []string `json:"delivery_modes"`
+}
+```
+
+### External Service Integration
+
+#### Partner Service Integration
+- **Endpoint**: `GET /api/v1/partners/by-location/{location_type}/{location_id}`
+- **Purpose**: Get partners serving specific locations
+- **Data**: Partner capabilities, ratings, preferences, active status
+
+#### Specification Service Integration
+- **Endpoints**: 
+  - `GET /specification/api/v1/spec-definitions` - Get service definitions
+  - `GET /specification/api/v1/catalogs` - Get service catalogs
+  - `GET /specification/api/v1/entities/{entity_type}/{entity_id}/specifications` - Get entity specifications
+- **Purpose**: Get service definitions, parcel categories, and capability specifications
+
+### Required Specification Service Enhancements
+
+#### New Specification Definitions Needed:
+1. **PARCEL_CATEGORY** (ecom, courier, cargo)
+2. **SERVICE_TYPE** (SDD, NDD, Standard, Express, vayuquick, vayuquickpro)
+3. **OPERATION_TYPE** (pickup, delivery)
+4. **PAYMENT_MODE** (ONLINE, COD)
+5. **DELIVERY_MODE** (AIR, SURFACE, RAIL)
+
+#### New Entity Types Needed:
+1. **PARTNER_SERVICE_CAPABILITY** - Links partners to services they can provide
+2. **LOCATION_SERVICE_AVAILABILITY** - Links locations to available services
+
+## Development Roadmap
+
+### Phase 1: Foundation & Basic API Structure
+**Scope:**
+- Create enhanced request/response models matching target format
+- Implement basic API endpoints with input validation
+- Set up service orchestration framework
+- Create integration clients for Partner and Specification services
+- Basic location validation using existing postal code data
+
+**Deliverables:**
+- API endpoints returning mock data in correct format
+- Integration framework established
+- Basic validation and error handling
+
+### Phase 2: Specification Service Integration
+**Scope:**
+- Define required specifications in Specification Service
+- Create service catalogs for parcel categories, service types, etc.
+- Implement ServiceDefinitionResolver
+- Create entity specifications for partners and locations
+
+**Deliverables:**
+- Complete specification definitions in Specification Service
+- Service catalog management APIs
+- Integration between services established
+
+### Phase 3: Partner Service Integration & Business Logic
+**Scope:**
+- Implement PartnerCapabilityAggregator
+- Create ServiceabilityCalculator with business rules
+- Implement location-based partner filtering
+- Add preference-based service filtering
+
+**Deliverables:**
+- Working serviceability logic using real partner data
+- Effective partner rating/preference handling
+- Location-based service filtering
+
+### Phase 4: Advanced Features & Optimization
+**Scope:**
+- Implement origin-destination route logic
+- Add bulk check capabilities
+- Performance optimization and caching
+- Comprehensive error handling and logging
+
+**Deliverables:**
+- Full API functionality matching requirements
+- Performance optimizations
+- Production-ready error handling
+
+### Phase 5: Production Readiness
+**Scope:**
+- Add authentication and rate limiting
+- Implement monitoring and metrics
+- Add API documentation
+- Performance testing and optimization
+
+**Deliverables:**
+- Production-ready API
+- Complete documentation
+- Monitoring and alerting
+
+## API Specification
+
+### Endpoints
+
+#### 1. Check Serviceability
+```
+GET /serviceability/api/v1/check
+```
+
+**Query Parameters:**
+- `postal_code` (string, optional): Single location query
+- `pickup_postal_code` (string, optional): Origin for route query
+- `delivery_postal_code` (string, optional): Destination for route query
+- `country_code` (string, required): Country code (e.g., "IN")
+- `service_type_code` (string, optional): Filter by specific service type
+- `parcel_category` (string, optional): Filter by parcel category
+
+**Response:** ServiceabilityResponse with location data and service availability
+
+#### 2. Bulk Check Serviceability
+```
+POST /serviceability/api/v1/bulk-check
+```
+
+**Request Body:**
+```json
+{
+    "requests": [
+        {
+            "postal_code": "110001",
+            "country_code": "IN"
+        },
+        {
+            "pickup_postal_code": "110001",
+            "delivery_postal_code": "400001",
+            "country_code": "IN"
+        }
+    ]
+}
+```
+
+**Response:** Array of ServiceabilityResponse objects
+
+### Business Rules
+
+#### Service Availability Logic:
+1. **Location Validation**: Postal code must exist in location hierarchy
+2. **Partner Filtering**: Only active partners serving the location
+3. **Service Capability**: Partner must have specifications for the service
+4. **Preference Application**: Use partner preferences if available, otherwise global ratings
+5. **Route Logic**: For origin-destination, intersection of capabilities
+
+#### Response Formatting Rules:
+1. **Single Location**: Returns `location` object with serviceability array
+2. **Origin-Destination**: Returns both `pickup_location` and `delivery_location` objects
+3. **Service Grouping**: Services grouped by parcel_category
+4. **Operation Types**: Only include operation types supported by partners
+
+## Testing Strategy
+
+### Unit Tests
+- Service layer business logic
+- Request/response model validation
+- Integration client error handling
+- Service capability calculation algorithms
+
+### Integration Tests
+- End-to-end API workflows
+- External service integration
+- Database operations
+- Error scenarios and edge cases
+
+### Performance Tests
+- API response times under load
+- Concurrent request handling
+- Service integration performance
+- Bulk operation efficiency
+
+## Risks and Mitigations
+
+### Technical Risks
+
+**Complex Service Integration**: Managing data consistency across three services
+- **Mitigation**: Implement robust error handling, retry logic, and fallback mechanisms
+- Use circuit breakers for external service calls
+- Implement data validation at service boundaries
+
+**Performance Concerns**: Multiple service calls for each request
+- **Mitigation**: Implement caching strategies for frequently accessed data
+- Optimize database queries and service calls
+- Consider async processing for non-critical operations
+
+**Data Consistency**: Ensuring specification and partner data remains synchronized
+- **Mitigation**: Implement event-driven updates between services
+- Regular data validation and reconciliation processes
+- Clear data ownership and update protocols
+
+### Business Risks
+
+**Specification Definition Complexity**: Defining comprehensive service specifications
+- **Mitigation**: Start with core specifications and iterate
+- Involve business stakeholders in specification design
+- Build flexible specification system for future enhancements
+
+**Partner Data Quality**: Ensuring accurate partner capability data
+- **Mitigation**: Implement data validation and verification processes
+- Regular partner data audits and updates
+- Default fallback behaviors for missing data
+
+## Success Metrics
+
+### Performance Metrics
+- API response time < 200ms for single requests
+- API response time < 500ms for bulk requests (up to 10 items)
+- Service availability > 99.9%
+- External service integration success rate > 99%
+
+### Business Metrics
+- Accurate serviceability determination (validated against actual service delivery)
+- Complete service coverage for supported locations
+- Consistent API response format across all query types
+
+## Appendix
+
+### Required Service Enhancements
+
+#### Partner Service (No changes needed)
+- Existing APIs are sufficient
+- Effective details endpoint provides preference-based capabilities
+
+#### Specification Service Additions
+**New Spec Definitions:**
+1. PARCEL_CATEGORY - Catalog: ecom, courier, cargo
+2. SERVICE_TYPE - Catalog: SDD, NDD, Standard, Express, vayuquick, vayuquickpro  
+3. OPERATION_TYPE - Catalog: pickup, delivery
+4. PAYMENT_MODE - Catalog: ONLINE, COD
+5. DELIVERY_MODE - Catalog: AIR, SURFACE, RAIL
+
+**New Entity Types:**
+1. PARTNER - for partner specifications
+2. LOCATION - for location-based service specifications
+
+### Integration Patterns
+- RESTful HTTP clients with timeout and retry
+- Circuit breaker pattern for external service resilience
+- Response caching for frequently accessed specification data
+- Event-driven updates for data synchronization (future enhancement) 
