@@ -13,8 +13,8 @@ erDiagram
     }
 
     region_type {
-        uuid id PK
-        varchar code UK
+        varchar code PK
+        varchar name
         boolean is_active
         timestamp created_at
         timestamp updated_at
@@ -22,9 +22,23 @@ erDiagram
 
     region {
         uuid id PK
+        varchar code UK
+        varchar country_code FK "References country.code"
+        varchar region_type_code FK "References region_type.code"
+        uuid region_type_id FK "References region_type via lookup - nullable"
+        varchar name
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    district {
+        uuid id PK
+        varchar code UK
+        uuid region_id FK
+        varchar region_code FK "References region.code"
         uuid country_id FK
-        uuid region_type_id FK
-        varchar code
+        varchar country_code FK "References country.code"
         varchar name
         boolean is_active
         timestamp created_at
@@ -33,9 +47,13 @@ erDiagram
 
     city {
         uuid id PK
+        varchar code UK
         uuid region_id FK
+        varchar region_code FK "References region.code"
         uuid country_id FK
-        varchar code
+        varchar country_code FK "References country.code"
+        uuid district_id FK
+        varchar district_code FK "References district.code"
         varchar name
         boolean is_active
         timestamp created_at
@@ -44,8 +62,9 @@ erDiagram
 
     area {
         uuid id PK
+        varchar code UK
         uuid city_id FK
-        varchar code
+        varchar city_code FK "References city.code"
         varchar name
         boolean is_active
         timestamp created_at
@@ -54,11 +73,15 @@ erDiagram
 
     postal_code {
         uuid id PK
-        varchar code
+        varchar code UK
         uuid country_id FK
-        uuid region_id FK nullable
-        uuid city_id FK nullable
-        uuid area_id FK nullable
+        varchar country_code FK "References country.code"
+        uuid region_id FK "nullable"
+        varchar region_code FK "References region.code - nullable"
+        uuid city_id FK "nullable"
+        varchar city_code FK "References city.code - nullable"
+        uuid area_id FK "nullable"
+        varchar area_code FK "References area.code - nullable"
         varchar location_scope "e.g. country, region, city, area"
         boolean is_active
         timestamp created_at
@@ -73,8 +96,9 @@ erDiagram
 
     location_alias {
         uuid id PK
-        varchar entity_type FK
-        uuid entity_id
+        varchar location_type_code FK "References location_type.code"
+        uuid location_id
+        varchar location_code FK "References location entity code based on location_type"
         varchar alias_name
         boolean is_primary
         boolean is_active
@@ -86,9 +110,51 @@ erDiagram
     partner_location_coverage {
         uuid id PK
         uuid partner_id "Ref to Partner Service"
+        varchar partner_code "Ref to Partner Service code"
         varchar location_scope "POSTAL_CODE | AREA | CITY | REGION | COUNTRY"
         uuid location_id
-        varchar zone_type "PRIMARY | SECONDARY | BUFFER"
+        varchar location_code "References location entity code based on scope"
+        varchar zone_type "PRIMARY | SECONDARY | BUFFER | null"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ===== Hub to location Mapping =====
+    hub {
+        uuid id PK
+        varchar code UK
+        varchar contact_name
+        varchar contact_number
+        varchar address
+        varchar city_code
+        varchar state_code
+        varchar country_code
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ===== Hub to location Mapping =====
+    hub_location_coverage {
+        uuid id PK
+        uuid hub_id "Ref to Hub"
+        varchar hub_code "Ref to Hub code"
+        varchar location_scope "POSTAL_CODE | AREA | CITY | REGION | COUNTRY"
+        uuid location_id
+        varchar location_code "References location entity code based on scope"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ===== Hub to location Mapping =====
+    hub_specification {
+        uuid id PK
+        uuid hub_id "Ref to Hub"
+        varchar hub_code "Ref to Hub code"
+        uuid spec_id "Specification Service"
+        varchar spec_code "Specification Service code"
         boolean is_active
         timestamp created_at
         timestamp updated_at
@@ -97,7 +163,9 @@ erDiagram
     %% ===== Relationships =====
     country ||--o{ region : contains
     region_type ||--o{ region : has_type
+    region ||--o{ district : contains
     region ||--o{ city : contains
+    district ||--o{ city : contains
     city ||--o{ area : contains
 
     area ||--o{ postal_code : has
@@ -108,11 +176,17 @@ erDiagram
     location_type ||--o{ location_alias : defines_type
     country ||--o{ location_alias : aliases
     region ||--o{ location_alias : aliases
+    district ||--o{ location_alias : aliases
     city ||--o{ location_alias : aliases
     area ||--o{ location_alias : aliases
 
     postal_code ||--o{ partner_location_coverage : mapped_by
     area ||--o{ partner_location_coverage : mapped_by
     city ||--o{ partner_location_coverage : mapped_by
+    district ||--o{ partner_location_coverage : mapped_by
     region ||--o{ partner_location_coverage : mapped_by
     country ||--o{ partner_location_coverage : mapped_by
+
+    hub ||--o{ hub_location_coverage : mapped_by
+    hub ||--o{ hub_specification : mapped_by
+

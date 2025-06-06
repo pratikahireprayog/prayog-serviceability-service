@@ -9,22 +9,11 @@ This project follows the [Standard Go Project Layout](mdc:https:/github.com/gola
 
 ## Directory Structure
 
-- `/cmd` — Main applications for this project. Each application has its own subdirectory.
-- `/internal` — Private application and library code. This code is not importable by other projects.
-- `/pkg` — Public libraries intended to be used by external applications.
-- `/api` — API definitions (OpenAPI/Swagger specs, JSON schema, protocol definitions).
-- `/configs` — Configuration file templates or default configs.
-- `/scripts` — Build, install, analysis, and other scripts.
-- `/build` — Packaging and CI/CD configurations and scripts.
-- `/deployments` — Deployment configurations and templates (e.g., Docker, Kubernetes).
-- `/test` — Additional external test apps and test data.
-- `/docs` — Design and user documentation.
-- `/tools` — Supporting tools for this project.
-- `/examples` — Example applications and/or public libraries.
-- `/third_party` — External helper tools, forked code, and other 3rd party utilities.
-- `/githooks` — Git hooks.
-- `/assets` — Other assets (images, logos, etc).
-- `/website` — Project website data (if not using GitHub Pages).
+Project Structure
+docs/: Contains all the files related to docs
+api/: Contains the HTTP handlers, routes, and presenters.
+pkg/: Contains the core business logic and entities.
+cmd/: Contains the main application entry point.
 
 ## Coding Guidelines
 
