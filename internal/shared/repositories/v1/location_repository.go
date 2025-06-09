@@ -7,41 +7,65 @@ import (
 
 // CountryRepository defines the interface for country operations
 type CountryRepository interface {
+	GetByID(ctx context.Context, id string) (*models.Country, error)
 	GetByCode(ctx context.Context, code string) (*models.Country, error)
-	GetAll(ctx context.Context) ([]models.Country, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.Country, int64, error)
 	Create(ctx context.Context, country *models.Country) error
-	Update(ctx context.Context, country *models.Country) error
-	Delete(ctx context.Context, id uint) error
+	Update(ctx context.Context, id string, country *models.Country) error
+	Delete(ctx context.Context, id string) error
+}
+
+// RegionTypeRepository defines the interface for region type operations
+type RegionTypeRepository interface {
+	GetByCode(ctx context.Context, code string) (*models.RegionType, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.RegionType, int64, error)
+	Create(ctx context.Context, regionType *models.RegionType) error
+	Update(ctx context.Context, code string, regionType *models.RegionType) error
+	Delete(ctx context.Context, code string) error
 }
 
 // RegionRepository defines the interface for region operations
 type RegionRepository interface {
-	GetByID(ctx context.Context, id uint) (*models.Region, error)
-	GetByCountryID(ctx context.Context, countryID uint) ([]models.Region, error)
-	GetByCode(ctx context.Context, code string, countryID uint) (*models.Region, error)
+	GetByID(ctx context.Context, id string) (*models.Region, error)
+	GetByCode(ctx context.Context, code string) (*models.Region, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.Region, int64, error)
+	GetByCountryID(ctx context.Context, countryID string) ([]models.Region, error)
 	Create(ctx context.Context, region *models.Region) error
-	Update(ctx context.Context, region *models.Region) error
-	Delete(ctx context.Context, id uint) error
+	Update(ctx context.Context, id string, region *models.Region) error
+	Delete(ctx context.Context, id string) error
+}
+
+// DistrictRepository defines the interface for district operations
+type DistrictRepository interface {
+	GetByID(ctx context.Context, id string) (*models.District, error)
+	GetByCode(ctx context.Context, code string) (*models.District, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.District, int64, error)
+	GetByRegionID(ctx context.Context, regionID string) ([]models.District, error)
+	Create(ctx context.Context, district *models.District) error
+	Update(ctx context.Context, id string, district *models.District) error
+	Delete(ctx context.Context, id string) error
 }
 
 // CityRepository defines the interface for city operations
 type CityRepository interface {
-	GetByID(ctx context.Context, id uint) (*models.City, error)
-	GetByRegionID(ctx context.Context, regionID uint) ([]models.City, error)
-	GetByCode(ctx context.Context, code string, regionID uint) (*models.City, error)
+	GetByID(ctx context.Context, id string) (*models.City, error)
+	GetByCode(ctx context.Context, code string) (*models.City, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.City, int64, error)
+	GetByRegionID(ctx context.Context, regionID string) ([]models.City, error)
 	Create(ctx context.Context, city *models.City) error
-	Update(ctx context.Context, city *models.City) error
-	Delete(ctx context.Context, id uint) error
+	Update(ctx context.Context, id string, city *models.City) error
+	Delete(ctx context.Context, id string) error
 }
 
 // AreaRepository defines the interface for area operations
 type AreaRepository interface {
-	GetByID(ctx context.Context, id uint) (*models.Area, error)
-	GetByCityID(ctx context.Context, cityID uint) ([]models.Area, error)
-	GetByCode(ctx context.Context, code string, cityID uint) (*models.Area, error)
+	GetByID(ctx context.Context, id string) (*models.Area, error)
+	GetByCode(ctx context.Context, code string) (*models.Area, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.Area, int64, error)
+	GetByCityID(ctx context.Context, cityID string) ([]models.Area, error)
 	Create(ctx context.Context, area *models.Area) error
-	Update(ctx context.Context, area *models.Area) error
-	Delete(ctx context.Context, id uint) error
+	Update(ctx context.Context, id string, area *models.Area) error
+	Delete(ctx context.Context, id string) error
 }
 
 // PostalCodeRepository defines the interface for postal code operations
@@ -103,7 +127,9 @@ type PartnerLocationCoverageRepository interface {
 // LocationRepository provides a unified interface for location operations
 type LocationRepository interface {
 	Countries() CountryRepository
+	RegionTypes() RegionTypeRepository
 	Regions() RegionRepository
+	Districts() DistrictRepository
 	Cities() CityRepository
 	Areas() AreaRepository
 	PostalCodes() PostalCodeRepository

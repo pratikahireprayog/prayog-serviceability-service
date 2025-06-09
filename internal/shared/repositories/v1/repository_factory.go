@@ -1,7 +1,6 @@
 package repositories
 
 import (
-
 	"gorm.io/gorm"
 )
 
@@ -9,7 +8,9 @@ import (
 type RepositoryFactory struct {
 	db                                *gorm.DB
 	countryRepository                 CountryRepository
+	regionTypeRepository              RegionTypeRepository
 	regionRepository                  RegionRepository
+	districtRepository                DistrictRepository
 	cityRepository                    CityRepository
 	areaRepository                    AreaRepository
 	postalCodeRepository              PostalCodeRepository
@@ -29,7 +30,9 @@ func NewRepositoryFactory(db *gorm.DB) *RepositoryFactory {
 
 	// Initialize all repositories
 	factory.countryRepository = NewCountryRepository(db)
+	factory.regionTypeRepository = NewRegionTypeRepository(db)
 	factory.regionRepository = NewRegionRepository(db)
+	factory.districtRepository = NewDistrictRepository(db)
 	factory.cityRepository = NewCityRepository(db)
 	factory.areaRepository = NewAreaRepository(db)
 	factory.postalCodeRepository = NewPostalCodeRepository(db)
@@ -48,9 +51,19 @@ func (f *RepositoryFactory) GetCountryRepository() CountryRepository {
 	return f.countryRepository
 }
 
+// GetRegionTypeRepository returns the region type repository
+func (f *RepositoryFactory) GetRegionTypeRepository() RegionTypeRepository {
+	return f.regionTypeRepository
+}
+
 // GetRegionRepository returns the region repository
 func (f *RepositoryFactory) GetRegionRepository() RegionRepository {
 	return f.regionRepository
+}
+
+// GetDistrictRepository returns the district repository
+func (f *RepositoryFactory) GetDistrictRepository() DistrictRepository {
+	return f.districtRepository
 }
 
 // GetCityRepository returns the city repository
@@ -118,9 +131,19 @@ func (r *locationRepository) Countries() CountryRepository {
 	return r.factory.GetCountryRepository()
 }
 
+// RegionTypes returns the region type repository
+func (r *locationRepository) RegionTypes() RegionTypeRepository {
+	return r.factory.GetRegionTypeRepository()
+}
+
 // Regions returns the region repository
 func (r *locationRepository) Regions() RegionRepository {
 	return r.factory.GetRegionRepository()
+}
+
+// Districts returns the district repository
+func (r *locationRepository) Districts() DistrictRepository {
+	return r.factory.GetDistrictRepository()
 }
 
 // Cities returns the city repository
