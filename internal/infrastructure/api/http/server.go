@@ -19,6 +19,8 @@ import (
 	"prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
+	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
+	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -147,6 +149,16 @@ func (s *Server) setupRoutes() error {
 		})
 	})
 
+	// Create location handler and register location routes
+	locationHandler, err := s.createLocationHandler()
+	if err != nil {
+		return fmt.Errorf("failed to create location handler: %w", err)
+	}
+
+	// Register location routes under /api/v1/locations
+	locationGroup := v1.Group("/locations")
+	routes.RegisterLocationRoutes(locationGroup, locationHandler, s.logger)
+
 	s.logger.Info("All routes configured successfully")
 	return nil
 }
@@ -164,6 +176,37 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 	)
 
 	return serviceabilityHandler, nil
+}
+
+// createLocationHandler creates a location handler with all dependencies
+func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
+	// Check if database manager is available
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database manager is required for location handler")
+	}
+
+	// Create validator instance
+	validator := validator.New()
+
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection is not available")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Create location service from repository factory
+	locationService := sharedServices.NewLocationService(repoFactory.GetLocationRepository())
+
+	// Create location handler
+	locationHandler := handlers.NewLocationHandler(
+		locationService,
+		validator,
+		s.logger,
+	)
+
+	return locationHandler, nil
 }
 
 // customErrorHandler creates a custom error handler for Fiber
