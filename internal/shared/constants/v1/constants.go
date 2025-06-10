@@ -42,6 +42,26 @@ const (
 	DeliveryModeRail    = "RAIL"
 )
 
+// HTTP Status Codes
+const (
+	StatusOK                  = 200
+	StatusCreated             = 201
+	StatusAccepted            = 202
+	StatusNoContent           = 204
+	StatusBadRequest          = 400
+	StatusUnauthorized        = 401
+	StatusForbidden           = 403
+	StatusNotFound            = 404
+	StatusMethodNotAllowed    = 405
+	StatusConflict            = 409
+	StatusUnprocessableEntity = 422
+	StatusTooManyRequests     = 429
+	StatusInternalServerError = 500
+	StatusBadGateway          = 502
+	StatusServiceUnavailable  = 503
+	StatusGatewayTimeout      = 504
+)
+
 // Error Codes
 const (
 	ErrorCodeInvalidPostalCode         = "INVALID_POSTAL_CODE"
@@ -56,6 +76,13 @@ const (
 	ErrorCodeDatabaseError             = "DATABASE_ERROR"
 	ErrorCodeValidationError           = "VALIDATION_ERROR"
 	ErrorCodeTimeoutError              = "TIMEOUT_ERROR"
+	// Authentication Error Codes
+	ErrorCodeAuthFailed              = "AUTH_FAILED"
+	ErrorCodeInvalidToken            = "INVALID_TOKEN"
+	ErrorCodeExpiredToken            = "EXPIRED_TOKEN"
+	ErrorCodeMissingCredentials      = "MISSING_CREDENTIALS"
+	ErrorCodeInsufficientPermissions = "INSUFFICIENT_PERMISSIONS"
+	ErrorCodeInvalidPartner          = "INVALID_PARTNER"
 )
 
 // Error Messages
@@ -72,6 +99,13 @@ const (
 	MsgDatabaseError             = "Database error"
 	MsgValidationError           = "Validation error"
 	MsgTimeoutError              = "Request timeout"
+	// Authentication Error Messages
+	MsgAuthFailed              = "Authentication failed"
+	MsgInvalidToken            = "Invalid authentication token"
+	MsgExpiredToken            = "Authentication token has expired"
+	MsgMissingCredentials      = "Missing authentication credentials"
+	MsgInsufficientPermissions = "Insufficient permissions"
+	MsgInvalidPartner          = "Invalid partner"
 )
 
 // API Versioning
@@ -186,6 +220,7 @@ const (
 	EnvRedisURL                = "REDIS_URL"
 	EnvPartnerServiceURL       = "PARTNER_SERVICE_URL"
 	EnvSpecificationServiceURL = "SPECIFICATION_SERVICE_URL"
+	EnvPrayogBaseURL           = "PRAYOG_BASE_URL"
 	EnvAPIKey                  = "API_KEY"
 	EnvEnvironment             = "ENVIRONMENT"
 )

@@ -32,14 +32,28 @@ func (r *locationTypeRepository) GetByCode(ctx context.Context, code string) (*m
 	return &locationType, nil
 }
 
-// GetAll retrieves all location types
-func (r *locationTypeRepository) GetAll(ctx context.Context) ([]models.LocationType, error) {
+// GetAll retrieves all location types with pagination
+func (r *locationTypeRepository) GetAll(ctx context.Context, offset, limit int) ([]models.LocationType, int64, error) {
 	var locationTypes []models.LocationType
-	err := r.db.WithContext(ctx).Find(&locationTypes).Error
+	var total int64
+
+	// Get total count
+	err := r.db.WithContext(ctx).Model(&models.LocationType{}).Count(&total).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to get location types: %w", err)
+		return nil, 0, fmt.Errorf("failed to count location types: %w", err)
 	}
-	return locationTypes, nil
+
+	// Get paginated results
+	err = r.db.WithContext(ctx).
+		Offset(offset).
+		Limit(limit).
+		Find(&locationTypes).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get location types: %w", err)
+	}
+
+	return locationTypes, total, nil
 }
 
 // Create creates a new location type

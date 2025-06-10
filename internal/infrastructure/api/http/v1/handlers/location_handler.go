@@ -879,3 +879,209 @@ func (h *LocationHandler) DeleteArea(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusNoContent).Send(nil)
 }
+
+// PostalCode Handlers
+
+// GetPostalCodeByID retrieves a postal code by ID
+func (h *LocationHandler) GetPostalCodeByID(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Postal code ID is required",
+			},
+		})
+	}
+
+	postalCode, err := h.locationService.PostalCodes().GetByID(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "GetPostalCodeByID")
+	}
+
+	return c.JSON(postalCode)
+}
+
+// GetAllPostalCodes retrieves all postal codes with pagination
+func (h *LocationHandler) GetAllPostalCodes(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	postalCodes, err := h.locationService.PostalCodes().GetAll(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetAllPostalCodes")
+	}
+
+	return c.JSON(postalCodes)
+}
+
+// GetPostalCodesByLocation retrieves postal codes by location parameters
+func (h *LocationHandler) GetPostalCodesByLocation(c *fiber.Ctx) error {
+	// Extract location parameters from query
+	countryCode := c.Query("country_code")
+	regionCode := c.Query("region_code")
+	cityCode := c.Query("city_code")
+	areaCode := c.Query("area_code")
+
+	postalCodes, err := h.locationService.PostalCodes().GetByLocation(c.Context(), countryCode, regionCode, cityCode, areaCode)
+	if err != nil {
+		return h.handleError(c, err, "GetPostalCodesByLocation")
+	}
+
+	return c.JSON(fiber.Map{
+		"postal_codes": postalCodes,
+	})
+}
+
+// CreatePostalCode creates a new postal code
+func (h *LocationHandler) CreatePostalCode(c *fiber.Ctx) error {
+	var req dtos.CreatePostalCodeRequest
+	if err := h.validateRequest(c, &req); err != nil {
+		return err
+	}
+
+	postalCode, err := h.locationService.PostalCodes().Create(c.Context(), &req)
+	if err != nil {
+		return h.handleError(c, err, "CreatePostalCode")
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(postalCode)
+}
+
+// UpdatePostalCode updates a postal code
+func (h *LocationHandler) UpdatePostalCode(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Postal code ID is required",
+			},
+		})
+	}
+
+	var req dtos.UpdatePostalCodeRequest
+	if err := h.validateRequest(c, &req); err != nil {
+		return err
+	}
+
+	postalCode, err := h.locationService.PostalCodes().Update(c.Context(), id, &req)
+	if err != nil {
+		return h.handleError(c, err, "UpdatePostalCode")
+	}
+
+	return c.JSON(postalCode)
+}
+
+// DeletePostalCode deletes a postal code
+func (h *LocationHandler) DeletePostalCode(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Postal code ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.PostalCodes().Delete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "DeletePostalCode")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// LocationType Handlers
+
+// GetLocationTypeByCode retrieves a location type by code
+func (h *LocationHandler) GetLocationTypeByCode(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location type code is required",
+			},
+		})
+	}
+
+	locationType, err := h.locationService.LocationTypes().GetByCode(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "GetLocationTypeByCode")
+	}
+
+	return c.JSON(locationType)
+}
+
+// GetAllLocationTypes retrieves all location types with pagination
+func (h *LocationHandler) GetAllLocationTypes(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	locationTypes, err := h.locationService.LocationTypes().GetAll(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetAllLocationTypes")
+	}
+
+	return c.JSON(locationTypes)
+}
+
+// CreateLocationType creates a new location type
+func (h *LocationHandler) CreateLocationType(c *fiber.Ctx) error {
+	var req dtos.CreateLocationTypeRequest
+	if err := h.validateRequest(c, &req); err != nil {
+		return err
+	}
+
+	locationType, err := h.locationService.LocationTypes().Create(c.Context(), &req)
+	if err != nil {
+		return h.handleError(c, err, "CreateLocationType")
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(locationType)
+}
+
+// UpdateLocationType updates a location type
+func (h *LocationHandler) UpdateLocationType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location type code is required",
+			},
+		})
+	}
+
+	var req dtos.UpdateLocationTypeRequest
+	if err := h.validateRequest(c, &req); err != nil {
+		return err
+	}
+
+	locationType, err := h.locationService.LocationTypes().Update(c.Context(), code, &req)
+	if err != nil {
+		return h.handleError(c, err, "UpdateLocationType")
+	}
+
+	return c.JSON(locationType)
+}
+
+// DeleteLocationType deletes a location type
+func (h *LocationHandler) DeleteLocationType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location type code is required",
+			},
+		})
+	}
+
+	err := h.locationService.LocationTypes().Delete(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "DeleteLocationType")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}

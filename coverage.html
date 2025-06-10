@@ -1,0 +1,571 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>v1: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">/Users/avinash/Developer/Projects/prayog/prayog-serviceability-service/internal/services/v1/partner_http_client.go (71.9%)</option>
+				
+				<option value="file1">/Users/avinash/Developer/Projects/prayog/prayog-serviceability-service/internal/services/v1/partner_validation_config.go (75.0%)</option>
+				
+				<option value="file2">/Users/avinash/Developer/Projects/prayog/prayog-serviceability-service/internal/services/v1/partner_validation_service.go (90.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package services
+
+import (
+        "context"
+        "fmt"
+        "io"
+        "log"
+        "math"
+        "math/rand"
+        "net"
+        "net/http"
+        "time"
+)
+
+// PartnerHTTPClient implements HTTPClient interface with timeout and retry logic
+type PartnerHTTPClient struct {
+        client        *http.Client
+        retryAttempts int
+        retryDelay    time.Duration
+        logger        *log.Logger
+}
+
+// NewPartnerHTTPClient creates a new HTTP client with timeout and retry configuration
+func NewPartnerHTTPClient(config PartnerValidationConfig, logger *log.Logger) HTTPClient <span class="cov8" title="1">{
+        // Create HTTP client with timeout and connection pooling
+        transport := &amp;http.Transport{
+                DialContext: (&amp;net.Dialer{
+                        Timeout:   10 * time.Second, // Connection timeout
+                        KeepAlive: 30 * time.Second, // Keep-alive timeout
+                }).DialContext,
+                TLSHandshakeTimeout:   10 * time.Second,
+                ResponseHeaderTimeout: 15 * time.Second,
+                ExpectContinueTimeout: 1 * time.Second,
+                MaxIdleConns:          100,
+                MaxIdleConnsPerHost:   10,
+                IdleConnTimeout:       90 * time.Second,
+        }
+
+        client := &amp;http.Client{
+                Transport: transport,
+                Timeout:   config.RequestTimeout,
+        }
+
+        return &amp;PartnerHTTPClient{
+                client:        client,
+                retryAttempts: config.RetryAttempts,
+                retryDelay:    config.RetryDelay,
+                logger:        logger,
+        }
+}</span>
+
+// Get performs HTTP GET request with retry logic and timeout handling
+func (c *PartnerHTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, error) <span class="cov8" title="1">{
+        var lastErr error
+
+        for attempt := 0; attempt &lt;= c.retryAttempts; attempt++ </span><span class="cov8" title="1">{
+                // Check if context is already cancelled
+                select </span>{
+                case &lt;-ctx.Done():<span class="cov0" title="0">
+                        return nil, fmt.Errorf("request cancelled: %w", ctx.Err())</span>
+                default:<span class="cov8" title="1"></span>
+                }
+
+                // Log attempt
+                <span class="cov8" title="1">if attempt &gt; 0 </span><span class="cov8" title="1">{
+                        c.logger.Printf("HTTP GET retry attempt %d/%d for URL: %s", attempt, c.retryAttempts, url)
+                }</span> else<span class="cov8" title="1"> {
+                        c.logger.Printf("HTTP GET request to URL: %s", url)
+                }</span>
+
+                // Create request with context
+                <span class="cov8" title="1">req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to create request: %w", err)
+                }</span>
+
+                // Set headers
+                <span class="cov8" title="1">req.Header.Set("User-Agent", "prayog-serviceability-service/1.0")
+                req.Header.Set("Accept", "application/json")
+
+                // Execute request
+                startTime := time.Now()
+                resp, err := c.client.Do(req)
+                duration := time.Since(startTime)
+
+                // Log request duration
+                c.logger.Printf("HTTP GET request to %s completed in %v", url, duration)
+
+                if err != nil </span><span class="cov8" title="1">{
+                        lastErr = err
+                        c.logger.Printf("HTTP GET request failed (attempt %d/%d): %v", attempt+1, c.retryAttempts+1, err)
+
+                        // Check if error is retryable
+                        if !c.isRetryableError(err) </span><span class="cov0" title="0">{
+                                c.logger.Printf("Non-retryable error, aborting retries: %v", err)
+                                return nil, fmt.Errorf("HTTP request failed: %w", err)
+                        }</span>
+
+                        // Don't retry on last attempt
+                        <span class="cov8" title="1">if attempt &lt; c.retryAttempts </span><span class="cov8" title="1">{
+                                delay := c.calculateRetryDelay(attempt)
+                                c.logger.Printf("Retrying in %v...", delay)
+
+                                // Wait with context cancellation support
+                                select </span>{
+                                case &lt;-ctx.Done():<span class="cov8" title="1">
+                                        return nil, fmt.Errorf("request cancelled during retry wait: %w", ctx.Err())</span>
+                                case &lt;-time.After(delay):<span class="cov8" title="1"></span>
+                                        // Continue to next attempt
+                                }
+                        }
+                        <span class="cov8" title="1">continue</span>
+                }
+
+                // Read response body
+                <span class="cov8" title="1">body, err := io.ReadAll(resp.Body)
+                resp.Body.Close()
+
+                if err != nil </span><span class="cov0" title="0">{
+                        lastErr = fmt.Errorf("failed to read response body: %w", err)
+                        c.logger.Printf("Failed to read response body (attempt %d/%d): %v", attempt+1, c.retryAttempts+1, err)
+
+                        // Don't retry on last attempt
+                        if attempt &lt; c.retryAttempts </span><span class="cov0" title="0">{
+                                delay := c.calculateRetryDelay(attempt)
+                                c.logger.Printf("Retrying in %v...", delay)
+
+                                select </span>{
+                                case &lt;-ctx.Done():<span class="cov0" title="0">
+                                        return nil, fmt.Errorf("request cancelled during retry wait: %w", ctx.Err())</span>
+                                case &lt;-time.After(delay):<span class="cov0" title="0">
+                                        continue</span>
+                                }
+                        }
+                        <span class="cov0" title="0">continue</span>
+                }
+
+                // Create response headers map
+                <span class="cov8" title="1">headers := make(map[string]string)
+                for key, values := range resp.Header </span><span class="cov8" title="1">{
+                        if len(values) &gt; 0 </span><span class="cov8" title="1">{
+                                headers[key] = values[0]
+                        }</span>
+                }
+
+                <span class="cov8" title="1">response := &amp;HTTPResponse{
+                        StatusCode: resp.StatusCode,
+                        Body:       body,
+                        Headers:    headers,
+                }
+
+                c.logger.Printf("HTTP GET request successful: status=%d, body_size=%d", resp.StatusCode, len(body))
+
+                // Check if we should retry based on status code
+                if c.shouldRetryStatus(resp.StatusCode) </span><span class="cov8" title="1">{
+                        if attempt &lt; c.retryAttempts </span><span class="cov8" title="1">{
+                                c.logger.Printf("Retryable status code %d, retrying...", resp.StatusCode)
+                                delay := c.calculateRetryDelay(attempt)
+
+                                select </span>{
+                                case &lt;-ctx.Done():<span class="cov0" title="0">
+                                        return nil, fmt.Errorf("request cancelled during retry wait: %w", ctx.Err())</span>
+                                case &lt;-time.After(delay):<span class="cov8" title="1">
+                                        continue</span>
+                                }
+                        } else<span class="cov8" title="1"> {
+                                // Retries exhausted with retryable status code
+                                lastErr = fmt.Errorf("server returned retryable status %d", resp.StatusCode)
+                                continue</span>
+                        }
+                }
+
+                <span class="cov8" title="1">return response, nil</span>
+        }
+
+        // All retries exhausted
+        <span class="cov8" title="1">if lastErr != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("HTTP request failed after %d attempts: %w", c.retryAttempts+1, lastErr)
+        }</span>
+
+        <span class="cov0" title="0">return nil, fmt.Errorf("HTTP request failed after %d attempts", c.retryAttempts+1)</span>
+}
+
+// isRetryableError determines if an error is worth retrying
+func (c *PartnerHTTPClient) isRetryableError(err error) bool <span class="cov8" title="1">{
+        // Network errors are generally retryable
+        if netErr, ok := err.(net.Error); ok </span><span class="cov8" title="1">{
+                // Timeout errors are retryable
+                if netErr.Timeout() </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+                // Temporary network errors are retryable
+                <span class="cov0" title="0">if netErr.Temporary() </span><span class="cov0" title="0">{
+                        return true
+                }</span>
+        }
+
+        // Connection refused, DNS errors, etc. are retryable
+        <span class="cov0" title="0">if _, ok := err.(*net.OpError); ok </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        // Context cancellation is not retryable
+        <span class="cov0" title="0">if err == context.Canceled || err == context.DeadlineExceeded </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        // Default to not retryable for unknown errors
+        <span class="cov0" title="0">return false</span>
+}
+
+// shouldRetryStatus determines if an HTTP status code should trigger a retry
+func (c *PartnerHTTPClient) shouldRetryStatus(statusCode int) bool <span class="cov8" title="1">{
+        switch statusCode </span>{
+        case http.StatusInternalServerError, // 500
+                http.StatusBadGateway,                    // 502
+                http.StatusServiceUnavailable,            // 503
+                http.StatusGatewayTimeout,                // 504
+                http.StatusInsufficientStorage,           // 507
+                http.StatusNetworkAuthenticationRequired:<span class="cov8" title="1"> // 511
+                return true</span>
+        case http.StatusTooManyRequests:<span class="cov0" title="0"> // 429
+                return true</span>
+        default:<span class="cov8" title="1">
+                return false</span>
+        }
+}
+
+// calculateRetryDelay calculates exponential backoff delay with jitter
+func (c *PartnerHTTPClient) calculateRetryDelay(attempt int) time.Duration <span class="cov8" title="1">{
+        // Exponential backoff: base_delay * 2^attempt
+        baseDelay := c.retryDelay
+        exponentialDelay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt)))
+
+        // Cap the delay at 30 seconds
+        maxDelay := 30 * time.Second
+        if exponentialDelay &gt; maxDelay </span><span class="cov0" title="0">{
+                exponentialDelay = maxDelay
+        }</span>
+
+        // Add jitter (±25% of the delay) to prevent thundering herd
+        <span class="cov8" title="1">jitterRange := float64(exponentialDelay) * 0.25
+        jitter := time.Duration(rand.Float64()*jitterRange*2 - jitterRange)
+
+        finalDelay := exponentialDelay + jitter
+
+        // Ensure minimum delay of 100ms
+        minDelay := 100 * time.Millisecond
+        if finalDelay &lt; minDelay </span><span class="cov8" title="1">{
+                finalDelay = minDelay
+        }</span>
+
+        <span class="cov8" title="1">return finalDelay</span>
+}
+
+// GetMetrics returns HTTP client metrics for monitoring
+func (c *PartnerHTTPClient) GetMetrics() map[string]interface{} <span class="cov0" title="0">{
+        return map[string]interface{}{
+                "retry_attempts": c.retryAttempts,
+                "retry_delay":    c.retryDelay.String(),
+                "timeout":        c.client.Timeout.String(),
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package services
+
+import (
+        "os"
+        "strconv"
+        "time"
+
+        "prayog-serviceability-service/internal/shared/constants/v1"
+)
+
+// LoadPartnerValidationConfig loads configuration from environment variables
+func LoadPartnerValidationConfig() PartnerValidationConfig <span class="cov8" title="1">{
+        config := PartnerValidationConfig{
+                BaseURL:        getEnvString(constants.EnvPrayogBaseURL, ""),
+                RequestTimeout: getEnvDuration("PARTNER_VALIDATION_TIMEOUT", 30*time.Second),
+                RetryAttempts:  getEnvInt("PARTNER_VALIDATION_RETRY_ATTEMPTS", 3),
+                RetryDelay:     getEnvDuration("PARTNER_VALIDATION_RETRY_DELAY", 1*time.Second),
+        }
+
+        // Validate required configuration
+        if config.BaseURL == "" </span><span class="cov8" title="1">{
+                config.BaseURL = "http://localhost:8080" // Default for development
+        }</span>
+
+        <span class="cov8" title="1">return config</span>
+}
+
+// getEnvString returns environment variable value as string with fallback
+func getEnvString(key, fallback string) string <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return fallback</span>
+}
+
+// getEnvInt returns environment variable value as int with fallback
+func getEnvInt(key string, fallback int) int <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov0" title="0">{
+                if intValue, err := strconv.Atoi(value); err == nil </span><span class="cov0" title="0">{
+                        return intValue
+                }</span>
+        }
+        <span class="cov8" title="1">return fallback</span>
+}
+
+// getEnvDuration returns environment variable value as time.Duration with fallback
+func getEnvDuration(key string, fallback time.Duration) time.Duration <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov0" title="0">{
+                if duration, err := time.ParseDuration(value); err == nil </span><span class="cov0" title="0">{
+                        return duration
+                }</span>
+        }
+        <span class="cov8" title="1">return fallback</span>
+}
+
+// GetDefaultConfig returns a default configuration for testing and development
+func GetDefaultConfig() PartnerValidationConfig <span class="cov8" title="1">{
+        return PartnerValidationConfig{
+                BaseURL:        "http://localhost:8080",
+                RequestTimeout: 30 * time.Second,
+                RetryAttempts:  3,
+                RetryDelay:     1 * time.Second,
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package services
+
+import (
+        "context"
+        "log"
+        "time"
+
+        "prayog-serviceability-service/internal/shared/constants/v1"
+)
+
+// PartnerValidationService defines the interface for partner validation operations
+type PartnerValidationService interface {
+        // ValidatePartner validates if a partner exists and is active
+        // Returns INVALID_PARTNER error if validation fails
+        ValidatePartner(ctx context.Context, partnerID string) error
+}
+
+// PartnerValidationServiceImpl implements the PartnerValidationService interface
+type PartnerValidationServiceImpl struct {
+        baseURL string
+        client  HTTPClient
+        logger  *log.Logger
+}
+
+// HTTPClient defines the interface for HTTP operations
+type HTTPClient interface {
+        Get(ctx context.Context, url string) (*HTTPResponse, error)
+}
+
+// HTTPResponse represents an HTTP response
+type HTTPResponse struct {
+        StatusCode int
+        Body       []byte
+        Headers    map[string]string
+}
+
+// PartnerValidationConfig holds configuration for the partner validation service
+type PartnerValidationConfig struct {
+        BaseURL        string
+        RequestTimeout time.Duration
+        RetryAttempts  int
+        RetryDelay     time.Duration
+}
+
+// NewPartnerValidationService creates a new instance of PartnerValidationService
+func NewPartnerValidationService(config PartnerValidationConfig, client HTTPClient, logger *log.Logger) PartnerValidationService <span class="cov8" title="1">{
+        if config.RequestTimeout == 0 </span><span class="cov0" title="0">{
+                config.RequestTimeout = 30 * time.Second
+        }</span>
+        <span class="cov8" title="1">if config.RetryAttempts == 0 </span><span class="cov0" title="0">{
+                config.RetryAttempts = 3
+        }</span>
+        <span class="cov8" title="1">if config.RetryDelay == 0 </span><span class="cov0" title="0">{
+                config.RetryDelay = 1 * time.Second
+        }</span>
+
+        <span class="cov8" title="1">return &amp;PartnerValidationServiceImpl{
+                baseURL: config.BaseURL,
+                client:  client,
+                logger:  logger,
+        }</span>
+}
+
+// ValidatePartner validates if a partner exists and is active by calling the Partner API
+func (s *PartnerValidationServiceImpl) ValidatePartner(ctx context.Context, partnerID string) error <span class="cov8" title="1">{
+        if partnerID == "" </span><span class="cov8" title="1">{
+                s.logger.Printf("Partner validation failed: empty partner ID")
+                return NewPartnerValidationError(constants.ErrorCodeInvalidPartner, "Partner ID cannot be empty", nil)
+        }</span>
+
+        <span class="cov8" title="1">url := s.baseURL + "/partner/v1/partners/" + partnerID
+        s.logger.Printf("Validating partner %s at URL: %s", partnerID, url)
+
+        // Create context with timeout
+        ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+        defer cancel()
+
+        response, err := s.client.Get(ctx, url)
+        if err != nil </span><span class="cov8" title="1">{
+                s.logger.Printf("Partner validation failed for %s: %v", partnerID, err)
+                return NewPartnerValidationError(constants.ErrorCodePartnerServiceError, "Failed to validate partner", err)
+        }</span>
+
+        // Handle response based on status code
+        <span class="cov8" title="1">switch response.StatusCode </span>{
+        case constants.StatusOK:<span class="cov8" title="1">
+                s.logger.Printf("Partner %s validation successful", partnerID)
+                return nil</span>
+        case constants.StatusNotFound:<span class="cov8" title="1">
+                s.logger.Printf("Partner %s not found", partnerID)
+                return NewPartnerValidationError(constants.ErrorCodeInvalidPartner, "Partner not found", nil)</span>
+        case constants.StatusUnauthorized:<span class="cov8" title="1">
+                s.logger.Printf("Unauthorized access when validating partner %s", partnerID)
+                return NewPartnerValidationError(constants.ErrorCodeAuthFailed, "Unauthorized access to partner service", nil)</span>
+        default:<span class="cov8" title="1">
+                s.logger.Printf("Partner validation failed for %s with status %d", partnerID, response.StatusCode)
+                return NewPartnerValidationError(constants.ErrorCodePartnerServiceError, "Partner service returned error", nil)</span>
+        }
+}
+
+// PartnerValidationError represents an error that occurred during partner validation
+type PartnerValidationError struct {
+        Code    string
+        Message string
+        Cause   error
+}
+
+// Error implements the error interface
+func (e *PartnerValidationError) Error() string <span class="cov8" title="1">{
+        if e.Cause != nil </span><span class="cov8" title="1">{
+                return e.Message + ": " + e.Cause.Error()
+        }</span>
+        <span class="cov8" title="1">return e.Message</span>
+}
+
+// NewPartnerValidationError creates a new PartnerValidationError
+func NewPartnerValidationError(code, message string, cause error) *PartnerValidationError <span class="cov8" title="1">{
+        return &amp;PartnerValidationError{
+                Code:    code,
+                Message: message,
+                Cause:   cause,
+        }
+}</span>
+
+// GetErrorCode returns the error code for the validation error
+func (e *PartnerValidationError) GetErrorCode() string <span class="cov8" title="1">{
+        return e.Code
+}</span>
+
+// Unwrap returns the underlying cause error
+func (e *PartnerValidationError) Unwrap() error <span class="cov8" title="1">{
+        return e.Cause
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

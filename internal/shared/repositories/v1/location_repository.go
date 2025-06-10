@@ -70,15 +70,18 @@ type AreaRepository interface {
 
 // PostalCodeRepository defines the interface for postal code operations
 type PostalCodeRepository interface {
+	GetByID(ctx context.Context, id string) (*models.PostalCode, error)
 	GetByCode(ctx context.Context, code string) (*models.PostalCode, error)
 	GetByCodeAndCountry(ctx context.Context, code, countryCode string) (*models.PostalCode, error)
-	GetByAreaID(ctx context.Context, areaID uint) ([]models.PostalCode, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.PostalCode, int64, error)
+	GetByLocation(ctx context.Context, countryCode, regionCode, cityCode, areaCode string) ([]models.PostalCode, error)
+	GetByAreaID(ctx context.Context, areaID string) ([]models.PostalCode, error)
 	GetLocationHierarchy(ctx context.Context, postalCode, countryCode string) (*models.LocationHierarchy, error)
 	ValidatePostalCode(ctx context.Context, postalCode, countryCode string) (*models.LocationValidationResult, error)
 	IsActive(ctx context.Context, postalCode, countryCode string) (bool, error)
 	Create(ctx context.Context, postalCode *models.PostalCode) error
 	Update(ctx context.Context, postalCode *models.PostalCode) error
-	Delete(ctx context.Context, id uint) error
+	Delete(ctx context.Context, id string) error
 	BulkCreate(ctx context.Context, postalCodes []models.PostalCode) error
 }
 
@@ -94,7 +97,7 @@ type PostalCodeAliasRepository interface {
 // LocationTypeRepository defines the interface for location type operations
 type LocationTypeRepository interface {
 	GetByCode(ctx context.Context, code string) (*models.LocationType, error)
-	GetAll(ctx context.Context) ([]models.LocationType, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.LocationType, int64, error)
 	Create(ctx context.Context, locationType *models.LocationType) error
 	Update(ctx context.Context, locationType *models.LocationType) error
 	Delete(ctx context.Context, code string) error

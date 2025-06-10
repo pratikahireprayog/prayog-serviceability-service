@@ -98,5 +98,44 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 		areas.Get("/city/:cityId", handler.GetAreasByCityID)
 	}
 
+	// PostalCode routes
+	postalCodes := router.Group("/postal-codes")
+	{
+		postalCodes.Get("/", handler.GetAllPostalCodes)
+		postalCodes.Post("/",
+			validationMiddleware.ValidateBody(&dtos.CreatePostalCodeRequest{}),
+			handler.CreatePostalCode)
+		postalCodes.Get("/:id",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
+			handler.GetPostalCodeByID)
+		postalCodes.Put("/:id",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
+			validationMiddleware.ValidateBody(&dtos.UpdatePostalCodeRequest{}),
+			handler.UpdatePostalCode)
+		postalCodes.Delete("/:id",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
+			handler.DeletePostalCode)
+		postalCodes.Get("/location", handler.GetPostalCodesByLocation)
+	}
+
+	// LocationType routes
+	locationTypes := router.Group("/location-types")
+	{
+		locationTypes.Get("/", handler.GetAllLocationTypes)
+		locationTypes.Post("/",
+			validationMiddleware.ValidateBody(&dtos.CreateLocationTypeRequest{}),
+			handler.CreateLocationType)
+		locationTypes.Get("/:code",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
+			handler.GetLocationTypeByCode)
+		locationTypes.Put("/:code",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
+			validationMiddleware.ValidateBody(&dtos.UpdateLocationTypeRequest{}),
+			handler.UpdateLocationType)
+		locationTypes.Delete("/:code",
+			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
+			handler.DeleteLocationType)
+	}
+
 	logger.Info("Location routes registered successfully")
 }

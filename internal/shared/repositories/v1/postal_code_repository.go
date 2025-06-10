@@ -25,10 +25,10 @@ func (r *postalCodeRepository) GetByCode(ctx context.Context, code string) (*mod
 	var postalCode models.PostalCode
 
 	err := r.db.WithContext(ctx).
+		Preload("Country").
+		Preload("Region").
+		Preload("City").
 		Preload("Area").
-		Preload("Area.City").
-		Preload("Area.City.Region").
-		Preload("Area.City.Region.Country").
 		Where("code = ? AND is_active = ?", strings.ToUpper(code), true).
 		First(&postalCode).Error
 
@@ -40,6 +40,89 @@ func (r *postalCodeRepository) GetByCode(ctx context.Context, code string) (*mod
 	}
 
 	return &postalCode, nil
+}
+
+// GetByID retrieves a postal code by its ID
+func (r *postalCodeRepository) GetByID(ctx context.Context, id string) (*models.PostalCode, error) {
+	var postalCode models.PostalCode
+
+	err := r.db.WithContext(ctx).
+		Preload("Country").
+		Preload("Region").
+		Preload("City").
+		Preload("Area").
+		Where("id = ? AND is_active = ?", id, true).
+		First(&postalCode).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("postal code with ID %s not found", id)
+		}
+		return nil, fmt.Errorf("failed to get postal code: %w", err)
+	}
+
+	return &postalCode, nil
+}
+
+// GetAll retrieves all postal codes with pagination
+func (r *postalCodeRepository) GetAll(ctx context.Context, offset, limit int) ([]models.PostalCode, int64, error) {
+	var postalCodes []models.PostalCode
+	var total int64
+
+	// Get total count
+	err := r.db.WithContext(ctx).Model(&models.PostalCode{}).Where("is_active = ?", true).Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count postal codes: %w", err)
+	}
+
+	// Get paginated results
+	err = r.db.WithContext(ctx).
+		Preload("Country").
+		Preload("Region").
+		Preload("City").
+		Preload("Area").
+		Where("is_active = ?", true).
+		Offset(offset).
+		Limit(limit).
+		Find(&postalCodes).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get postal codes: %w", err)
+	}
+
+	return postalCodes, total, nil
+}
+
+// GetByLocation retrieves postal codes by location hierarchy
+func (r *postalCodeRepository) GetByLocation(ctx context.Context, countryCode, regionCode, cityCode, areaCode string) ([]models.PostalCode, error) {
+	var postalCodes []models.PostalCode
+	query := r.db.WithContext(ctx).
+		Preload("Country").
+		Preload("Region").
+		Preload("City").
+		Preload("Area").
+		Where("is_active = ?", true)
+
+	// Add filters based on provided location codes
+	if countryCode != "" {
+		query = query.Where("country_code = ?", strings.ToUpper(countryCode))
+	}
+	if regionCode != "" {
+		query = query.Where("region_code = ?", strings.ToUpper(regionCode))
+	}
+	if cityCode != "" {
+		query = query.Where("city_code = ?", strings.ToUpper(cityCode))
+	}
+	if areaCode != "" {
+		query = query.Where("area_code = ?", strings.ToUpper(areaCode))
+	}
+
+	err := query.Find(&postalCodes).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get postal codes by location: %w", err)
+	}
+
+	return postalCodes, nil
 }
 
 // GetByCodeAndCountry retrieves a postal code by code and country
@@ -70,15 +153,19 @@ func (r *postalCodeRepository) GetByCodeAndCountry(ctx context.Context, code, co
 }
 
 // GetByAreaID retrieves all postal codes for an area
-func (r *postalCodeRepository) GetByAreaID(ctx context.Context, areaID uint) ([]models.PostalCode, error) {
+func (r *postalCodeRepository) GetByAreaID(ctx context.Context, areaID string) ([]models.PostalCode, error) {
 	var postalCodes []models.PostalCode
 
 	err := r.db.WithContext(ctx).
+		Preload("Country").
+		Preload("Region").
+		Preload("City").
+		Preload("Area").
 		Where("area_id = ? AND is_active = ?", areaID, true).
 		Find(&postalCodes).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get postal codes for area %d: %w", areaID, err)
+		return nil, fmt.Errorf("failed to get postal codes for area %s: %w", areaID, err)
 	}
 
 	return postalCodes, nil
@@ -206,13 +293,13 @@ func (r *postalCodeRepository) Update(ctx context.Context, postalCode *models.Po
 }
 
 // Delete deletes a postal code
-func (r *postalCodeRepository) Delete(ctx context.Context, id uint) error {
-	result := r.db.WithContext(ctx).Delete(&models.PostalCode{}, id)
+func (r *postalCodeRepository) Delete(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.PostalCode{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete postal code: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("postal code not found")
+		return fmt.Errorf("postal code with ID %s not found", id)
 	}
 	return nil
 }

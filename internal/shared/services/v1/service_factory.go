@@ -6,23 +6,27 @@ import (
 
 // locationService implements the LocationService interface
 type locationService struct {
-	countryService    CountryService
-	regionTypeService RegionTypeService
-	regionService     RegionService
-	districtService   DistrictService
-	cityService       CityService
-	areaService       AreaService
+	countryService      CountryService
+	regionTypeService   RegionTypeService
+	regionService       RegionService
+	districtService     DistrictService
+	cityService         CityService
+	areaService         AreaService
+	postalCodeService   PostalCodeService
+	locationTypeService LocationTypeService
 }
 
 // NewLocationService creates a new location service with all sub-services
 func NewLocationService(repoFactory repositories.LocationRepository) LocationService {
 	return &locationService{
-		countryService:    NewCountryService(repoFactory.Countries()),
-		regionTypeService: NewRegionTypeService(repoFactory.RegionTypes()),
-		regionService:     NewRegionService(repoFactory.Regions()),
-		districtService:   NewDistrictService(repoFactory.Districts()),
-		cityService:       NewCityService(repoFactory.Cities()),
-		areaService:       NewAreaService(repoFactory.Areas()),
+		countryService:      NewCountryService(repoFactory.Countries()),
+		regionTypeService:   NewRegionTypeService(repoFactory.RegionTypes()),
+		regionService:       NewRegionService(repoFactory.Regions()),
+		districtService:     NewDistrictService(repoFactory.Districts()),
+		cityService:         NewCityService(repoFactory.Cities()),
+		areaService:         NewAreaService(repoFactory.Areas()),
+		postalCodeService:   NewPostalCodeService(repoFactory.PostalCodes(), repoFactory.Countries(), repoFactory.Regions(), repoFactory.Cities(), repoFactory.Areas()),
+		locationTypeService: NewLocationTypeService(repoFactory.LocationTypes()),
 	}
 }
 
@@ -54,4 +58,14 @@ func (s *locationService) Cities() CityService {
 // Areas returns the area service
 func (s *locationService) Areas() AreaService {
 	return s.areaService
+}
+
+// PostalCodes returns the postal code service
+func (s *locationService) PostalCodes() PostalCodeService {
+	return s.postalCodeService
+}
+
+// LocationTypes returns the location type service
+func (s *locationService) LocationTypes() LocationTypeService {
+	return s.locationTypeService
 }

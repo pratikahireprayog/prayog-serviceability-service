@@ -270,6 +270,90 @@ type AreaListResponse struct {
 	Pagination PaginationResponse `json:"pagination"`
 }
 
+// PostalCode DTOs
+
+// CreatePostalCodeRequest represents request to create a new postal code
+type CreatePostalCodeRequest struct {
+	Code          string     `json:"code" validate:"required,min=3,max=20"`
+	CountryID     *uuid.UUID `json:"country_id,omitempty"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	RegionID      *uuid.UUID `json:"region_id,omitempty"`
+	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityID        *uuid.UUID `json:"city_id,omitempty"`
+	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AreaID        *uuid.UUID `json:"area_id,omitempty"`
+	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20"`
+	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
+	IsActive      *bool      `json:"is_active,omitempty"`
+}
+
+// UpdatePostalCodeRequest represents request to update a postal code
+type UpdatePostalCodeRequest struct {
+	CountryID     *uuid.UUID `json:"country_id,omitempty"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	RegionID      *uuid.UUID `json:"region_id,omitempty"`
+	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityID        *uuid.UUID `json:"city_id,omitempty"`
+	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AreaID        *uuid.UUID `json:"area_id,omitempty"`
+	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20"`
+	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
+	IsActive      *bool      `json:"is_active,omitempty"`
+}
+
+// PostalCodeResponse represents postal code response
+type PostalCodeResponse struct {
+	ID            uuid.UUID        `json:"id"`
+	Code          string           `json:"code"`
+	CountryID     *uuid.UUID       `json:"country_id,omitempty"`
+	CountryCode   *string          `json:"country_code,omitempty"`
+	RegionID      *uuid.UUID       `json:"region_id,omitempty"`
+	RegionCode    *string          `json:"region_code,omitempty"`
+	CityID        *uuid.UUID       `json:"city_id,omitempty"`
+	CityCode      *string          `json:"city_code,omitempty"`
+	AreaID        *uuid.UUID       `json:"area_id,omitempty"`
+	AreaCode      *string          `json:"area_code,omitempty"`
+	LocationScope *string          `json:"location_scope,omitempty"`
+	IsActive      bool             `json:"is_active"`
+	CreatedAt     time.Time        `json:"created_at"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+	Country       *CountryResponse `json:"country,omitempty"`
+	Region        *RegionResponse  `json:"region,omitempty"`
+	City          *CityResponse    `json:"city,omitempty"`
+	Area          *AreaResponse    `json:"area,omitempty"`
+}
+
+// PostalCodeListResponse represents list of postal codes with pagination
+type PostalCodeListResponse struct {
+	PostalCodes []PostalCodeResponse `json:"postal_codes"`
+	Pagination  PaginationResponse   `json:"pagination"`
+}
+
+// LocationType DTOs
+
+// CreateLocationTypeRequest represents request to create a new location type
+type CreateLocationTypeRequest struct {
+	Code        string  `json:"code" validate:"required,min=2,max=20,snake_case"`
+	Description *string `json:"description,omitempty" validate:"omitempty,max=500"`
+}
+
+// UpdateLocationTypeRequest represents request to update a location type
+type UpdateLocationTypeRequest struct {
+	Description *string `json:"description,omitempty" validate:"omitempty,max=500"`
+}
+
+// LocationTypeResponse represents location type response
+type LocationTypeResponse struct {
+	Code        string  `json:"code"`
+	Description *string `json:"description,omitempty"`
+}
+
+// LocationTypeListResponse represents list of location types with pagination
+type LocationTypeListResponse struct {
+	LocationTypes []LocationTypeResponse `json:"location_types"`
+	Pagination    PaginationResponse     `json:"pagination"`
+}
+
 // ValidationErrorResponse represents validation error details
 type ValidationErrorResponse struct {
 	Error  string            `json:"error"`

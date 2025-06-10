@@ -69,6 +69,27 @@ type AreaService interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// PostalCodeService defines the business logic interface for postal code operations
+type PostalCodeService interface {
+	GetByID(ctx context.Context, id string) (*dtos.PostalCodeResponse, error)
+	GetByCode(ctx context.Context, code string) (*dtos.PostalCodeResponse, error)
+	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.PostalCodeListResponse, error)
+	GetByLocation(ctx context.Context, countryCode, regionCode, cityCode, areaCode string) ([]dtos.PostalCodeResponse, error)
+	Create(ctx context.Context, req *dtos.CreatePostalCodeRequest) (*dtos.PostalCodeResponse, error)
+	Update(ctx context.Context, id string, req *dtos.UpdatePostalCodeRequest) (*dtos.PostalCodeResponse, error)
+	Delete(ctx context.Context, id string) error
+	ValidateLocationScope(ctx context.Context, req *dtos.CreatePostalCodeRequest) error
+}
+
+// LocationTypeService defines the business logic interface for location type operations
+type LocationTypeService interface {
+	GetByCode(ctx context.Context, code string) (*dtos.LocationTypeResponse, error)
+	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationTypeListResponse, error)
+	Create(ctx context.Context, req *dtos.CreateLocationTypeRequest) (*dtos.LocationTypeResponse, error)
+	Update(ctx context.Context, code string, req *dtos.UpdateLocationTypeRequest) (*dtos.LocationTypeResponse, error)
+	Delete(ctx context.Context, code string) error
+}
+
 // LocationService provides a unified interface for all location services
 type LocationService interface {
 	Countries() CountryService
@@ -77,6 +98,8 @@ type LocationService interface {
 	Districts() DistrictService
 	Cities() CityService
 	Areas() AreaService
+	PostalCodes() PostalCodeService
+	LocationTypes() LocationTypeService
 }
 
 // Helper functions for model to DTO conversion
@@ -222,4 +245,53 @@ func AreaToResponse(area *models.Area) *dtos.AreaResponse {
 	}
 
 	return response
+}
+
+// PostalCodeToResponse converts a PostalCode model to PostalCodeResponse DTO
+func PostalCodeToResponse(postalCode *models.PostalCode) *dtos.PostalCodeResponse {
+	if postalCode == nil {
+		return nil
+	}
+	response := &dtos.PostalCodeResponse{
+		ID:            postalCode.ID,
+		Code:          postalCode.Code,
+		CountryID:     postalCode.CountryID,
+		CountryCode:   postalCode.CountryCode,
+		RegionID:      postalCode.RegionID,
+		RegionCode:    postalCode.RegionCode,
+		CityID:        postalCode.CityID,
+		CityCode:      postalCode.CityCode,
+		AreaID:        postalCode.AreaID,
+		AreaCode:      postalCode.AreaCode,
+		LocationScope: postalCode.LocationScope,
+		IsActive:      postalCode.IsActive,
+		CreatedAt:     postalCode.CreatedAt,
+		UpdatedAt:     postalCode.UpdatedAt,
+	}
+
+	if postalCode.Country != nil {
+		response.Country = CountryToResponse(postalCode.Country)
+	}
+	if postalCode.Region != nil {
+		response.Region = RegionToResponse(postalCode.Region)
+	}
+	if postalCode.City != nil {
+		response.City = CityToResponse(postalCode.City)
+	}
+	if postalCode.Area != nil {
+		response.Area = AreaToResponse(postalCode.Area)
+	}
+
+	return response
+}
+
+// LocationTypeToResponse converts a LocationType model to LocationTypeResponse DTO
+func LocationTypeToResponse(locationType *models.LocationType) *dtos.LocationTypeResponse {
+	if locationType == nil {
+		return nil
+	}
+	return &dtos.LocationTypeResponse{
+		Code:        locationType.Code,
+		Description: locationType.Description,
+	}
 }
