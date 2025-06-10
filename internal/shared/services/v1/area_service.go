@@ -123,6 +123,54 @@ func (s *areaService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all areas including soft-deleted ones (admin operation)
+func (s *areaService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.AreaListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	areas, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get areas with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.AreaResponse, len(areas))
+	for i, area := range areas {
+		if response := AreaToResponse(&area); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.AreaListResponse{
+		Success: true,
+		Message: "Areas retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // GetByCityID retrieves all areas for a specific city
 func (s *areaService) GetByCityID(ctx context.Context, cityID string) ([]dtos.AreaResponse, error) {
 	if strings.TrimSpace(cityID) == "" {
@@ -291,6 +339,70 @@ func (s *areaService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete area: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted area (admin operation)
+func (s *areaService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("area ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid area ID format: %w", err)
+	}
+
+	// Check if area exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("area not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("area not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activeArea, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activeArea != nil {
+			return fmt.Errorf("cannot restore area: another active area with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore area: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes an area (admin operation)
+func (s *areaService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("area ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid area ID format: %w", err)
+	}
+
+	// Check if area exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("area not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("area not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete area: %w", err)
 	}
 
 	return nil

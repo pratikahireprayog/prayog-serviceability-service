@@ -129,6 +129,54 @@ func (s *postalCodeService) GetAll(ctx context.Context, req *dtos.PaginationRequ
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all postal codes including soft-deleted ones (admin operation)
+func (s *postalCodeService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.PostalCodeListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	postalCodes, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get postal codes with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.PostalCodeResponse, len(postalCodes))
+	for i, postalCode := range postalCodes {
+		if response := PostalCodeToResponse(&postalCode); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.PostalCodeListResponse{
+		Success: true,
+		Message: "Postal codes retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // GetByLocation retrieves postal codes by location hierarchy
 func (s *postalCodeService) GetByLocation(ctx context.Context, countryCode, regionCode, cityCode, areaCode string) ([]dtos.PostalCodeResponse, error) {
 	// At least country code is required
@@ -421,6 +469,70 @@ func (s *postalCodeService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete postal code: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted postal code (admin operation)
+func (s *postalCodeService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("postal code ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid postal code ID format: %w", err)
+	}
+
+	// Check if postal code exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("postal code not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("postal code not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activePostalCode, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activePostalCode != nil {
+			return fmt.Errorf("cannot restore postal code: another active postal code with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore postal code: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a postal code (admin operation)
+func (s *postalCodeService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("postal code ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid postal code ID format: %w", err)
+	}
+
+	// Check if postal code exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("postal code not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("postal code not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete postal code: %w", err)
 	}
 
 	return nil

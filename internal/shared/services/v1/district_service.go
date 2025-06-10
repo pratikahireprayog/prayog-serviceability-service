@@ -126,6 +126,54 @@ func (s *districtService) GetAll(ctx context.Context, req *dtos.PaginationReques
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all districts including soft-deleted ones (admin operation)
+func (s *districtService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.DistrictListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	districts, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get districts with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.DistrictResponse, len(districts))
+	for i, district := range districts {
+		if response := DistrictToResponse(&district); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.DistrictListResponse{
+		Success: true,
+		Message: "Districts retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // GetByRegionID retrieves all districts for a specific region
 func (s *districtService) GetByRegionID(ctx context.Context, regionID string) ([]dtos.DistrictResponse, error) {
 	if strings.TrimSpace(regionID) == "" {
@@ -327,6 +375,70 @@ func (s *districtService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete district: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted district (admin operation)
+func (s *districtService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("district ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid district ID format: %w", err)
+	}
+
+	// Check if district exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("district not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("district not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activeDistrict, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activeDistrict != nil {
+			return fmt.Errorf("cannot restore district: another active district with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore district: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a district (admin operation)
+func (s *districtService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("district ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid district ID format: %w", err)
+	}
+
+	// Check if district exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("district not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("district not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete district: %w", err)
 	}
 
 	return nil

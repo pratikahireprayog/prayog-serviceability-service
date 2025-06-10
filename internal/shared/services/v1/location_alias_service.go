@@ -18,9 +18,12 @@ type LocationAliasService interface {
 	GetByEntityID(ctx context.Context, entityID string) ([]dtos.LocationAliasResponse, error)
 	GetByEntityTypeAndID(ctx context.Context, entityType string, entityID string) ([]dtos.LocationAliasResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationAliasListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationAliasListResponse, error)
 	Create(ctx context.Context, req *dtos.CreateLocationAliasRequest) (*dtos.LocationAliasResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateLocationAliasRequest) (*dtos.LocationAliasResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 	ValidateEntityExists(ctx context.Context, entityType string, entityID string) error
 }
 
@@ -109,6 +112,51 @@ func (s *locationAliasService) GetAll(ctx context.Context, req *dtos.PaginationR
 	return &dtos.LocationAliasListResponse{
 		Success: true,
 		Message: "Location aliases retrieved successfully",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
+// GetAllWithDeleted retrieves all location aliases including soft-deleted ones (admin operation)
+func (s *locationAliasService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationAliasListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	aliases, total, err := s.locationAliasRepo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		s.logger.WithError(err).Error("Failed to get all location aliases with deleted")
+		return nil, fmt.Errorf("failed to get location aliases with deleted: %w", err)
+	}
+
+	responses := make([]dtos.LocationAliasResponse, len(aliases))
+	for i, alias := range aliases {
+		responses[i] = *LocationAliasToResponse(&alias)
+	}
+
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.LocationAliasListResponse{
+		Success: true,
+		Message: "Location aliases retrieved successfully (including deleted)",
 		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
@@ -219,6 +267,42 @@ func (s *locationAliasService) Delete(ctx context.Context, id string) error {
 	}
 
 	s.logger.WithField("id", id).Info("Location alias deleted successfully")
+	return nil
+}
+
+// Restore restores a soft-deleted location alias (admin operation)
+func (s *locationAliasService) Restore(ctx context.Context, id string) error {
+	// Check if alias exists (including soft-deleted)
+	_, err := s.locationAliasRepo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("location alias not found: %w", err)
+	}
+
+	// Restore the alias
+	if err := s.locationAliasRepo.Restore(ctx, id); err != nil {
+		s.logger.WithError(err).WithField("id", id).Error("Failed to restore location alias")
+		return fmt.Errorf("failed to restore location alias: %w", err)
+	}
+
+	s.logger.WithField("id", id).Info("Location alias restored successfully")
+	return nil
+}
+
+// ForceDelete permanently deletes a location alias (admin operation)
+func (s *locationAliasService) ForceDelete(ctx context.Context, id string) error {
+	// Check if alias exists (including soft-deleted)
+	_, err := s.locationAliasRepo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("location alias not found: %w", err)
+	}
+
+	// Permanently delete the alias
+	if err := s.locationAliasRepo.ForceDelete(ctx, id); err != nil {
+		s.logger.WithError(err).WithField("id", id).Error("Failed to force delete location alias")
+		return fmt.Errorf("failed to force delete location alias: %w", err)
+	}
+
+	s.logger.WithField("id", id).Info("Location alias permanently deleted successfully")
 	return nil
 }
 

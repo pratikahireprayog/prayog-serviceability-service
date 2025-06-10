@@ -126,6 +126,54 @@ func (s *regionService) GetAll(ctx context.Context, req *dtos.PaginationRequest)
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all regions including soft-deleted ones (admin operation)
+func (s *regionService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.RegionListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	regions, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get regions with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.RegionResponse, len(regions))
+	for i, region := range regions {
+		if response := RegionToResponse(&region); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.RegionListResponse{
+		Success: true,
+		Message: "Regions retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // GetByCountryID retrieves all regions for a specific country
 func (s *regionService) GetByCountryID(ctx context.Context, countryID string) ([]dtos.RegionResponse, error) {
 	if strings.TrimSpace(countryID) == "" {
@@ -319,6 +367,70 @@ func (s *regionService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete region: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted region (admin operation)
+func (s *regionService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("region ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid region ID format: %w", err)
+	}
+
+	// Check if region exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("region not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("region not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activeRegion, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activeRegion != nil {
+			return fmt.Errorf("cannot restore region: another active region with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore region: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a region (admin operation)
+func (s *regionService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("region ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid region ID format: %w", err)
+	}
+
+	// Check if region exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("region not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("region not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete region: %w", err)
 	}
 
 	return nil

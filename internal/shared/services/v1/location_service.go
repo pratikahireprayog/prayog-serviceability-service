@@ -11,18 +11,24 @@ type CountryService interface {
 	GetByID(ctx context.Context, id string) (*dtos.CountryResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.CountryResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error)
 	Create(ctx context.Context, req *dtos.CreateCountryRequest) (*dtos.CountryResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateCountryRequest) (*dtos.CountryResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 }
 
 // RegionTypeService defines the business logic interface for region type operations
 type RegionTypeService interface {
 	GetByCode(ctx context.Context, code string) (*dtos.RegionTypeResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.RegionTypeListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.RegionTypeListResponse, error)
 	Create(ctx context.Context, req *dtos.CreateRegionTypeRequest) (*dtos.RegionTypeResponse, error)
 	Update(ctx context.Context, code string, req *dtos.UpdateRegionTypeRequest) (*dtos.RegionTypeResponse, error)
 	Delete(ctx context.Context, code string) error
+	Restore(ctx context.Context, code string) error
+	ForceDelete(ctx context.Context, code string) error
 }
 
 // RegionService defines the business logic interface for region operations
@@ -30,10 +36,13 @@ type RegionService interface {
 	GetByID(ctx context.Context, id string) (*dtos.RegionResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.RegionResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.RegionListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.RegionListResponse, error)
 	GetByCountryID(ctx context.Context, countryID string) ([]dtos.RegionResponse, error)
 	Create(ctx context.Context, req *dtos.CreateRegionRequest) (*dtos.RegionResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateRegionRequest) (*dtos.RegionResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 }
 
 // DistrictService defines the business logic interface for district operations
@@ -41,10 +50,13 @@ type DistrictService interface {
 	GetByID(ctx context.Context, id string) (*dtos.DistrictResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.DistrictResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.DistrictListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.DistrictListResponse, error)
 	GetByRegionID(ctx context.Context, regionID string) ([]dtos.DistrictResponse, error)
 	Create(ctx context.Context, req *dtos.CreateDistrictRequest) (*dtos.DistrictResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateDistrictRequest) (*dtos.DistrictResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 }
 
 // CityService defines the business logic interface for city operations
@@ -52,10 +64,13 @@ type CityService interface {
 	GetByID(ctx context.Context, id string) (*dtos.CityResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.CityResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CityListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CityListResponse, error)
 	GetByRegionID(ctx context.Context, regionID string) ([]dtos.CityResponse, error)
 	Create(ctx context.Context, req *dtos.CreateCityRequest) (*dtos.CityResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateCityRequest) (*dtos.CityResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 }
 
 // AreaService defines the business logic interface for area operations
@@ -63,10 +78,13 @@ type AreaService interface {
 	GetByID(ctx context.Context, id string) (*dtos.AreaResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.AreaResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.AreaListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.AreaListResponse, error)
 	GetByCityID(ctx context.Context, cityID string) ([]dtos.AreaResponse, error)
 	Create(ctx context.Context, req *dtos.CreateAreaRequest) (*dtos.AreaResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdateAreaRequest) (*dtos.AreaResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 }
 
 // PostalCodeService defines the business logic interface for postal code operations
@@ -74,10 +92,13 @@ type PostalCodeService interface {
 	GetByID(ctx context.Context, id string) (*dtos.PostalCodeResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.PostalCodeResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.PostalCodeListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.PostalCodeListResponse, error)
 	GetByLocation(ctx context.Context, countryCode, regionCode, cityCode, areaCode string) ([]dtos.PostalCodeResponse, error)
 	Create(ctx context.Context, req *dtos.CreatePostalCodeRequest) (*dtos.PostalCodeResponse, error)
 	Update(ctx context.Context, id string, req *dtos.UpdatePostalCodeRequest) (*dtos.PostalCodeResponse, error)
 	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 	ValidateLocationScope(ctx context.Context, req *dtos.CreatePostalCodeRequest) error
 }
 
@@ -85,9 +106,12 @@ type PostalCodeService interface {
 type LocationTypeService interface {
 	GetByCode(ctx context.Context, code string) (*dtos.LocationTypeResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationTypeListResponse, error)
+	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationTypeListResponse, error)
 	Create(ctx context.Context, req *dtos.CreateLocationTypeRequest) (*dtos.LocationTypeResponse, error)
 	Update(ctx context.Context, code string, req *dtos.UpdateLocationTypeRequest) (*dtos.LocationTypeResponse, error)
 	Delete(ctx context.Context, code string) error
+	Restore(ctx context.Context, code string) error
+	ForceDelete(ctx context.Context, code string) error
 }
 
 // LocationService provides a unified interface for all location services

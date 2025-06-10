@@ -91,6 +91,54 @@ func (s *locationTypeService) GetAll(ctx context.Context, req *dtos.PaginationRe
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all location types including soft-deleted ones (admin operation)
+func (s *locationTypeService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.LocationTypeListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	locationTypes, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get location types with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.LocationTypeResponse, len(locationTypes))
+	for i, locationType := range locationTypes {
+		if response := LocationTypeToResponse(&locationType); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.LocationTypeListResponse{
+		Success: true,
+		Message: "Location types retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // validateSnakeCase validates if a string is in snake_case format
 func (s *locationTypeService) validateSnakeCase(code string) error {
 	// Snake case: lowercase letters, numbers, and underscores only
@@ -210,6 +258,64 @@ func (s *locationTypeService) Delete(ctx context.Context, code string) error {
 	err = s.repo.Delete(ctx, code)
 	if err != nil {
 		return fmt.Errorf("failed to delete location type: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted location type (admin operation)
+func (s *locationTypeService) Restore(ctx context.Context, code string) error {
+	if strings.TrimSpace(code) == "" {
+		return fmt.Errorf("location type code cannot be empty")
+	}
+
+	// Normalize code
+	code = strings.ToLower(strings.TrimSpace(code))
+
+	// Check if location type exists (including soft-deleted)
+	existing, err := s.repo.GetByCodeWithDeleted(ctx, code)
+	if err != nil {
+		return fmt.Errorf("location type not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("location type not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	activeLocationType, err := s.repo.GetByCode(ctx, code)
+	if err == nil && activeLocationType != nil {
+		return fmt.Errorf("cannot restore location type: another active location type with code '%s' already exists", code)
+	}
+
+	err = s.repo.Restore(ctx, code)
+	if err != nil {
+		return fmt.Errorf("failed to restore location type: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a location type (admin operation)
+func (s *locationTypeService) ForceDelete(ctx context.Context, code string) error {
+	if strings.TrimSpace(code) == "" {
+		return fmt.Errorf("location type code cannot be empty")
+	}
+
+	// Normalize code
+	code = strings.ToLower(strings.TrimSpace(code))
+
+	// Check if location type exists (including soft-deleted)
+	existing, err := s.repo.GetByCodeWithDeleted(ctx, code)
+	if err != nil {
+		return fmt.Errorf("location type not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("location type not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, code)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete location type: %w", err)
 	}
 
 	return nil

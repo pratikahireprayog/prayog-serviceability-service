@@ -222,7 +222,7 @@ func (h *LocationHandler) UpdateCountry(c *fiber.Ctx) error {
 	return c.JSON(country)
 }
 
-// DeleteCountry deletes a country
+// DeleteCountry soft deletes a country
 func (h *LocationHandler) DeleteCountry(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -239,7 +239,10 @@ func (h *LocationHandler) DeleteCountry(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteCountry")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Country soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // RegionType Handlers
@@ -316,7 +319,7 @@ func (h *LocationHandler) UpdateRegionType(c *fiber.Ctx) error {
 	return c.JSON(regionType)
 }
 
-// DeleteRegionType deletes a region type
+// DeleteRegionType soft deletes a region type
 func (h *LocationHandler) DeleteRegionType(c *fiber.Ctx) error {
 	code := c.Params("code")
 	if strings.TrimSpace(code) == "" {
@@ -333,7 +336,10 @@ func (h *LocationHandler) DeleteRegionType(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteRegionType")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Region type soft deleted successfully",
+		"code":    code,
+	})
 }
 
 // Region Handlers
@@ -454,7 +460,7 @@ func (h *LocationHandler) UpdateRegion(c *fiber.Ctx) error {
 	return c.JSON(region)
 }
 
-// DeleteRegion deletes a region
+// DeleteRegion soft deletes a region
 func (h *LocationHandler) DeleteRegion(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -471,7 +477,10 @@ func (h *LocationHandler) DeleteRegion(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteRegion")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Region soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // District Handlers
@@ -592,7 +601,7 @@ func (h *LocationHandler) UpdateDistrict(c *fiber.Ctx) error {
 	return c.JSON(district)
 }
 
-// DeleteDistrict deletes a district
+// DeleteDistrict soft deletes a district
 func (h *LocationHandler) DeleteDistrict(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -609,7 +618,10 @@ func (h *LocationHandler) DeleteDistrict(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteDistrict")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "District soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // City Handlers
@@ -730,7 +742,7 @@ func (h *LocationHandler) UpdateCity(c *fiber.Ctx) error {
 	return c.JSON(city)
 }
 
-// DeleteCity deletes a city
+// DeleteCity soft deletes a city
 func (h *LocationHandler) DeleteCity(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -747,7 +759,10 @@ func (h *LocationHandler) DeleteCity(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteCity")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "City soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // Area Handlers
@@ -868,7 +883,7 @@ func (h *LocationHandler) UpdateArea(c *fiber.Ctx) error {
 	return c.JSON(area)
 }
 
-// DeleteArea deletes an area
+// DeleteArea soft deletes an area
 func (h *LocationHandler) DeleteArea(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -885,7 +900,10 @@ func (h *LocationHandler) DeleteArea(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeleteArea")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Area soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // PostalCode Handlers
@@ -982,7 +1000,7 @@ func (h *LocationHandler) UpdatePostalCode(c *fiber.Ctx) error {
 	return c.JSON(postalCode)
 }
 
-// DeletePostalCode deletes a postal code
+// DeletePostalCode soft deletes a postal code
 func (h *LocationHandler) DeletePostalCode(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if strings.TrimSpace(id) == "" {
@@ -999,7 +1017,10 @@ func (h *LocationHandler) DeletePostalCode(c *fiber.Ctx) error {
 		return h.handleError(c, err, "DeletePostalCode")
 	}
 
-	return c.Status(fiber.StatusNoContent).Send(nil)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Postal code soft deleted successfully",
+		"id":      id,
+	})
 }
 
 // LocationType Handlers
@@ -1076,7 +1097,7 @@ func (h *LocationHandler) UpdateLocationType(c *fiber.Ctx) error {
 	return c.JSON(locationType)
 }
 
-// DeleteLocationType deletes a location type
+// DeleteLocationType soft deletes a location type
 func (h *LocationHandler) DeleteLocationType(c *fiber.Ctx) error {
 	code := c.Params("code")
 	if strings.TrimSpace(code) == "" {
@@ -1091,6 +1112,524 @@ func (h *LocationHandler) DeleteLocationType(c *fiber.Ctx) error {
 	err := h.locationService.LocationTypes().Delete(c.Context(), code)
 	if err != nil {
 		return h.handleError(c, err, "DeleteLocationType")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Location type soft deleted successfully",
+		"code":    code,
+	})
+}
+
+// Admin Endpoints for Soft Delete Management
+
+// Admin Country Endpoints
+
+// GetDeletedCountries retrieves all soft-deleted countries for admin users
+func (h *LocationHandler) GetDeletedCountries(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	countries, err := h.locationService.Countries().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedCountries")
+	}
+
+	return c.JSON(countries)
+}
+
+// RestoreCountry restores a soft-deleted country for admin users
+func (h *LocationHandler) RestoreCountry(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Country ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Countries().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreCountry")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Country restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteCountry permanently deletes a country for admin users
+func (h *LocationHandler) ForceDeleteCountry(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Country ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Countries().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteCountry")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin RegionType Endpoints
+
+// GetDeletedRegionTypes retrieves all soft-deleted region types for admin users
+func (h *LocationHandler) GetDeletedRegionTypes(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	regionTypes, err := h.locationService.RegionTypes().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedRegionTypes")
+	}
+
+	return c.JSON(regionTypes)
+}
+
+// RestoreRegionType restores a soft-deleted region type for admin users
+func (h *LocationHandler) RestoreRegionType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Region type code is required",
+			},
+		})
+	}
+
+	err := h.locationService.RegionTypes().Restore(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "RestoreRegionType")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Region type restored successfully",
+		"code":    code,
+	})
+}
+
+// ForceDeleteRegionType permanently deletes a region type for admin users
+func (h *LocationHandler) ForceDeleteRegionType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Region type code is required",
+			},
+		})
+	}
+
+	err := h.locationService.RegionTypes().ForceDelete(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteRegionType")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin Region Endpoints
+
+// GetDeletedRegions retrieves all soft-deleted regions for admin users
+func (h *LocationHandler) GetDeletedRegions(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	regions, err := h.locationService.Regions().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedRegions")
+	}
+
+	return c.JSON(regions)
+}
+
+// RestoreRegion restores a soft-deleted region for admin users
+func (h *LocationHandler) RestoreRegion(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Region ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Regions().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreRegion")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Region restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteRegion permanently deletes a region for admin users
+func (h *LocationHandler) ForceDeleteRegion(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Region ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Regions().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteRegion")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin District Endpoints
+
+// GetDeletedDistricts retrieves all soft-deleted districts for admin users
+func (h *LocationHandler) GetDeletedDistricts(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	districts, err := h.locationService.Districts().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedDistricts")
+	}
+
+	return c.JSON(districts)
+}
+
+// RestoreDistrict restores a soft-deleted district for admin users
+func (h *LocationHandler) RestoreDistrict(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "District ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Districts().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreDistrict")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "District restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteDistrict permanently deletes a district for admin users
+func (h *LocationHandler) ForceDeleteDistrict(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "District ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Districts().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteDistrict")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin City Endpoints
+
+// GetDeletedCities retrieves all soft-deleted cities for admin users
+func (h *LocationHandler) GetDeletedCities(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	cities, err := h.locationService.Cities().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedCities")
+	}
+
+	return c.JSON(cities)
+}
+
+// RestoreCity restores a soft-deleted city for admin users
+func (h *LocationHandler) RestoreCity(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "City ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Cities().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreCity")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "City restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteCity permanently deletes a city for admin users
+func (h *LocationHandler) ForceDeleteCity(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "City ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Cities().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteCity")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin Area Endpoints
+
+// GetDeletedAreas retrieves all soft-deleted areas for admin users
+func (h *LocationHandler) GetDeletedAreas(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	areas, err := h.locationService.Areas().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedAreas")
+	}
+
+	return c.JSON(areas)
+}
+
+// RestoreArea restores a soft-deleted area for admin users
+func (h *LocationHandler) RestoreArea(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Area ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Areas().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreArea")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Area restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteArea permanently deletes an area for admin users
+func (h *LocationHandler) ForceDeleteArea(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Area ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.Areas().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteArea")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin PostalCode Endpoints
+
+// GetDeletedPostalCodes retrieves all soft-deleted postal codes for admin users
+func (h *LocationHandler) GetDeletedPostalCodes(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	postalCodes, err := h.locationService.PostalCodes().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedPostalCodes")
+	}
+
+	return c.JSON(postalCodes)
+}
+
+// RestorePostalCode restores a soft-deleted postal code for admin users
+func (h *LocationHandler) RestorePostalCode(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Postal code ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.PostalCodes().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestorePostalCode")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Postal code restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeletePostalCode permanently deletes a postal code for admin users
+func (h *LocationHandler) ForceDeletePostalCode(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Postal code ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.PostalCodes().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeletePostalCode")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin LocationType Endpoints
+
+// GetDeletedLocationTypes retrieves all soft-deleted location types for admin users
+func (h *LocationHandler) GetDeletedLocationTypes(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	locationTypes, err := h.locationService.LocationTypes().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedLocationTypes")
+	}
+
+	return c.JSON(locationTypes)
+}
+
+// RestoreLocationType restores a soft-deleted location type for admin users
+func (h *LocationHandler) RestoreLocationType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location type code is required",
+			},
+		})
+	}
+
+	err := h.locationService.LocationTypes().Restore(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "RestoreLocationType")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Location type restored successfully",
+		"code":    code,
+	})
+}
+
+// ForceDeleteLocationType permanently deletes a location type for admin users
+func (h *LocationHandler) ForceDeleteLocationType(c *fiber.Ctx) error {
+	code := c.Params("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location type code is required",
+			},
+		})
+	}
+
+	err := h.locationService.LocationTypes().ForceDelete(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteLocationType")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Admin LocationAlias Endpoints
+
+// GetDeletedLocationAliases retrieves all soft-deleted location aliases for admin users
+func (h *LocationHandler) GetDeletedLocationAliases(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	locationAliases, err := h.locationService.LocationAliases().GetAllWithDeleted(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err, "GetDeletedLocationAliases")
+	}
+
+	return c.JSON(locationAliases)
+}
+
+// RestoreLocationAlias restores a soft-deleted location alias for admin users
+func (h *LocationHandler) RestoreLocationAlias(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location alias ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.LocationAliases().Restore(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "RestoreLocationAlias")
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Location alias restored successfully",
+		"id":      id,
+	})
+}
+
+// ForceDeleteLocationAlias permanently deletes a location alias for admin users
+func (h *LocationHandler) ForceDeleteLocationAlias(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "Location alias ID is required",
+			},
+		})
+	}
+
+	err := h.locationService.LocationAliases().ForceDelete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err, "ForceDeleteLocationAlias")
 	}
 
 	return c.Status(fiber.StatusNoContent).Send(nil)

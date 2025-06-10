@@ -118,6 +118,54 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all countries including soft-deleted ones (admin operation)
+func (s *countryService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	countries, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: "Countries retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // Create creates a new country
 func (s *countryService) Create(ctx context.Context, req *dtos.CreateCountryRequest) (*dtos.CountryResponse, error) {
 	if req == nil {
@@ -273,6 +321,70 @@ func (s *countryService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete country: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted country (admin operation)
+func (s *countryService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("country ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid country ID format: %w", err)
+	}
+
+	// Check if country exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("country not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("country not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activeCountry, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activeCountry != nil {
+			return fmt.Errorf("cannot restore country: another active country with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore country: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a country (admin operation)
+func (s *countryService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("country ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid country ID format: %w", err)
+	}
+
+	// Check if country exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("country not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("country not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete country: %w", err)
 	}
 
 	return nil

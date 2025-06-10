@@ -6,18 +6,28 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
+
+// SoftDeleteModel defines the interface for models with soft delete capability
+type SoftDeleteModel interface {
+	SoftDelete(db *gorm.DB) error
+	Restore(db *gorm.DB) error
+	IsDeletedRecord() bool
+}
 
 // Country represents a country in the location hierarchy
 type Country struct {
-	ID           uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Code         string    `json:"code" gorm:"unique;not null;size:10" validate:"required,min=2,max=10,alpha"`
-	Name         string    `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
-	CurrencyCode *string   `json:"currency_code,omitempty" gorm:"size:3" validate:"omitempty,len=3,alpha"`
-	PhoneCode    *string   `json:"phone_code,omitempty" gorm:"size:10" validate:"omitempty,min=1,max=10"`
-	IsActive     bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt    time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt    time.Time `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	Code         string     `json:"code" gorm:"unique;not null;size:10" validate:"required,min=2,max=10,alpha"`
+	Name         string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
+	CurrencyCode *string    `json:"currency_code,omitempty" gorm:"size:3" validate:"omitempty,len=3,alpha"`
+	PhoneCode    *string    `json:"phone_code,omitempty" gorm:"size:10" validate:"omitempty,min=1,max=10"`
+	IsActive     bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt    time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt    time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted    bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Regions []Region `json:"regions,omitempty" gorm:"foreignKey:CountryID"`
@@ -26,6 +36,31 @@ type Country struct {
 // TableName returns the table name for Country
 func (Country) TableName() string {
 	return "country"
+}
+
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (Country) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the country as deleted without removing it from database
+func (c *Country) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	c.DeletedAt = &now
+	c.IsDeleted = true
+	return db.Save(c).Error
+}
+
+// Restore un-deletes a soft-deleted country
+func (c *Country) Restore(db *gorm.DB) error {
+	c.DeletedAt = nil
+	c.IsDeleted = false
+	return db.Save(c).Error
+}
+
+// IsDeletedRecord checks if the country is soft-deleted
+func (c *Country) IsDeletedRecord() bool {
+	return c.IsDeleted
 }
 
 // Validate performs custom business rule validation for Country
@@ -40,17 +75,24 @@ func (c *Country) Validate() error {
 		return fmt.Errorf("currency code must be exactly 3 characters")
 	}
 
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if c.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted country")
+	}
+
 	return nil
 }
 
 // RegionType represents the type of region (state, province, etc.)
 type RegionType struct {
-	Code        string    `json:"code" gorm:"primaryKey;size:20" validate:"required,min=2,max=20,snake_case"`
-	Name        string    `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
-	Description *string   `json:"description,omitempty" gorm:"type:text" validate:"omitempty,max=500"`
-	IsActive    bool      `json:"is_active" gorm:"default:true"`
-	CreatedAt   time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt   time.Time `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	Code        string     `json:"code" gorm:"primaryKey;size:20" validate:"required,min=2,max=20,snake_case"`
+	Name        string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
+	Description *string    `json:"description,omitempty" gorm:"type:text" validate:"omitempty,max=500"`
+	IsActive    bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt   time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt   time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted   bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Regions []Region `json:"regions,omitempty" gorm:"foreignKey:RegionTypeCode"`
@@ -61,12 +103,43 @@ func (RegionType) TableName() string {
 	return "region_type"
 }
 
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (RegionType) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the region type as deleted without removing it from database
+func (rt *RegionType) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	rt.DeletedAt = &now
+	rt.IsDeleted = true
+	return db.Save(rt).Error
+}
+
+// Restore un-deletes a soft-deleted region type
+func (rt *RegionType) Restore(db *gorm.DB) error {
+	rt.DeletedAt = nil
+	rt.IsDeleted = false
+	return db.Save(rt).Error
+}
+
+// IsDeletedRecord checks if the region type is soft-deleted
+func (rt *RegionType) IsDeletedRecord() bool {
+	return rt.IsDeleted
+}
+
 // Validate performs custom business rule validation for RegionType
 func (rt *RegionType) Validate() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(rt.Code) {
 		return fmt.Errorf("region type code must be in snake_case format")
 	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if rt.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted region type")
+	}
+
 	return nil
 }
 
@@ -82,6 +155,8 @@ type Region struct {
 	IsActive       bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt      time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt      time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted      bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Country    *Country    `json:"country,omitempty" gorm:"foreignKey:CountryID;references:ID;constraint:OnDelete:CASCADE"`
@@ -95,6 +170,31 @@ func (Region) TableName() string {
 	return "region"
 }
 
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (Region) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the region as deleted without removing it from database
+func (r *Region) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	r.DeletedAt = &now
+	r.IsDeleted = true
+	return db.Save(r).Error
+}
+
+// Restore un-deletes a soft-deleted region
+func (r *Region) Restore(db *gorm.DB) error {
+	r.DeletedAt = nil
+	r.IsDeleted = false
+	return db.Save(r).Error
+}
+
+// IsDeletedRecord checks if the region is soft-deleted
+func (r *Region) IsDeletedRecord() bool {
+	return r.IsDeleted
+}
+
 // Validate performs custom business rule validation for Region
 func (r *Region) Validate() error {
 	// Validate snake_case format for code
@@ -105,6 +205,11 @@ func (r *Region) Validate() error {
 	// Validate that either both or neither country ID and code are provided
 	if (r.CountryID == nil) != (r.CountryCode == nil) {
 		return fmt.Errorf("country ID and country code must both be provided or both be nil")
+	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if r.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted region")
 	}
 
 	return nil
@@ -122,6 +227,8 @@ type District struct {
 	IsActive    bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt   time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt   time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted   bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Region  *Region  `json:"region,omitempty" gorm:"foreignKey:RegionID;references:ID;constraint:OnDelete:CASCADE"`
@@ -132,6 +239,56 @@ type District struct {
 // TableName returns the table name for District
 func (District) TableName() string {
 	return "district"
+}
+
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (District) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the district as deleted without removing it from database
+func (d *District) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	d.DeletedAt = &now
+	d.IsDeleted = true
+	return db.Save(d).Error
+}
+
+// Restore un-deletes a soft-deleted district
+func (d *District) Restore(db *gorm.DB) error {
+	d.DeletedAt = nil
+	d.IsDeleted = false
+	return db.Save(d).Error
+}
+
+// IsDeletedRecord checks if the district is soft-deleted
+func (d *District) IsDeletedRecord() bool {
+	return d.IsDeleted
+}
+
+// Validate performs custom business rule validation for District
+func (d *District) Validate() error {
+	// Validate snake_case format for code
+	if !isSnakeCase(d.Code) {
+		return fmt.Errorf("district code must be in snake_case format")
+	}
+
+	// Validate that either both or neither region ID and code are provided
+	if (d.RegionID == nil) != (d.RegionCode == nil) {
+		return fmt.Errorf("region ID and region code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither country ID and code are provided
+	if (d.CountryID == nil) != (d.CountryCode == nil) {
+		return fmt.Errorf("country ID and country code must both be provided or both be nil")
+	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if d.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted district")
+	}
+
+	return nil
 }
 
 // City represents a city in the location hierarchy
@@ -148,6 +305,8 @@ type City struct {
 	IsActive     bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt    time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt    time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted    bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Region   *Region   `json:"region,omitempty" gorm:"foreignKey:RegionID;references:ID;constraint:OnDelete:CASCADE"`
@@ -161,6 +320,61 @@ func (City) TableName() string {
 	return "city"
 }
 
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (City) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the city as deleted without removing it from database
+func (c *City) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	c.DeletedAt = &now
+	c.IsDeleted = true
+	return db.Save(c).Error
+}
+
+// Restore un-deletes a soft-deleted city
+func (c *City) Restore(db *gorm.DB) error {
+	c.DeletedAt = nil
+	c.IsDeleted = false
+	return db.Save(c).Error
+}
+
+// IsDeletedRecord checks if the city is soft-deleted
+func (c *City) IsDeletedRecord() bool {
+	return c.IsDeleted
+}
+
+// Validate performs custom business rule validation for City
+func (c *City) Validate() error {
+	// Validate snake_case format for code
+	if !isSnakeCase(c.Code) {
+		return fmt.Errorf("city code must be in snake_case format")
+	}
+
+	// Validate that either both or neither region ID and code are provided
+	if (c.RegionID == nil) != (c.RegionCode == nil) {
+		return fmt.Errorf("region ID and region code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither country ID and code are provided
+	if (c.CountryID == nil) != (c.CountryCode == nil) {
+		return fmt.Errorf("country ID and country code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither district ID and code are provided
+	if (c.DistrictID == nil) != (c.DistrictCode == nil) {
+		return fmt.Errorf("district ID and district code must both be provided or both be nil")
+	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if c.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted city")
+	}
+
+	return nil
+}
+
 // Area represents an area/district in the location hierarchy
 type Area struct {
 	ID        uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
@@ -171,6 +385,8 @@ type Area struct {
 	IsActive  bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	City        *City        `json:"city,omitempty" gorm:"foreignKey:CityID;references:ID;constraint:OnDelete:CASCADE"`
@@ -180,6 +396,51 @@ type Area struct {
 // TableName returns the table name for Area
 func (Area) TableName() string {
 	return "area"
+}
+
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (Area) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the area as deleted without removing it from database
+func (a *Area) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	a.DeletedAt = &now
+	a.IsDeleted = true
+	return db.Save(a).Error
+}
+
+// Restore un-deletes a soft-deleted area
+func (a *Area) Restore(db *gorm.DB) error {
+	a.DeletedAt = nil
+	a.IsDeleted = false
+	return db.Save(a).Error
+}
+
+// IsDeletedRecord checks if the area is soft-deleted
+func (a *Area) IsDeletedRecord() bool {
+	return a.IsDeleted
+}
+
+// Validate performs custom business rule validation for Area
+func (a *Area) Validate() error {
+	// Validate snake_case format for code
+	if !isSnakeCase(a.Code) {
+		return fmt.Errorf("area code must be in snake_case format")
+	}
+
+	// Validate that either both or neither city ID and code are provided
+	if (a.CityID == nil) != (a.CityCode == nil) {
+		return fmt.Errorf("city ID and city code must both be provided or both be nil")
+	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if a.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted area")
+	}
+
+	return nil
 }
 
 // PostalCode represents postal code information
@@ -198,6 +459,8 @@ type PostalCode struct {
 	IsActive      bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt     time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted     bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Country *Country `json:"country,omitempty" gorm:"foreignKey:CountryID;references:ID;constraint:OnDelete:CASCADE"`
@@ -209,6 +472,66 @@ type PostalCode struct {
 // TableName returns the table name for PostalCode
 func (PostalCode) TableName() string {
 	return "postal_code"
+}
+
+// DefaultScope applies default query conditions to filter out soft-deleted records
+func (PostalCode) DefaultScope(db *gorm.DB) *gorm.DB {
+	return db.Where("is_deleted = ?", false)
+}
+
+// SoftDelete marks the postal code as deleted without removing it from database
+func (p *PostalCode) SoftDelete(db *gorm.DB) error {
+	now := time.Now()
+	p.DeletedAt = &now
+	p.IsDeleted = true
+	return db.Save(p).Error
+}
+
+// Restore un-deletes a soft-deleted postal code
+func (p *PostalCode) Restore(db *gorm.DB) error {
+	p.DeletedAt = nil
+	p.IsDeleted = false
+	return db.Save(p).Error
+}
+
+// IsDeletedRecord checks if the postal code is soft-deleted
+func (p *PostalCode) IsDeletedRecord() bool {
+	return p.IsDeleted
+}
+
+// Validate performs custom business rule validation for PostalCode
+func (p *PostalCode) Validate() error {
+	// Basic format validation for postal code
+	if len(p.Code) < 1 || len(p.Code) > 20 {
+		return fmt.Errorf("postal code must be between 1 and 20 characters")
+	}
+
+	// Validate that either both or neither country ID and code are provided
+	if (p.CountryID == nil) != (p.CountryCode == nil) {
+		return fmt.Errorf("country ID and country code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither region ID and code are provided
+	if (p.RegionID == nil) != (p.RegionCode == nil) {
+		return fmt.Errorf("region ID and region code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither city ID and code are provided
+	if (p.CityID == nil) != (p.CityCode == nil) {
+		return fmt.Errorf("city ID and city code must both be provided or both be nil")
+	}
+
+	// Validate that either both or neither area ID and code are provided
+	if (p.AreaID == nil) != (p.AreaCode == nil) {
+		return fmt.Errorf("area ID and area code must both be provided or both be nil")
+	}
+
+	// Soft delete validation: cannot update essential fields of soft-deleted records
+	if p.IsDeleted {
+		return fmt.Errorf("cannot modify essential fields of a soft-deleted postal code")
+	}
+
+	return nil
 }
 
 // PostalCodeAlias represents alias names for postal codes

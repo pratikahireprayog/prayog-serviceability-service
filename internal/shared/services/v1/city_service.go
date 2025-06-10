@@ -123,6 +123,54 @@ func (s *cityService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (
 	}, nil
 }
 
+// GetAllWithDeleted retrieves all cities including soft-deleted ones (admin operation)
+func (s *cityService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CityListResponse, error) {
+	if req == nil {
+		req = &dtos.PaginationRequest{
+			Offset: 0,
+			Limit:  10,
+		}
+	}
+
+	// Validate pagination parameters
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+	if req.Limit < 1 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	cities, total, err := s.repo.GetAllWithDeleted(ctx, req.Offset, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cities with deleted: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CityResponse, len(cities))
+	for i, city := range cities {
+		if response := CityToResponse(&city); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	// Calculate pagination metadata
+	hasNext := int64(req.Offset+req.Limit) < total
+	hasPrevious := req.Offset > 0
+
+	return &dtos.CityListResponse{
+		Success: true,
+		Message: "Cities retrieved successfully (including deleted)",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      req.Offset,
+			Limit:       req.Limit,
+			Total:       total,
+			HasNext:     hasNext,
+			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+
 // GetByRegionID retrieves all cities for a specific region
 func (s *cityService) GetByRegionID(ctx context.Context, regionID string) ([]dtos.CityResponse, error) {
 	if strings.TrimSpace(regionID) == "" {
@@ -351,6 +399,70 @@ func (s *cityService) Delete(ctx context.Context, id string) error {
 	err = s.repo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete city: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a soft-deleted city (admin operation)
+func (s *cityService) Restore(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("city ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid city ID format: %w", err)
+	}
+
+	// Check if city exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("city not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("city not found")
+	}
+
+	// Check for unique constraint conflicts before restoration
+	if existing.Code != "" {
+		activeCity, err := s.repo.GetByCode(ctx, existing.Code)
+		if err == nil && activeCity != nil {
+			return fmt.Errorf("cannot restore city: another active city with code '%s' already exists", existing.Code)
+		}
+	}
+
+	err = s.repo.Restore(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to restore city: %w", err)
+	}
+
+	return nil
+}
+
+// ForceDelete permanently deletes a city (admin operation)
+func (s *cityService) ForceDelete(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("city ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid city ID format: %w", err)
+	}
+
+	// Check if city exists (including soft-deleted)
+	existing, err := s.repo.GetByIDWithDeleted(ctx, id)
+	if err != nil {
+		return fmt.Errorf("city not found: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("city not found")
+	}
+
+	err = s.repo.ForceDelete(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete city: %w", err)
 	}
 
 	return nil
