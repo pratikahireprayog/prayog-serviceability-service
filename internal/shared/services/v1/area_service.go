@@ -110,7 +110,9 @@ func (s *areaService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (
 	hasPrevious := req.Offset > 0
 
 	return &dtos.AreaListResponse{
-		Areas: responses,
+		Success: true,
+		Message: "Areas retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

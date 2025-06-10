@@ -78,7 +78,9 @@ func (s *locationTypeService) GetAll(ctx context.Context, req *dtos.PaginationRe
 	hasPrevious := req.Offset > 0
 
 	return &dtos.LocationTypeListResponse{
-		LocationTypes: responses,
+		Success: true,
+		Message: "Location types retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

@@ -116,7 +116,9 @@ func (s *postalCodeService) GetAll(ctx context.Context, req *dtos.PaginationRequ
 	hasPrevious := req.Offset > 0
 
 	return &dtos.PostalCodeListResponse{
-		PostalCodes: responses,
+		Success: true,
+		Message: "Postal codes retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

@@ -105,7 +105,9 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 	hasPrevious := req.Offset > 0
 
 	return &dtos.CountryListResponse{
-		Countries: responses,
+		Success: true,
+		Message: "Countries retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,
@@ -155,7 +157,7 @@ func (s *countryService) Create(ctx context.Context, req *dtos.CreateCountryRequ
 
 	// Set optional fields
 	if req.CurrencyCode != nil {
-		currencyCode := strings.ToUpper(strings.TrimSpace(*req.CurrencyCode))
+		currencyCode := strings.ToLower(strings.TrimSpace(*req.CurrencyCode))
 		if currencyCode != "" {
 			if len(currencyCode) != 3 {
 				return nil, fmt.Errorf("currency code must be 3 characters long")
@@ -216,7 +218,7 @@ func (s *countryService) Update(ctx context.Context, id string, req *dtos.Update
 	}
 
 	if req.CurrencyCode != nil {
-		currencyCode := strings.ToUpper(strings.TrimSpace(*req.CurrencyCode))
+		currencyCode := strings.ToLower(strings.TrimSpace(*req.CurrencyCode))
 		if currencyCode != "" && len(currencyCode) != 3 {
 			return nil, fmt.Errorf("currency code must be 3 characters long")
 		}

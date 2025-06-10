@@ -77,7 +77,9 @@ func (s *regionTypeService) GetAll(ctx context.Context, req *dtos.PaginationRequ
 	hasPrevious := req.Offset > 0
 
 	return &dtos.RegionTypeListResponse{
-		RegionTypes: responses,
+		Success: true,
+		Message: "Region types retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

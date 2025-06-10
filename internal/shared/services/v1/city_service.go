@@ -110,7 +110,9 @@ func (s *cityService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (
 	hasPrevious := req.Offset > 0
 
 	return &dtos.CityListResponse{
-		Cities: responses,
+		Success: true,
+		Message: "Cities retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

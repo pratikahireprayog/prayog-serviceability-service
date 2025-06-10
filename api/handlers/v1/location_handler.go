@@ -332,8 +332,10 @@ func (h *LocationHandler) GetRegionsByCountryID(c *fiber.Ctx) error {
 		return h.handleError(c, err)
 	}
 
-	return c.JSON(fiber.Map{
-		"regions": regions,
+	return c.JSON(dtos.StandardResponse{
+		Success: true,
+		Message: "Regions retrieved successfully",
+		Data:    regions,
 	})
 }
 
@@ -457,8 +459,10 @@ func (h *LocationHandler) GetDistrictsByRegionID(c *fiber.Ctx) error {
 		return h.handleError(c, err)
 	}
 
-	return c.JSON(fiber.Map{
-		"districts": districts,
+	return c.JSON(dtos.StandardResponse{
+		Success: true,
+		Message: "Districts retrieved successfully",
+		Data:    districts,
 	})
 }
 
@@ -582,8 +586,10 @@ func (h *LocationHandler) GetCitiesByRegionID(c *fiber.Ctx) error {
 		return h.handleError(c, err)
 	}
 
-	return c.JSON(fiber.Map{
-		"cities": cities,
+	return c.JSON(dtos.StandardResponse{
+		Success: true,
+		Message: "Cities retrieved successfully",
+		Data:    cities,
 	})
 }
 
@@ -707,8 +713,10 @@ func (h *LocationHandler) GetAreasByCityID(c *fiber.Ctx) error {
 		return h.handleError(c, err)
 	}
 
-	return c.JSON(fiber.Map{
-		"areas": areas,
+	return c.JSON(dtos.StandardResponse{
+		Success: true,
+		Message: "Areas retrieved successfully",
+		Data:    areas,
 	})
 }
 

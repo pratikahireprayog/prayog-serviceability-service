@@ -113,7 +113,9 @@ func (s *districtService) GetAll(ctx context.Context, req *dtos.PaginationReques
 	hasPrevious := req.Offset > 0
 
 	return &dtos.DistrictListResponse{
-		Districts: responses,
+		Success: true,
+		Message: "Districts retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

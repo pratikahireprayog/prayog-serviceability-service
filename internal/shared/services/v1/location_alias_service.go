@@ -107,7 +107,9 @@ func (s *locationAliasService) GetAll(ctx context.Context, req *dtos.PaginationR
 	hasPrevious := req.Offset > 0
 
 	return &dtos.LocationAliasListResponse{
-		LocationAliases: responses,
+		Success: true,
+		Message: "Location aliases retrieved successfully",
+		Data:    responses,
 		Pagination: dtos.PaginationResponse{
 			Offset:      req.Offset,
 			Limit:       req.Limit,

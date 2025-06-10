@@ -55,10 +55,8 @@ type CountryResponse struct {
 }
 
 // CountryListResponse represents list of countries with pagination
-type CountryListResponse struct {
-	Countries  []CountryResponse  `json:"countries"`
-	Pagination PaginationResponse `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[CountryResponse] instead
+type CountryListResponse = StandardListResponse[CountryResponse]
 
 // RegionType DTOs
 
@@ -88,10 +86,8 @@ type RegionTypeResponse struct {
 }
 
 // RegionTypeListResponse represents list of region types with pagination
-type RegionTypeListResponse struct {
-	RegionTypes []RegionTypeResponse `json:"region_types"`
-	Pagination  PaginationResponse   `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[RegionTypeResponse] instead
+type RegionTypeListResponse = StandardListResponse[RegionTypeResponse]
 
 // Region DTOs
 
@@ -130,10 +126,8 @@ type RegionResponse struct {
 }
 
 // RegionListResponse represents list of regions with pagination
-type RegionListResponse struct {
-	Regions    []RegionResponse   `json:"regions"`
-	Pagination PaginationResponse `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[RegionResponse] instead
+type RegionListResponse = StandardListResponse[RegionResponse]
 
 // District DTOs
 
@@ -175,10 +169,8 @@ type DistrictResponse struct {
 }
 
 // DistrictListResponse represents list of districts with pagination
-type DistrictListResponse struct {
-	Districts  []DistrictResponse `json:"districts"`
-	Pagination PaginationResponse `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[DistrictResponse] instead
+type DistrictListResponse = StandardListResponse[DistrictResponse]
 
 // City DTOs
 
@@ -227,10 +219,8 @@ type CityResponse struct {
 }
 
 // CityListResponse represents list of cities with pagination
-type CityListResponse struct {
-	Cities     []CityResponse     `json:"cities"`
-	Pagination PaginationResponse `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[CityResponse] instead
+type CityListResponse = StandardListResponse[CityResponse]
 
 // Area DTOs
 
@@ -265,10 +255,8 @@ type AreaResponse struct {
 }
 
 // AreaListResponse represents list of areas with pagination
-type AreaListResponse struct {
-	Areas      []AreaResponse     `json:"areas"`
-	Pagination PaginationResponse `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[AreaResponse] instead
+type AreaListResponse = StandardListResponse[AreaResponse]
 
 // PostalCode DTOs
 
@@ -324,10 +312,8 @@ type PostalCodeResponse struct {
 }
 
 // PostalCodeListResponse represents list of postal codes with pagination
-type PostalCodeListResponse struct {
-	PostalCodes []PostalCodeResponse `json:"postal_codes"`
-	Pagination  PaginationResponse   `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[PostalCodeResponse] instead
+type PostalCodeListResponse = StandardListResponse[PostalCodeResponse]
 
 // LocationType DTOs
 
@@ -349,10 +335,8 @@ type LocationTypeResponse struct {
 }
 
 // LocationTypeListResponse represents list of location types with pagination
-type LocationTypeListResponse struct {
-	LocationTypes []LocationTypeResponse `json:"location_types"`
-	Pagination    PaginationResponse     `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[LocationTypeResponse] instead
+type LocationTypeListResponse = StandardListResponse[LocationTypeResponse]
 
 // LocationAlias DTOs
 
@@ -393,10 +377,8 @@ type LocationAliasResponse struct {
 }
 
 // LocationAliasListResponse represents list of location aliases with pagination
-type LocationAliasListResponse struct {
-	LocationAliases []LocationAliasResponse `json:"location_aliases"`
-	Pagination      PaginationResponse      `json:"pagination"`
-}
+// Deprecated: Use StandardListResponse[LocationAliasResponse] instead
+type LocationAliasListResponse = StandardListResponse[LocationAliasResponse]
 
 // ValidationErrorResponse represents validation error details
 type ValidationErrorResponse struct {
