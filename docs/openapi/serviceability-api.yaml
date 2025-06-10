@@ -73,8 +73,6 @@ tags:
     description: Partner service coverage management
   - name: serviceability
     description: Service area coverage checking
-  - name: partner-location-coverage
-    description: Partner service coverage management
 
 # Authentication Security Schemes
 security:
