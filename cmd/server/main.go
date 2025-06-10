@@ -15,12 +15,15 @@ import (
 	"prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
+	// NOTE: gRPC server imports are commented out for now
+	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
 )
 
 func main() {
 	// Initialize logger
 	logger := initLogger()
 	logger.Info("Starting Prayog Serviceability Service...")
+	logger.Info("Note: Starting with HTTP server only - gRPC server is disabled for now")
 
 	// Load configuration
 	appConfig, err := initConfig(logger)
@@ -47,10 +50,17 @@ func main() {
 	}
 
 	// Create HTTP server with all dependencies
+	// NOTE: Only HTTP server is initialized - gRPC server setup is commented out
 	server, err := initHTTPServer(appConfig, dbManager, integrationFactory, orchestrator, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize HTTP server")
 	}
+
+	// TODO: gRPC server initialization will be added here when needed
+	// grpcServer, err := initGRPCServer(appConfig, dbManager, integrationFactory, orchestrator, logger)
+	// if err != nil {
+	//     logger.WithError(err).Fatal("Failed to initialize gRPC server")
+	// }
 
 	// Setup graceful shutdown
 	setupGracefulShutdown(server, logger)
@@ -58,6 +68,7 @@ func main() {
 	// Start server
 	port := getPort(appConfig)
 	logger.WithField("port", port).Info("Starting HTTP server")
+	logger.Info("gRPC server is disabled - only HTTP endpoints are available")
 
 	if err := server.Start(fmt.Sprintf(":%d", port)); err != nil {
 		logger.WithError(err).Fatal("Failed to start HTTP server")
