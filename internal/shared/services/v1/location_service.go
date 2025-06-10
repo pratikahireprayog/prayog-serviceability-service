@@ -100,6 +100,7 @@ type LocationService interface {
 	Areas() AreaService
 	PostalCodes() PostalCodeService
 	LocationTypes() LocationTypeService
+	LocationAliases() LocationAliasService
 }
 
 // Helper functions for model to DTO conversion
@@ -294,4 +295,30 @@ func LocationTypeToResponse(locationType *models.LocationType) *dtos.LocationTyp
 		Code:        locationType.Code,
 		Description: locationType.Description,
 	}
+}
+
+// LocationAliasToResponse converts a LocationAlias model to LocationAliasResponse DTO
+func LocationAliasToResponse(alias *models.LocationAlias) *dtos.LocationAliasResponse {
+	if alias == nil {
+		return nil
+	}
+
+	response := &dtos.LocationAliasResponse{
+		ID:             alias.ID,
+		EntityTypeCode: alias.EntityTypeCode,
+		EntityType:     alias.EntityType,
+		EntityID:       alias.EntityID,
+		EntityCode:     alias.EntityCode,
+		AliasName:      alias.AliasName,
+		IsPrimary:      alias.IsPrimary,
+		IsActive:       alias.IsActive,
+		CreatedAt:      alias.CreatedAt,
+		UpdatedAt:      alias.UpdatedAt,
+	}
+
+	if alias.LocationType != nil {
+		response.LocationType = LocationTypeToResponse(alias.LocationType)
+	}
+
+	return response
 }

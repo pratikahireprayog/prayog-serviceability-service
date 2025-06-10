@@ -354,6 +354,50 @@ type LocationTypeListResponse struct {
 	Pagination    PaginationResponse     `json:"pagination"`
 }
 
+// LocationAlias DTOs
+
+// CreateLocationAliasRequest represents request to create a new location alias
+type CreateLocationAliasRequest struct {
+	EntityTypeCode *string   `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityType     *string   `json:"entity_type,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityID       uuid.UUID `json:"entity_id" validate:"required"`
+	EntityCode     *string   `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AliasName      string    `json:"alias_name" validate:"required,min=1,max=100"`
+	IsPrimary      *bool     `json:"is_primary,omitempty"`
+	IsActive       *bool     `json:"is_active,omitempty"`
+}
+
+// UpdateLocationAliasRequest represents request to update a location alias
+type UpdateLocationAliasRequest struct {
+	EntityTypeCode *string `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityType     *string `json:"entity_type,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityCode     *string `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AliasName      *string `json:"alias_name,omitempty" validate:"omitempty,min=1,max=100"`
+	IsPrimary      *bool   `json:"is_primary,omitempty"`
+	IsActive       *bool   `json:"is_active,omitempty"`
+}
+
+// LocationAliasResponse represents location alias response
+type LocationAliasResponse struct {
+	ID             uuid.UUID             `json:"id"`
+	EntityTypeCode *string               `json:"entity_type_code,omitempty"`
+	EntityType     *string               `json:"entity_type,omitempty"`
+	EntityID       uuid.UUID             `json:"entity_id"`
+	EntityCode     *string               `json:"entity_code,omitempty"`
+	AliasName      string                `json:"alias_name"`
+	IsPrimary      bool                  `json:"is_primary"`
+	IsActive       bool                  `json:"is_active"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      time.Time             `json:"updated_at"`
+	LocationType   *LocationTypeResponse `json:"location_type,omitempty"`
+}
+
+// LocationAliasListResponse represents list of location aliases with pagination
+type LocationAliasListResponse struct {
+	LocationAliases []LocationAliasResponse `json:"location_aliases"`
+	Pagination      PaginationResponse      `json:"pagination"`
+}
+
 // ValidationErrorResponse represents validation error details
 type ValidationErrorResponse struct {
 	Error  string            `json:"error"`

@@ -105,13 +105,15 @@ type LocationTypeRepository interface {
 
 // LocationAliasRepository defines the interface for location alias operations
 type LocationAliasRepository interface {
-	GetByID(ctx context.Context, id uint) (*models.LocationAlias, error)
-	GetByEntityTypeAndID(ctx context.Context, entityType string, entityID uint) ([]models.LocationAlias, error)
+	GetByID(ctx context.Context, id string) (*models.LocationAlias, error)
+	GetByEntityTypeAndID(ctx context.Context, entityType string, entityID string) ([]models.LocationAlias, error)
 	GetByAliasName(ctx context.Context, aliasName string) (*models.LocationAlias, error)
-	GetPrimaryAlias(ctx context.Context, entityType string, entityID uint) (*models.LocationAlias, error)
+	GetPrimaryAlias(ctx context.Context, entityType string, entityID string) (*models.LocationAlias, error)
+	GetAllByEntityID(ctx context.Context, entityID string) ([]models.LocationAlias, error)
+	GetAll(ctx context.Context, offset, limit int) ([]models.LocationAlias, int64, error)
 	Create(ctx context.Context, alias *models.LocationAlias) error
 	Update(ctx context.Context, alias *models.LocationAlias) error
-	Delete(ctx context.Context, id uint) error
+	Delete(ctx context.Context, id string) error
 }
 
 // PartnerLocationCoverageRepository defines the interface for partner location coverage operations

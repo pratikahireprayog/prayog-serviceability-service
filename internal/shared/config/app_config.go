@@ -48,15 +48,17 @@ type AppConfig struct {
 // DSN returns the PostgreSQL connection string
 func (db *DBConfig) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%s user=%s dbname=%s password=%s sslmode=require",
-		db.Host, fmt.Sprintf("%d", db.Port), db.User, db.Name, db.Password,
+		"host=%s port=%d user=%s dbname=%s password=%s sslmode=%s",
+		db.Host, db.Port, db.User, db.Name, db.Password, db.SSLMode,
 	)
 }
 
 // LoadAppConfig loads all application configuration from environment variables
 func LoadAppConfig() (*AppConfig, error) {
-	// Load .env file
-	godotenv.Load()
+	// Load .env file - ignore error if file doesn't exist
+	if err := godotenv.Load(); err != nil {
+		// Silently continue - .env file is optional if environment variables are set
+	}
 
 	config := &AppConfig{
 		DB: DBConfig{
@@ -65,7 +67,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			User:            getAppEnvOrDefault("DB_USER", "postgres"),
 			Password:        getAppEnvOrDefault("DB_PASSWORD", "postgres"),
 			Name:            getAppEnvOrDefault("DB_NAME", "serviceability_db"),
-			SSLMode:         getAppEnvOrDefault("DB_SSL_MODE", "disable"),
+			SSLMode:         getAppEnvOrDefault("DB_SSL_MODE", "require"),
 			MaxOpenConns:    getAppEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getAppEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
 			ConnMaxLifetime: getAppEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),

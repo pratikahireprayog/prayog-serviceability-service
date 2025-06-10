@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -17,6 +18,7 @@ import (
 	"prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
+	servicesv1 "prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
@@ -121,15 +123,14 @@ func (s *Server) setupRoutes() error {
 		s.logger,
 	)
 
-	// Setup health check routes at root level
-	routes.RegisterHealthRoutes(s.app, healthHandler)
+	// Create global serviceability group
+	serviceabilityGroup := s.app.Group("/serviceability")
 
-	// Create API group
-	api := s.app.Group("/api")
-	v1 := api.Group("/v1")
+	// Setup health check routes under serviceability prefix
+	routes.RegisterHealthRoutes(serviceabilityGroup, healthHandler)
 
-	// Create serviceability group
-	serviceabilityGroup := v1.Group("/serviceability")
+	// Create API version group under serviceability
+	v1 := serviceabilityGroup.Group("/v1")
 
 	// Create serviceability handler with all dependencies
 	serviceabilityHandler, err := s.createServiceabilityHandler()
@@ -137,11 +138,11 @@ func (s *Server) setupRoutes() error {
 		return fmt.Errorf("failed to create serviceability handler: %w", err)
 	}
 
-	// Register serviceability routes
-	routes.RegisterServiceabilityRoutes(serviceabilityGroup, serviceabilityHandler, s.logger)
+	// Register serviceability routes directly under /serviceability/v1/
+	routes.RegisterServiceabilityRoutes(v1, serviceabilityHandler, s.logger)
 
 	// Add a status route for the serviceability service
-	serviceabilityGroup.Get("/status", func(c *fiber.Ctx) error {
+	v1.Get("/status", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"service": "serviceability",
 			"status":  "available",
@@ -155,9 +156,17 @@ func (s *Server) setupRoutes() error {
 		return fmt.Errorf("failed to create location handler: %w", err)
 	}
 
-	// Register location routes under /api/v1/locations
-	locationGroup := v1.Group("/locations")
-	routes.RegisterLocationRoutes(locationGroup, locationHandler, s.logger)
+	// Register location routes under /serviceability/v1/
+	routes.RegisterLocationRoutes(v1, locationHandler, s.logger)
+
+	// Create partner location coverage handler and register routes
+	partnerLocationCoverageHandler, err := s.createPartnerLocationCoverageHandler()
+	if err != nil {
+		return fmt.Errorf("failed to create partner location coverage handler: %w", err)
+	}
+
+	// Register partner location coverage routes under /serviceability/v1/
+	routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
 
 	s.logger.Info("All routes configured successfully")
 	return nil
@@ -197,7 +206,7 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	repoFactory := repositories.NewRepositoryFactory(db)
 
 	// Create location service from repository factory
-	locationService := sharedServices.NewLocationService(repoFactory.GetLocationRepository())
+	locationService := sharedServices.NewLocationService(repoFactory.GetLocationRepository(), s.logger)
 
 	// Create location handler
 	locationHandler := handlers.NewLocationHandler(
@@ -207,6 +216,65 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	)
 
 	return locationHandler, nil
+}
+
+// createPartnerLocationCoverageHandler creates a partner location coverage handler with all dependencies
+func (s *Server) createPartnerLocationCoverageHandler() (*handlers.PartnerLocationCoverageHandler, error) {
+	// Check if database manager is available
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database manager is required for partner location coverage handler")
+	}
+
+	// Check if integration factory is available
+	if s.integrationFactory == nil {
+		return nil, fmt.Errorf("integration factory is required for partner location coverage handler")
+	}
+
+	// Create validator instance
+	validator := validator.New()
+
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection is not available")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Get partner location coverage repository
+	partnerLocationCoverageRepo := repoFactory.GetPartnerLocationCoverageRepository()
+
+	// Get location repository
+	locationRepo := repoFactory.GetLocationRepository()
+
+	// Create partner validation service
+	partnerValidationConfig := servicesv1.LoadPartnerValidationConfig()
+
+	// Create standard log.Logger for partner services
+	stdLogger := log.New(s.logger.WithField("component", "partner").WriterLevel(logrus.InfoLevel), "[partner] ", log.LstdFlags)
+
+	partnerHTTPClient := servicesv1.NewPartnerHTTPClient(partnerValidationConfig, stdLogger)
+	partnerValidationService := servicesv1.NewPartnerValidationService(
+		partnerValidationConfig,
+		partnerHTTPClient,
+		stdLogger,
+	)
+
+	// Create partner location coverage service
+	partnerLocationCoverageService := sharedServices.NewPartnerLocationCoverageService(
+		partnerLocationCoverageRepo,
+		locationRepo,
+		partnerValidationService,
+	)
+
+	// Create partner location coverage handler
+	partnerLocationCoverageHandler := handlers.NewPartnerLocationCoverageHandler(
+		partnerLocationCoverageService,
+		validator,
+		s.logger,
+	)
+
+	return partnerLocationCoverageHandler, nil
 }
 
 // customErrorHandler creates a custom error handler for Fiber

@@ -8,11 +8,6 @@ import (
 
 // RegisterHealthRoutes registers health check endpoints
 func RegisterHealthRoutes(router fiber.Router, healthHandler *handlers.HealthHandler) {
-	// Basic health endpoints
+	// Primary health endpoint under serviceability prefix
 	router.Get("/ping", healthHandler.Ping)
-	router.Get("/health", healthHandler.Health)
-
-	// Kubernetes probes
-	router.Get("/ready", healthHandler.Ready)
-	router.Get("/live", healthHandler.Live)
 }

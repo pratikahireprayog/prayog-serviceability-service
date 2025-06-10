@@ -8,6 +8,7 @@ import (
 	"prayog-serviceability-service/internal/shared/services/v1"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // LocationHandler handles location-related HTTP requests
@@ -762,6 +763,151 @@ func (h *LocationHandler) DeleteArea(c *fiber.Ctx) error {
 	}
 
 	err := h.locationService.Areas().Delete(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// Location Alias Handlers
+
+// CreateLocationAliasByEntityID creates a new location alias for a specific entity (nested POST)
+func (h *LocationHandler) CreateLocationAliasByEntityID(c *fiber.Ctx) error {
+	entityID := c.Params("entityID")
+	if strings.TrimSpace(entityID) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Entity ID is required",
+		})
+	}
+
+	var req dtos.CreateLocationAliasRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Set the entity ID from the URL parameter
+	req.EntityID = uuid.MustParse(entityID)
+
+	alias, err := h.locationService.LocationAliases().Create(c.Context(), &req)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(alias)
+}
+
+// GetLocationAliasesByEntityID retrieves all aliases for a specific entity (nested GET)
+func (h *LocationHandler) GetLocationAliasesByEntityID(c *fiber.Ctx) error {
+	entityID := c.Params("entityID")
+	if strings.TrimSpace(entityID) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Entity ID is required",
+		})
+	}
+
+	aliases, err := h.locationService.LocationAliases().GetByEntityID(c.Context(), entityID)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"location_aliases": aliases,
+	})
+}
+
+// GetLocationAliasesByEntityTypeAndID retrieves all aliases for a specific entity type and ID (nested GET with entity type)
+func (h *LocationHandler) GetLocationAliasesByEntityTypeAndID(c *fiber.Ctx) error {
+	entityType := c.Params("entityType")
+	entityID := c.Params("entityID")
+
+	if strings.TrimSpace(entityType) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Entity type is required",
+		})
+	}
+
+	if strings.TrimSpace(entityID) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Entity ID is required",
+		})
+	}
+
+	aliases, err := h.locationService.LocationAliases().GetByEntityTypeAndID(c.Context(), entityType, entityID)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"location_aliases": aliases,
+	})
+}
+
+// GetLocationAliasByID retrieves a location alias by ID (standalone GET)
+func (h *LocationHandler) GetLocationAliasByID(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Location alias ID is required",
+		})
+	}
+
+	alias, err := h.locationService.LocationAliases().GetByID(c.Context(), id)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(alias)
+}
+
+// GetAllLocationAliases retrieves all location aliases with pagination (standalone GET)
+func (h *LocationHandler) GetAllLocationAliases(c *fiber.Ctx) error {
+	pagination := h.parsePagination(c)
+
+	aliases, err := h.locationService.LocationAliases().GetAll(c.Context(), pagination)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(aliases)
+}
+
+// UpdateLocationAlias updates an existing location alias (standalone PUT)
+func (h *LocationHandler) UpdateLocationAlias(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Location alias ID is required",
+		})
+	}
+
+	var req dtos.UpdateLocationAliasRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	alias, err := h.locationService.LocationAliases().Update(c.Context(), id, &req)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(alias)
+}
+
+// DeleteLocationAlias deletes a location alias (standalone DELETE)
+func (h *LocationHandler) DeleteLocationAlias(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if strings.TrimSpace(id) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Location alias ID is required",
+		})
+	}
+
+	err := h.locationService.LocationAliases().Delete(c.Context(), id)
 	if err != nil {
 		return h.handleError(c, err)
 	}

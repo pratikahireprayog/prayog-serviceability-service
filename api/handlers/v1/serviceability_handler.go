@@ -1,19 +1,19 @@
 package v1
 
 import (
-	"prayog-serviceability-service/pkg/models"
-	"prayog-serviceability-service/pkg/services"
+	"prayog-serviceability-service/internal/shared/models/v1"
+	"prayog-serviceability-service/internal/shared/services/v1"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 // ServiceabilityHandler handles serviceability-related HTTP requests.
 type ServiceabilityHandler struct {
-	service services.ServiceabilityService
+	service servicesv1.ServiceabilityService
 }
 
 // NewServiceabilityHandler creates a new serviceability handler.
-func NewServiceabilityHandler(service services.ServiceabilityService) *ServiceabilityHandler {
+func NewServiceabilityHandler(service servicesv1.ServiceabilityService) *ServiceabilityHandler {
 	return &ServiceabilityHandler{
 		service: service,
 	}
