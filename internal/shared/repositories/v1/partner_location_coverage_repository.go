@@ -174,16 +174,20 @@ func (r *partnerLocationCoverageRepository) Update(ctx context.Context, coverage
 	return nil
 }
 
-// Delete deletes a partner location coverage record
+// Delete soft deletes a partner location coverage record by marking it as deleted
 func (r *partnerLocationCoverageRepository) Delete(ctx context.Context, id uint) error {
-	result := r.db.WithContext(ctx).Delete(&models.PartnerLocationCoverage{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete partner location coverage: %w", result.Error)
+	// Get the partner location coverage
+	var coverage models.PartnerLocationCoverage
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&coverage).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("partner location coverage not found")
+		}
+		return fmt.Errorf("failed to find partner location coverage: %w", err)
 	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("partner location coverage not found")
-	}
-	return nil
+
+	// Use the model's soft delete method
+	return coverage.SoftDelete(r.db.WithContext(ctx))
 }
 
 // BulkCreate creates multiple partner location coverage records in a transaction
@@ -194,4 +198,191 @@ func (r *partnerLocationCoverageRepository) BulkCreate(ctx context.Context, cove
 		}
 		return nil
 	})
+}
+
+// GetByPartnerIDWithDeleted retrieves all coverage records for a partner (includes soft-deleted records)
+func (r *partnerLocationCoverageRepository) GetByPartnerIDWithDeleted(ctx context.Context, partnerID uint) ([]models.PartnerLocationCoverage, error) {
+	var coverages []models.PartnerLocationCoverage
+
+	err := r.db.WithContext(ctx).Unscoped().
+		Where("partner_id = ?", partnerID).
+		Find(&coverages).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partner coverage: %w", err)
+	}
+
+	return coverages, nil
+}
+
+// GetByLocationScopeAndIDWithDeleted retrieves coverage records for a specific location (includes soft-deleted records)
+func (r *partnerLocationCoverageRepository) GetByLocationScopeAndIDWithDeleted(ctx context.Context, locationScope string, locationID uint) ([]models.PartnerLocationCoverage, error) {
+	var coverages []models.PartnerLocationCoverage
+
+	err := r.db.WithContext(ctx).Unscoped().
+		Where("location_scope = ? AND location_id = ?",
+			strings.ToUpper(locationScope), locationID).
+		Find(&coverages).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get location coverage: %w", err)
+	}
+
+	return coverages, nil
+}
+
+// GetByFiltersWithDeleted retrieves coverage records with location hierarchy based on filters (includes soft-deleted records)
+func (r *partnerLocationCoverageRepository) GetByFiltersWithDeleted(ctx context.Context, filters *models.PartnerLocationCoverageFilters) ([]models.PartnerLocationCoverageResult, error) {
+	var results []models.PartnerLocationCoverageResult
+
+	query := r.db.WithContext(ctx).Unscoped().Table("partner_location_coverages plc")
+
+	// Apply filters
+	if filters.PartnerID != nil {
+		query = query.Where("plc.partner_id = ?", *filters.PartnerID)
+	}
+	if filters.LocationScope != "" {
+		query = query.Where("plc.location_scope = ?", strings.ToUpper(filters.LocationScope))
+	}
+	if filters.LocationID != nil {
+		query = query.Where("plc.location_id = ?", *filters.LocationID)
+	}
+	if filters.ZoneType != "" {
+		query = query.Where("plc.zone_type = ?", strings.ToUpper(filters.ZoneType))
+	}
+	if filters.IsActive != nil {
+		query = query.Where("plc.is_active = ?", *filters.IsActive)
+	}
+
+	rows, err := query.Select("plc.partner_id, plc.location_scope, plc.location_id, plc.zone_type").Rows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query partner coverage: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var result models.PartnerLocationCoverageResult
+		if err := rows.Scan(&result.PartnerID, &result.LocationScope, &result.LocationID, &result.ZoneType); err != nil {
+			return nil, fmt.Errorf("failed to scan coverage result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// GetPartnersForLocationWithDeleted retrieves all partners serving a specific location with zone priorities (includes soft-deleted records)
+func (r *partnerLocationCoverageRepository) GetPartnersForLocationWithDeleted(ctx context.Context, locationScope string, locationID uint, zoneTypes []string) ([]models.PartnerLocationCoverageResult, error) {
+	var results []models.PartnerLocationCoverageResult
+
+	query := r.db.WithContext(ctx).Unscoped().Table("partner_location_coverages plc").
+		Where("plc.location_scope = ? AND plc.location_id = ?",
+			strings.ToUpper(locationScope), locationID)
+
+	if len(zoneTypes) > 0 {
+		upperZoneTypes := make([]string, len(zoneTypes))
+		for i, zt := range zoneTypes {
+			upperZoneTypes[i] = strings.ToUpper(zt)
+		}
+		query = query.Where("plc.zone_type IN ?", upperZoneTypes)
+	}
+
+	// Order by zone type priority (PRIMARY, SECONDARY, BUFFER)
+	query = query.Order("CASE plc.zone_type WHEN 'PRIMARY' THEN 1 WHEN 'SECONDARY' THEN 2 WHEN 'BUFFER' THEN 3 END")
+
+	rows, err := query.Select("plc.partner_id, plc.location_scope, plc.location_id, plc.zone_type").Rows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query partners for location: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var result models.PartnerLocationCoverageResult
+		if err := rows.Scan(&result.PartnerID, &result.LocationScope, &result.LocationID, &result.ZoneType); err != nil {
+			return nil, fmt.Errorf("failed to scan partner result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// GetCoverageForPartnerWithDeleted retrieves all coverage areas for a specific partner (includes soft-deleted records)
+func (r *partnerLocationCoverageRepository) GetCoverageForPartnerWithDeleted(ctx context.Context, partnerID uint, isActive bool) ([]models.PartnerLocationCoverageResult, error) {
+	var results []models.PartnerLocationCoverageResult
+
+	query := r.db.WithContext(ctx).Unscoped().Table("partner_location_coverages plc").
+		Where("plc.partner_id = ?", partnerID)
+
+	// Only apply is_active filter if specified
+	if isActive {
+		query = query.Where("plc.is_active = ?", isActive)
+	}
+
+	rows, err := query.Select("plc.partner_id, plc.location_scope, plc.location_id, plc.zone_type").Rows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query partner coverage: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var result models.PartnerLocationCoverageResult
+		if err := rows.Scan(&result.PartnerID, &result.LocationScope, &result.LocationID, &result.ZoneType); err != nil {
+			return nil, fmt.Errorf("failed to scan coverage result: %w", err)
+		}
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// GetOnlyDeleted retrieves only soft-deleted partner location coverage records with pagination
+func (r *partnerLocationCoverageRepository) GetOnlyDeleted(ctx context.Context, offset, limit int) ([]models.PartnerLocationCoverage, int64, error) {
+	var coverages []models.PartnerLocationCoverage
+	var total int64
+
+	// Count only soft-deleted records
+	err := r.db.WithContext(ctx).Unscoped().Model(&models.PartnerLocationCoverage{}).Where("is_deleted = ?", true).Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count deleted partner location coverages: %w", err)
+	}
+
+	// Get paginated soft-deleted records
+	err = r.db.WithContext(ctx).Unscoped().
+		Where("is_deleted = ?", true).
+		Offset(offset).Limit(limit).
+		Find(&coverages).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get deleted partner location coverages: %w", err)
+	}
+
+	return coverages, total, nil
+}
+
+// Restore restores a soft-deleted partner location coverage record
+func (r *partnerLocationCoverageRepository) Restore(ctx context.Context, id uint) error {
+	// Get the soft-deleted coverage
+	var coverage models.PartnerLocationCoverage
+	err := r.db.WithContext(ctx).Unscoped().Where("id = ? AND is_deleted = ?", id, true).First(&coverage).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("soft-deleted partner location coverage not found")
+		}
+		return fmt.Errorf("failed to find soft-deleted partner location coverage: %w", err)
+	}
+
+	// Use the model's restore method
+	return coverage.Restore(r.db.WithContext(ctx))
+}
+
+// ForceDelete permanently deletes a partner location coverage record (hard delete)
+func (r *partnerLocationCoverageRepository) ForceDelete(ctx context.Context, id uint) error {
+	result := r.db.WithContext(ctx).Unscoped().Delete(&models.PartnerLocationCoverage{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("failed to force delete partner location coverage: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("partner location coverage not found")
+	}
+	return nil
 }
