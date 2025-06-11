@@ -52,8 +52,8 @@ func (s *countryService) GetByCode(ctx context.Context, code string) (*dtos.Coun
 		return nil, fmt.Errorf("country code cannot be empty")
 	}
 
-	// Validate code format (should be 2-3 characters, uppercase)
-	code = strings.ToUpper(strings.TrimSpace(code))
+	// Validate code format (should be 2-3 characters, lowercase)
+	code = strings.ToLower(strings.TrimSpace(code))
 	if len(code) < 2 || len(code) > 3 {
 		return nil, fmt.Errorf("country code must be 2-3 characters long")
 	}
@@ -181,7 +181,7 @@ func (s *countryService) Create(ctx context.Context, req *dtos.CreateCountryRequ
 	}
 
 	// Normalize and validate code
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
+	req.Code = strings.ToLower(strings.TrimSpace(req.Code))
 	if len(req.Code) < 2 || len(req.Code) > 3 {
 		return nil, fmt.Errorf("country code must be 2-3 characters long")
 	}

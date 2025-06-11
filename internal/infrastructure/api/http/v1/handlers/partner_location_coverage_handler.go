@@ -83,6 +83,30 @@ func (h *PartnerLocationCoverageHandler) parseFilters(c *fiber.Ctx) *dtos.Partne
 		filters.ZoneType = &zoneType
 	}
 
+	// Parse source_postal_code
+	if sourcePostalCode := c.Query("source_postal_code"); sourcePostalCode != "" {
+		filters.SourcePostalCode = &sourcePostalCode
+	}
+
+	// Parse destination_postal_code
+	if destinationPostalCode := c.Query("destination_postal_code"); destinationPostalCode != "" {
+		filters.DestinationPostalCode = &destinationPostalCode
+	}
+
+	// Parse source_postal_code_id
+	if sourcePostalCodeIDStr := c.Query("source_postal_code_id"); sourcePostalCodeIDStr != "" {
+		if sourcePostalCodeID, err := uuid.Parse(sourcePostalCodeIDStr); err == nil {
+			filters.SourcePostalCodeID = &sourcePostalCodeID
+		}
+	}
+
+	// Parse destination_postal_code_id
+	if destinationPostalCodeIDStr := c.Query("destination_postal_code_id"); destinationPostalCodeIDStr != "" {
+		if destinationPostalCodeID, err := uuid.Parse(destinationPostalCodeIDStr); err == nil {
+			filters.DestinationPostalCodeID = &destinationPostalCodeID
+		}
+	}
+
 	// Parse is_active
 	if isActiveStr := c.Query("is_active"); isActiveStr != "" {
 		if isActiveStr == "true" {

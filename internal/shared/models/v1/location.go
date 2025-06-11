@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +18,7 @@ type SoftDeleteModel interface {
 // Country represents a country in the location hierarchy
 type Country struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Code         string     `json:"code" gorm:"unique;not null;size:10" validate:"required,min=2,max=10,alpha"`
+	Code         string     `json:"code" gorm:"unique;not null;size:2" validate:"required,len=2,alpha"`
 	Name         string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
 	CurrencyCode *string    `json:"currency_code,omitempty" gorm:"size:3" validate:"omitempty,len=3,alpha"`
 	PhoneCode    *string    `json:"phone_code,omitempty" gorm:"size:10" validate:"omitempty,min=1,max=10"`
@@ -63,11 +62,16 @@ func (c *Country) IsDeletedRecord() bool {
 	return c.IsDeleted
 }
 
-// Validate performs custom business rule validation for Country
-func (c *Country) Validate() error {
-	// Validate country code format (ISO standards)
-	if len(c.Code) < 2 || len(c.Code) > 10 {
-		return fmt.Errorf("country code must be between 2 and 10 characters")
+// ValidateBusinessRules performs custom business rule validation for Country
+func (c *Country) ValidateBusinessRules() error {
+	// Validate snake_case format for code (lowercase letters only for consistency with project conventions)
+	if !isSnakeCase(c.Code) {
+		return fmt.Errorf("country code must be in snake_case format (lowercase, 2 characters)")
+	}
+
+	// Validate country code length (ISO 3166 A-2 standard, but lowercase)
+	if len(c.Code) != 2 {
+		return fmt.Errorf("country code must be exactly 2 characters")
 	}
 
 	// Validate currency code format if provided
@@ -85,7 +89,7 @@ func (c *Country) Validate() error {
 
 // RegionType represents the type of region (state, province, etc.)
 type RegionType struct {
-	Code        string     `json:"code" gorm:"primaryKey;size:20" validate:"required,min=2,max=20,snake_case"`
+	Code        string     `json:"code" gorm:"primaryKey;size:20" validate:"required,min=2,max=20"`
 	Name        string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
 	Description *string    `json:"description,omitempty" gorm:"type:text" validate:"omitempty,max=500"`
 	IsActive    bool       `json:"is_active" gorm:"default:true"`
@@ -128,8 +132,8 @@ func (rt *RegionType) IsDeletedRecord() bool {
 	return rt.IsDeleted
 }
 
-// Validate performs custom business rule validation for RegionType
-func (rt *RegionType) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for RegionType
+func (rt *RegionType) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(rt.Code) {
 		return fmt.Errorf("region type code must be in snake_case format")
@@ -146,9 +150,9 @@ func (rt *RegionType) Validate() error {
 // Region represents a state/province in the location hierarchy
 type Region struct {
 	ID             uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Code           string     `json:"code" gorm:"unique;not null;size:20;index" validate:"required,min=2,max=20,snake_case"`
+	Code           string     `json:"code" gorm:"unique;not null;size:20;index" validate:"required,min=2,max=20"`
 	CountryID      *uuid.UUID `json:"country_id,omitempty" gorm:"type:uuid;index"`
-	CountryCode    *string    `json:"country_code,omitempty" gorm:"size:10;index" validate:"omitempty,min=2,max=10"`
+	CountryCode    *string    `json:"country_code,omitempty" gorm:"size:2;index" validate:"omitempty,len=2"`
 	RegionTypeCode *string    `json:"region_type_code,omitempty" gorm:"size:20;index" validate:"omitempty,min=2,max=20"`
 	RegionTypeID   *uuid.UUID `json:"region_type_id,omitempty" gorm:"type:uuid"`
 	Name           string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
@@ -195,8 +199,8 @@ func (r *Region) IsDeletedRecord() bool {
 	return r.IsDeleted
 }
 
-// Validate performs custom business rule validation for Region
-func (r *Region) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for Region
+func (r *Region) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(r.Code) {
 		return fmt.Errorf("region code must be in snake_case format")
@@ -218,11 +222,11 @@ func (r *Region) Validate() error {
 // District represents a district in the location hierarchy
 type District struct {
 	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Code        string     `json:"code" gorm:"unique;not null;size:20;index" validate:"required,min=2,max=20,snake_case"`
+	Code        string     `json:"code" gorm:"unique;not null;size:20;index" validate:"required,min=2,max=20"`
 	RegionID    *uuid.UUID `json:"region_id,omitempty" gorm:"type:uuid;index"`
 	RegionCode  *string    `json:"region_code,omitempty" gorm:"size:20;index" validate:"omitempty,min=2,max=20"`
 	CountryID   *uuid.UUID `json:"country_id,omitempty" gorm:"type:uuid;index"`
-	CountryCode *string    `json:"country_code,omitempty" gorm:"size:10;index" validate:"omitempty,min=2,max=10"`
+	CountryCode *string    `json:"country_code,omitempty" gorm:"size:2;index" validate:"omitempty,len=2"`
 	Name        string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
 	IsActive    bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt   time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
@@ -266,8 +270,8 @@ func (d *District) IsDeletedRecord() bool {
 	return d.IsDeleted
 }
 
-// Validate performs custom business rule validation for District
-func (d *District) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for District
+func (d *District) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(d.Code) {
 		return fmt.Errorf("district code must be in snake_case format")
@@ -298,7 +302,7 @@ type City struct {
 	RegionID     *uuid.UUID `json:"region_id,omitempty" gorm:"type:uuid;index"`
 	RegionCode   *string    `json:"region_code,omitempty" gorm:"size:20;index"`
 	CountryID    *uuid.UUID `json:"country_id,omitempty" gorm:"type:uuid;index"`
-	CountryCode  *string    `json:"country_code,omitempty" gorm:"size:10;index"`
+	CountryCode  *string    `json:"country_code,omitempty" gorm:"size:2;index"`
 	DistrictID   *uuid.UUID `json:"district_id,omitempty" gorm:"type:uuid;index"`
 	DistrictCode *string    `json:"district_code,omitempty" gorm:"size:20;index"`
 	Name         string     `json:"name" gorm:"not null;size:100"`
@@ -345,8 +349,8 @@ func (c *City) IsDeletedRecord() bool {
 	return c.IsDeleted
 }
 
-// Validate performs custom business rule validation for City
-func (c *City) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for City
+func (c *City) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(c.Code) {
 		return fmt.Errorf("city code must be in snake_case format")
@@ -423,8 +427,8 @@ func (a *Area) IsDeletedRecord() bool {
 	return a.IsDeleted
 }
 
-// Validate performs custom business rule validation for Area
-func (a *Area) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for Area
+func (a *Area) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(a.Code) {
 		return fmt.Errorf("area code must be in snake_case format")
@@ -446,16 +450,16 @@ func (a *Area) Validate() error {
 // PostalCode represents postal code information
 type PostalCode struct {
 	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	Code          string     `json:"code" gorm:"unique;not null;size:20;index"`
+	Code          string     `json:"code" gorm:"unique;not null;size:20;index" validate:"required,min=3,max=20"`
 	CountryID     *uuid.UUID `json:"country_id,omitempty" gorm:"type:uuid;index"`
-	CountryCode   *string    `json:"country_code,omitempty" gorm:"size:10;index"`
+	CountryCode   *string    `json:"country_code,omitempty" gorm:"size:2;index" validate:"omitempty,len=2"` // ISO 3166 A-2
 	RegionID      *uuid.UUID `json:"region_id,omitempty" gorm:"type:uuid;index"`
-	RegionCode    *string    `json:"region_code,omitempty" gorm:"size:20;index"`
+	RegionCode    *string    `json:"region_code,omitempty" gorm:"size:20;index" validate:"omitempty,min=2,max=20"`
 	CityID        *uuid.UUID `json:"city_id,omitempty" gorm:"type:uuid;index"`
-	CityCode      *string    `json:"city_code,omitempty" gorm:"size:20;index"`
+	CityCode      *string    `json:"city_code,omitempty" gorm:"size:20;index" validate:"omitempty,min=2,max=20"`
 	AreaID        *uuid.UUID `json:"area_id,omitempty" gorm:"type:uuid;index"`
-	AreaCode      *string    `json:"area_code,omitempty" gorm:"size:20;index"`
-	LocationScope *string    `json:"location_scope,omitempty" gorm:"size:20"`
+	AreaCode      *string    `json:"area_code,omitempty" gorm:"size:20;index" validate:"omitempty,min=2,max=20"`
+	LocationScope *string    `json:"location_scope,omitempty" gorm:"size:20" validate:"omitempty,oneof=country region city area"`
 	IsActive      bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt     time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
@@ -499,8 +503,8 @@ func (p *PostalCode) IsDeletedRecord() bool {
 	return p.IsDeleted
 }
 
-// Validate performs custom business rule validation for PostalCode
-func (p *PostalCode) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for PostalCode
+func (p *PostalCode) ValidateBusinessRules() error {
 	// Basic format validation for postal code
 	if len(p.Code) < 1 || len(p.Code) > 20 {
 		return fmt.Errorf("postal code must be between 1 and 20 characters")
@@ -577,9 +581,32 @@ type LocationValidationResult struct {
 
 // Helper function to validate snake_case format
 func isSnakeCase(s string) bool {
-	// Snake case: lowercase letters, numbers, and underscores only
-	// Must start with letter, no consecutive underscores, no trailing underscore
-	pattern := `^[a-z][a-z0-9_]*[a-z0-9]$|^[a-z]$`
-	matched, _ := regexp.MatchString(pattern, s)
-	return matched
+	if len(s) == 0 {
+		return false
+	}
+
+	// Must start with lowercase letter
+	if s[0] < 'a' || s[0] > 'z' {
+		return false
+	}
+
+	prevUnderscore := false
+	for i, char := range s {
+		// Allow lowercase letters, numbers, and underscores
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
+			prevUnderscore = false
+			continue
+		} else if char == '_' {
+			// No consecutive underscores or trailing underscore
+			if prevUnderscore || i == len(s)-1 {
+				return false
+			}
+			prevUnderscore = true
+		} else {
+			// Invalid character
+			return false
+		}
+	}
+
+	return true
 }

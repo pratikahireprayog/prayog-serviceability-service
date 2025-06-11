@@ -70,6 +70,18 @@ func (r *partnerLocationCoverageRepository) GetByFilters(ctx context.Context, fi
 	if filters.ZoneType != "" {
 		query = query.Where("plc.zone_type = ?", strings.ToUpper(filters.ZoneType))
 	}
+	if filters.SourcePostalCode != nil {
+		query = query.Where("plc.source_postal_code = ?", *filters.SourcePostalCode)
+	}
+	if filters.DestinationPostalCode != nil {
+		query = query.Where("plc.destination_postal_code = ?", *filters.DestinationPostalCode)
+	}
+	if filters.SourcePostalCodeID != nil {
+		query = query.Where("plc.source_postal_code_id = ?", *filters.SourcePostalCodeID)
+	}
+	if filters.DestinationPostalCodeID != nil {
+		query = query.Where("plc.destination_postal_code_id = ?", *filters.DestinationPostalCodeID)
+	}
 	if filters.IsActive != nil {
 		query = query.Where("plc.is_active = ?", *filters.IsActive)
 	} else {
@@ -249,6 +261,18 @@ func (r *partnerLocationCoverageRepository) GetByFiltersWithDeleted(ctx context.
 	}
 	if filters.ZoneType != "" {
 		query = query.Where("plc.zone_type = ?", strings.ToUpper(filters.ZoneType))
+	}
+	if filters.SourcePostalCode != nil {
+		query = query.Where("plc.source_postal_code = ?", *filters.SourcePostalCode)
+	}
+	if filters.DestinationPostalCode != nil {
+		query = query.Where("plc.destination_postal_code = ?", *filters.DestinationPostalCode)
+	}
+	if filters.SourcePostalCodeID != nil {
+		query = query.Where("plc.source_postal_code_id = ?", *filters.SourcePostalCodeID)
+	}
+	if filters.DestinationPostalCodeID != nil {
+		query = query.Where("plc.destination_postal_code_id = ?", *filters.DestinationPostalCodeID)
 	}
 	if filters.IsActive != nil {
 		query = query.Where("plc.is_active = ?", *filters.IsActive)

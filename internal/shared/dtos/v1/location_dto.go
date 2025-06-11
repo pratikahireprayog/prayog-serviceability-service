@@ -27,7 +27,7 @@ type PaginationResponse struct {
 
 // CreateCountryRequest represents request to create a new country
 type CreateCountryRequest struct {
-	Code         string  `json:"code" validate:"required,min=2,max=10,alpha"`
+	Code         string  `json:"code" validate:"required,len=2"` // ISO 3166 A-2: exactly 2 characters, lowercase for consistency
 	Name         string  `json:"name" validate:"required,min=2,max=100"`
 	CurrencyCode *string `json:"currency_code,omitempty" validate:"omitempty,len=3,alpha"`
 	PhoneCode    *string `json:"phone_code,omitempty" validate:"omitempty,min=1,max=10"`

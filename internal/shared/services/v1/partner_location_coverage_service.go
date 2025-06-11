@@ -76,6 +76,18 @@ func (s *partnerLocationCoverageService) GetByPartnerID(ctx context.Context, par
 	if filters.ZoneType != nil {
 		repoFilters.ZoneType = strings.ToUpper(*filters.ZoneType)
 	}
+	if filters.SourcePostalCode != nil {
+		repoFilters.SourcePostalCode = filters.SourcePostalCode
+	}
+	if filters.DestinationPostalCode != nil {
+		repoFilters.DestinationPostalCode = filters.DestinationPostalCode
+	}
+	if filters.SourcePostalCodeID != nil {
+		repoFilters.SourcePostalCodeID = filters.SourcePostalCodeID
+	}
+	if filters.DestinationPostalCodeID != nil {
+		repoFilters.DestinationPostalCodeID = filters.DestinationPostalCodeID
+	}
 	if filters.IsActive != nil {
 		repoFilters.IsActive = filters.IsActive
 	}
@@ -164,6 +176,11 @@ func (s *partnerLocationCoverageService) Create(ctx context.Context, partnerID u
 		return nil, fmt.Errorf("location validation failed: %w", err)
 	}
 
+	// Validate postal code fields consistency
+	if err := s.validatePostalCodeFields(ctx, req.SourcePostalCode, req.DestinationPostalCode, req.SourcePostalCodeID, req.DestinationPostalCodeID); err != nil {
+		return nil, fmt.Errorf("postal code validation failed: %w", err)
+	}
+
 	// Create coverage model
 	coverage := &models.PartnerLocationCoverage{
 		ID:        uuid.New(),
@@ -188,6 +205,24 @@ func (s *partnerLocationCoverageService) Create(ctx context.Context, partnerID u
 	if req.ZoneType != nil {
 		zoneType := strings.ToUpper(*req.ZoneType)
 		coverage.ZoneType = &zoneType
+	}
+	if req.SourcePostalCode != nil {
+		code := strings.TrimSpace(*req.SourcePostalCode)
+		if code != "" {
+			coverage.SourcePostalCode = &code
+		}
+	}
+	if req.DestinationPostalCode != nil {
+		code := strings.TrimSpace(*req.DestinationPostalCode)
+		if code != "" {
+			coverage.DestinationPostalCode = &code
+		}
+	}
+	if req.SourcePostalCodeID != nil {
+		coverage.SourcePostalCodeID = req.SourcePostalCodeID
+	}
+	if req.DestinationPostalCodeID != nil {
+		coverage.DestinationPostalCodeID = req.DestinationPostalCodeID
 	}
 	if req.IsActive != nil {
 		coverage.IsActive = *req.IsActive
@@ -246,17 +281,54 @@ func (s *partnerLocationCoverageService) Update(ctx context.Context, partnerID u
 		}
 	}
 
+	// Validate postal code fields if being updated
+	if req.SourcePostalCode != nil || req.DestinationPostalCode != nil || req.SourcePostalCodeID != nil || req.DestinationPostalCodeID != nil {
+		var sourcePostalCode *string
+		var destinationPostalCode *string
+		var sourcePostalCodeID *uuid.UUID
+		var destinationPostalCodeID *uuid.UUID
+
+		if req.SourcePostalCode != nil {
+			sourcePostalCode = req.SourcePostalCode
+		} else {
+			sourcePostalCode = existing.SourcePostalCode
+		}
+		if req.DestinationPostalCode != nil {
+			destinationPostalCode = req.DestinationPostalCode
+		} else {
+			destinationPostalCode = existing.DestinationPostalCode
+		}
+		if req.SourcePostalCodeID != nil {
+			sourcePostalCodeID = req.SourcePostalCodeID
+		} else {
+			sourcePostalCodeID = existing.SourcePostalCodeID
+		}
+		if req.DestinationPostalCodeID != nil {
+			destinationPostalCodeID = req.DestinationPostalCodeID
+		} else {
+			destinationPostalCodeID = existing.DestinationPostalCodeID
+		}
+
+		if err := s.validatePostalCodeFields(ctx, sourcePostalCode, destinationPostalCode, sourcePostalCodeID, destinationPostalCodeID); err != nil {
+			return nil, fmt.Errorf("postal code validation failed: %w", err)
+		}
+	}
+
 	// Convert back to model for update
 	coverage := &models.PartnerLocationCoverage{
-		ID:            coverageID,
-		PartnerID:     &partnerID,
-		LocationScope: existing.LocationScope,
-		LocationID:    existing.LocationID,
-		LocationCode:  existing.LocationCode,
-		ZoneType:      existing.ZoneType,
-		IsActive:      existing.IsActive,
-		CreatedAt:     existing.CreatedAt,
-		UpdatedAt:     existing.UpdatedAt,
+		ID:                      coverageID,
+		PartnerID:               &partnerID,
+		LocationScope:           existing.LocationScope,
+		LocationID:              existing.LocationID,
+		LocationCode:            existing.LocationCode,
+		ZoneType:                existing.ZoneType,
+		SourcePostalCode:        existing.SourcePostalCode,
+		DestinationPostalCode:   existing.DestinationPostalCode,
+		SourcePostalCodeID:      existing.SourcePostalCodeID,
+		DestinationPostalCodeID: existing.DestinationPostalCodeID,
+		IsActive:                existing.IsActive,
+		CreatedAt:               existing.CreatedAt,
+		UpdatedAt:               existing.UpdatedAt,
 	}
 
 	// Update fields
@@ -278,6 +350,28 @@ func (s *partnerLocationCoverageService) Update(ctx context.Context, partnerID u
 	if req.ZoneType != nil {
 		zoneType := strings.ToUpper(*req.ZoneType)
 		coverage.ZoneType = &zoneType
+	}
+	if req.SourcePostalCode != nil {
+		code := strings.TrimSpace(*req.SourcePostalCode)
+		if code != "" {
+			coverage.SourcePostalCode = &code
+		} else {
+			coverage.SourcePostalCode = nil
+		}
+	}
+	if req.DestinationPostalCode != nil {
+		code := strings.TrimSpace(*req.DestinationPostalCode)
+		if code != "" {
+			coverage.DestinationPostalCode = &code
+		} else {
+			coverage.DestinationPostalCode = nil
+		}
+	}
+	if req.SourcePostalCodeID != nil {
+		coverage.SourcePostalCodeID = req.SourcePostalCodeID
+	}
+	if req.DestinationPostalCodeID != nil {
+		coverage.DestinationPostalCodeID = req.DestinationPostalCodeID
 	}
 	if req.IsActive != nil {
 		coverage.IsActive = *req.IsActive
@@ -358,6 +452,45 @@ func (s *partnerLocationCoverageService) BulkCreate(ctx context.Context, partner
 
 // Helper methods
 
+// validatePostalCodeFields validates postal code fields consistency
+func (s *partnerLocationCoverageService) validatePostalCodeFields(ctx context.Context, sourcePostalCode, destinationPostalCode *string, sourcePostalCodeID, destinationPostalCodeID *uuid.UUID) error {
+	// If postal codes are provided, both source and destination should be provided for route coverage
+	if (sourcePostalCode != nil && *sourcePostalCode != "") || (destinationPostalCode != nil && *destinationPostalCode != "") {
+		if sourcePostalCode == nil || *sourcePostalCode == "" {
+			return fmt.Errorf("destination postal code provided but source postal code is missing - both are required for route coverage")
+		}
+		if destinationPostalCode == nil || *destinationPostalCode == "" {
+			return fmt.Errorf("source postal code provided but destination postal code is missing - both are required for route coverage")
+		}
+	}
+
+	// If postal code IDs are provided, both source and destination should be provided for route coverage
+	if sourcePostalCodeID != nil || destinationPostalCodeID != nil {
+		if sourcePostalCodeID == nil {
+			return fmt.Errorf("destination postal code ID provided but source postal code ID is missing - both are required for route coverage")
+		}
+		if destinationPostalCodeID == nil {
+			return fmt.Errorf("source postal code ID provided but destination postal code ID is missing - both are required for route coverage")
+		}
+	}
+
+	// Ensure consistency between postal codes and postal code IDs
+	if (sourcePostalCode != nil && *sourcePostalCode != "") && sourcePostalCodeID == nil {
+		return fmt.Errorf("source postal code provided but source postal code ID is missing - both should be provided for consistency")
+	}
+	if (destinationPostalCode != nil && *destinationPostalCode != "") && destinationPostalCodeID == nil {
+		return fmt.Errorf("destination postal code provided but destination postal code ID is missing - both should be provided for consistency")
+	}
+	if sourcePostalCodeID != nil && (sourcePostalCode == nil || *sourcePostalCode == "") {
+		return fmt.Errorf("source postal code ID provided but source postal code is missing - both should be provided for consistency")
+	}
+	if destinationPostalCodeID != nil && (destinationPostalCode == nil || *destinationPostalCode == "") {
+		return fmt.Errorf("destination postal code ID provided but destination postal code is missing - both should be provided for consistency")
+	}
+
+	return nil
+}
+
 // validateLocationScopeAndCode validates location scope and ensures location_id or location_code is provided
 func (s *partnerLocationCoverageService) validateLocationScopeAndCode(ctx context.Context, locationScope *string, locationID *uuid.UUID, locationCode *string) error {
 	if locationScope == nil {
@@ -413,16 +546,20 @@ func PartnerLocationCoverageToResponse(coverage *models.PartnerLocationCoverage)
 	}
 
 	return &dtos.PartnerLocationCoverageResponse{
-		ID:            coverage.ID,
-		PartnerID:     coverage.PartnerID,
-		PartnerCode:   coverage.PartnerCode,
-		LocationScope: coverage.LocationScope,
-		LocationID:    coverage.LocationID,
-		LocationCode:  coverage.LocationCode,
-		ZoneType:      coverage.ZoneType,
-		IsActive:      coverage.IsActive,
-		CreatedAt:     coverage.CreatedAt,
-		UpdatedAt:     coverage.UpdatedAt,
+		ID:                      coverage.ID,
+		PartnerID:               coverage.PartnerID,
+		PartnerCode:             coverage.PartnerCode,
+		LocationScope:           coverage.LocationScope,
+		LocationID:              coverage.LocationID,
+		LocationCode:            coverage.LocationCode,
+		ZoneType:                coverage.ZoneType,
+		SourcePostalCode:        coverage.SourcePostalCode,
+		DestinationPostalCode:   coverage.DestinationPostalCode,
+		SourcePostalCodeID:      coverage.SourcePostalCodeID,
+		DestinationPostalCodeID: coverage.DestinationPostalCodeID,
+		IsActive:                coverage.IsActive,
+		CreatedAt:               coverage.CreatedAt,
+		UpdatedAt:               coverage.UpdatedAt,
 	}
 }
 

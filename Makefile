@@ -75,9 +75,9 @@ db-migrate:
 db-seed:
 	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -seed
 
-# Reset database: drop all tables and run migrations
+# Reset database: run migrations and seed
 db-reset:
-	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -drop -migrate -seed
+	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -migrate -seed
 
 # Get version info
 version:
@@ -104,7 +104,7 @@ help:
 	@echo "make lint         - Run linter"
 	@echo "make db-migrate   - Run database migrations"
 	@echo "make db-seed      - Seed database with initial data"
-	@echo "make db-reset     - Reset database (drop, migrate, seed)"
+	@echo "make db-reset     - Reset database (migrate and seed)"
 	@echo "make version      - Show version information"
 	@echo "make docker-build - Build Docker image"
 	@echo "make docker-run   - Run Docker container"

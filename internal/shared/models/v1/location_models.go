@@ -46,8 +46,8 @@ func (lt *LocationType) IsDeletedRecord() bool {
 	return lt.IsDeleted
 }
 
-// Validate performs custom business rule validation for LocationType
-func (lt *LocationType) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for LocationType
+func (lt *LocationType) ValidateBusinessRules() error {
 	// Validate snake_case format for code
 	if !isSnakeCase(lt.Code) {
 		return fmt.Errorf("location type code must be in snake_case format")
@@ -110,8 +110,8 @@ func (la *LocationAlias) IsDeletedRecord() bool {
 	return la.IsDeleted
 }
 
-// Validate performs custom business rule validation for LocationAlias
-func (la *LocationAlias) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for LocationAlias
+func (la *LocationAlias) ValidateBusinessRules() error {
 	// Validate alias name is not empty
 	if len(la.AliasName) < 1 || len(la.AliasName) > 100 {
 		return fmt.Errorf("alias name must be between 1 and 100 characters")
@@ -132,18 +132,22 @@ func (la *LocationAlias) Validate() error {
 
 // PartnerLocationCoverage represents partner coverage mapping to locations
 type PartnerLocationCoverage struct {
-	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	PartnerID     *uuid.UUID `json:"partner_id,omitempty" gorm:"type:uuid"`
-	PartnerCode   *string    `json:"partner_code,omitempty" gorm:"size:50"`
-	LocationScope *string    `json:"location_scope,omitempty" gorm:"size:20"`
-	LocationID    *uuid.UUID `json:"location_id,omitempty" gorm:"type:uuid"`
-	LocationCode  *string    `json:"location_code,omitempty" gorm:"size:20"`
-	ZoneType      *string    `json:"zone_type,omitempty" gorm:"size:20"`
-	IsActive      bool       `json:"is_active" gorm:"default:true"`
-	CreatedAt     time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt     time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty" gorm:"index"`
-	IsDeleted     bool       `json:"is_deleted" gorm:"default:false;index"`
+	ID                      uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	PartnerID               *uuid.UUID `json:"partner_id,omitempty" gorm:"type:uuid"`
+	PartnerCode             *string    `json:"partner_code,omitempty" gorm:"size:50"`
+	LocationScope           *string    `json:"location_scope,omitempty" gorm:"size:20"`
+	LocationID              *uuid.UUID `json:"location_id,omitempty" gorm:"type:uuid"`
+	LocationCode            *string    `json:"location_code,omitempty" gorm:"size:20"`
+	ZoneType                *string    `json:"zone_type,omitempty" gorm:"size:20"`
+	SourcePostalCode        *string    `json:"source_postal_code,omitempty" gorm:"size:20"`
+	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty" gorm:"size:20"`
+	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty" gorm:"type:uuid"`
+	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty" gorm:"type:uuid"`
+	IsActive                bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt               time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt               time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt               *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted               bool       `json:"is_deleted" gorm:"default:false;index"`
 }
 
 // TableName returns the table name for PartnerLocationCoverage
@@ -176,8 +180,8 @@ func (plc *PartnerLocationCoverage) IsDeletedRecord() bool {
 	return plc.IsDeleted
 }
 
-// Validate performs custom business rule validation for PartnerLocationCoverage
-func (plc *PartnerLocationCoverage) Validate() error {
+// ValidateBusinessRules performs custom business rule validation for PartnerLocationCoverage
+func (plc *PartnerLocationCoverage) ValidateBusinessRules() error {
 	// Validate that either both or neither partner ID and code are provided
 	if (plc.PartnerID == nil) != (plc.PartnerCode == nil) {
 		return fmt.Errorf("partner ID and partner code must both be provided or both be nil")
@@ -186,6 +190,21 @@ func (plc *PartnerLocationCoverage) Validate() error {
 	// Validate that either both or neither location ID and code are provided
 	if (plc.LocationID == nil) != (plc.LocationCode == nil) {
 		return fmt.Errorf("location ID and location code must both be provided or both be nil")
+	}
+
+	// Validate postal code fields consistency
+	if (plc.SourcePostalCode == nil) != (plc.SourcePostalCodeID == nil) {
+		return fmt.Errorf("source postal code and source postal code ID must both be provided or both be nil")
+	}
+
+	if (plc.DestinationPostalCode == nil) != (plc.DestinationPostalCodeID == nil) {
+		return fmt.Errorf("destination postal code and destination postal code ID must both be provided or both be nil")
+	}
+
+	// Validate that postal codes are provided together for route coverage
+	if (plc.SourcePostalCode != nil && plc.DestinationPostalCode == nil) ||
+		(plc.SourcePostalCode == nil && plc.DestinationPostalCode != nil) {
+		return fmt.Errorf("both source and destination postal codes must be provided for route coverage")
 	}
 
 	// Soft delete validation: cannot update essential fields of soft-deleted records
@@ -198,11 +217,15 @@ func (plc *PartnerLocationCoverage) Validate() error {
 
 // PartnerLocationCoverageFilters represents filters for partner location coverage queries
 type PartnerLocationCoverageFilters struct {
-	PartnerID     *uuid.UUID `json:"partner_id,omitempty"`
-	LocationScope string     `json:"location_scope,omitempty"`
-	LocationID    *uuid.UUID `json:"location_id,omitempty"`
-	ZoneType      string     `json:"zone_type,omitempty"`
-	IsActive      *bool      `json:"is_active,omitempty"`
+	PartnerID               *uuid.UUID `json:"partner_id,omitempty"`
+	LocationScope           string     `json:"location_scope,omitempty"`
+	LocationID              *uuid.UUID `json:"location_id,omitempty"`
+	ZoneType                string     `json:"zone_type,omitempty"`
+	SourcePostalCode        *string    `json:"source_postal_code,omitempty"`
+	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty"`
+	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty"`
+	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty"`
+	IsActive                *bool      `json:"is_active,omitempty"`
 }
 
 // PartnerLocationCoverageResult represents partner coverage with location details

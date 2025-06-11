@@ -176,7 +176,10 @@ const (
 	MaxBulkRequestSize  = 100
 	MinPostalCodeLength = 3
 	MaxPostalCodeLength = 20
-	CountryCodeLength   = 2
+	// Country Code Validation - ISO 3166 A-2 standard
+	CountryCodeLength    = 2 // Exactly 2 characters for ISO 3166 A-2
+	MinCountryCodeLength = 2 // Minimum length for country codes
+	MaxCountryCodeLength = 2 // Maximum length for country codes (ISO 3166 A-2)
 )
 
 // Timeout Constants (in seconds)

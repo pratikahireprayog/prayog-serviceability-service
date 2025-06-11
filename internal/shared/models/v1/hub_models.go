@@ -58,7 +58,7 @@ func (h *Hub) IsDeletedRecord() bool {
 }
 
 // Validate performs custom business rule validation for Hub
-func (h *Hub) Validate() error {
+func (h *Hub) ValidateBusinessRules() error {
 	// Validate hub code format if provided
 	if h.Code != nil && !isSnakeCase(*h.Code) {
 		return fmt.Errorf("hub code must be in snake_case format")
@@ -121,7 +121,7 @@ func (hlc *HubLocationCoverage) IsDeletedRecord() bool {
 }
 
 // Validate performs custom business rule validation for HubLocationCoverage
-func (hlc *HubLocationCoverage) Validate() error {
+func (hlc *HubLocationCoverage) ValidateBusinessRules() error {
 	// Validate that either both or neither hub ID and code are provided
 	if (hlc.HubID == nil) != (hlc.HubCode == nil) {
 		return fmt.Errorf("hub ID and hub code must both be provided or both be nil")
@@ -188,7 +188,7 @@ func (hs *HubSpecification) IsDeletedRecord() bool {
 }
 
 // Validate performs custom business rule validation for HubSpecification
-func (hs *HubSpecification) Validate() error {
+func (hs *HubSpecification) ValidateBusinessRules() error {
 	// Validate that either both or neither hub ID and code are provided
 	if (hs.HubID == nil) != (hs.HubCode == nil) {
 		return fmt.Errorf("hub ID and hub code must both be provided or both be nil")
