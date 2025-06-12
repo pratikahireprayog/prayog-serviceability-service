@@ -38,3 +38,67 @@ type StandardErrorResponse struct {
 	Message string    `json:"message"`
 	Error   ErrorInfo `json:"error"`
 }
+
+// Helper functions for creating consistent error responses
+
+// NewValidationErrorResponse creates a standard validation error response
+func NewValidationErrorResponse(message string, details interface{}) StandardErrorResponse {
+	return StandardErrorResponse{
+		Success: false,
+		Message: "Invalid request body",
+		Error: ErrorInfo{
+			Code:    "INVALID_REQUEST",
+			Message: message,
+			Details: details,
+		},
+	}
+}
+
+// NewNotFoundErrorResponse creates a standard not found error response
+func NewNotFoundErrorResponse(message string) StandardErrorResponse {
+	return StandardErrorResponse{
+		Success: false,
+		Message: "Resource not found",
+		Error: ErrorInfo{
+			Code:    "NOT_FOUND",
+			Message: message,
+		},
+	}
+}
+
+// NewConflictErrorResponse creates a standard conflict error response
+func NewConflictErrorResponse(message string) StandardErrorResponse {
+	return StandardErrorResponse{
+		Success: false,
+		Message: "Resource conflict",
+		Error: ErrorInfo{
+			Code:    "CONFLICT",
+			Message: message,
+		},
+	}
+}
+
+// NewInternalErrorResponse creates a standard internal server error response
+func NewInternalErrorResponse(message string) StandardErrorResponse {
+	return StandardErrorResponse{
+		Success: false,
+		Message: "Internal server error",
+		Error: ErrorInfo{
+			Code:    "INTERNAL_ERROR",
+			Message: message,
+		},
+	}
+}
+
+// NewCustomErrorResponse creates a custom error response
+func NewCustomErrorResponse(message, code, errorMessage string, details interface{}) StandardErrorResponse {
+	return StandardErrorResponse{
+		Success: false,
+		Message: message,
+		Error: ErrorInfo{
+			Code:    code,
+			Message: errorMessage,
+			Details: details,
+		},
+	}
+}

@@ -76,10 +76,11 @@ func (eh *ErrorHandler) HandleParsingError(c *fiber.Ctx, err error) error {
 		"error":      err.Error(),
 	}).Error("Request body parsing failed")
 
-	return c.Status(fiber.StatusBadRequest).JSON(dtos.ServiceabilityResponseDTO{
+	return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
 		Success: false,
-		Error: &dtos.ErrorResponseDTO{
-			Code:    string(ErrorCodeInvalidRequestBody),
+		Message: "Invalid request body",
+		Error: dtos.ErrorInfo{
+			Code:    "INVALID_REQUEST",
 			Message: "Failed to parse request body",
 			Details: eh.sanitizeErrorMessage(err.Error()),
 		},
@@ -100,15 +101,14 @@ func (eh *ErrorHandler) HandleValidationError(c *fiber.Ctx, err error) error {
 	// Parse validation errors for better user experience
 	validationErrors := eh.parseValidationErrors(err)
 
-	errorResponse := &dtos.ErrorResponseDTO{
-		Code:    string(ErrorCodeValidationError),
-		Message: "Request validation failed",
-		Details: eh.formatValidationErrors(validationErrors),
-	}
-
-	return c.Status(fiber.StatusBadRequest).JSON(dtos.ServiceabilityResponseDTO{
+	return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
 		Success: false,
-		Error:   errorResponse,
+		Message: "Invalid request body",
+		Error: dtos.ErrorInfo{
+			Code:    "INVALID_REQUEST",
+			Message: "Request validation failed",
+			Details: validationErrors,
+		},
 	})
 }
 
@@ -124,12 +124,12 @@ func (eh *ErrorHandler) HandleBusinessLogicError(c *fiber.Ctx, code ErrorCode, m
 		"error":      err.Error(),
 	}).Error("Business logic validation failed")
 
-	return c.Status(fiber.StatusBadRequest).JSON(dtos.ServiceabilityResponseDTO{
+	return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
 		Success: false,
-		Error: &dtos.ErrorResponseDTO{
+		Message: message,
+		Error: dtos.ErrorInfo{
 			Code:    string(code),
-			Message: message,
-			Details: eh.sanitizeErrorMessage(err.Error()),
+			Message: eh.sanitizeErrorMessage(err.Error()),
 		},
 	})
 }
@@ -151,12 +151,12 @@ func (eh *ErrorHandler) HandleServiceError(c *fiber.Ctx, code ErrorCode, message
 		statusCode = fiber.StatusServiceUnavailable
 	}
 
-	return c.Status(statusCode).JSON(dtos.ServiceabilityResponseDTO{
+	return c.Status(statusCode).JSON(dtos.StandardErrorResponse{
 		Success: false,
-		Error: &dtos.ErrorResponseDTO{
+		Message: message,
+		Error: dtos.ErrorInfo{
 			Code:    string(code),
-			Message: message,
-			Details: eh.sanitizeErrorMessage(err.Error()),
+			Message: eh.sanitizeErrorMessage(err.Error()),
 		},
 	})
 }
@@ -178,12 +178,12 @@ func (eh *ErrorHandler) HandleBulkServiceError(c *fiber.Ctx, code ErrorCode, mes
 		statusCode = fiber.StatusMultiStatus
 	}
 
-	return c.Status(statusCode).JSON(dtos.BulkServiceabilityResponseDTO{
+	return c.Status(statusCode).JSON(dtos.StandardErrorResponse{
 		Success: false,
-		Error: &dtos.ErrorResponseDTO{
+		Message: message,
+		Error: dtos.ErrorInfo{
 			Code:    string(code),
-			Message: message,
-			Details: eh.sanitizeErrorMessage(err.Error()),
+			Message: eh.sanitizeErrorMessage(err.Error()),
 		},
 	})
 }

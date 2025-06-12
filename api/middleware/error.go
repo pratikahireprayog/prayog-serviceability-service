@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"prayog-serviceability-service/internal/shared/constants/v1"
+	"prayog-serviceability-service/internal/shared/dtos/v1"
 )
 
 // ErrorType represents different types of errors that can occur
@@ -285,11 +287,22 @@ func (ew *errorResponseWriter) handleHTTPError(statusCode int) {
 
 // sendErrorResponse sends a standardized error response
 func (ew *errorResponseWriter) sendErrorResponse(appErr *AppError) {
-	// Use the RespondWithErrorDetails helper function for consistency
-	if appErr.Details != nil {
-		RespondWithErrorDetails(ew.ResponseWriter, appErr.StatusCode, appErr.Message, appErr.Code, appErr.Details)
-	} else {
-		RespondWithError(ew.ResponseWriter, appErr.StatusCode, appErr.Message, appErr.Code)
+	response := dtos.StandardErrorResponse{
+		Success: false,
+		Message: appErr.Message,
+		Error: dtos.ErrorInfo{
+			Code:    appErr.Code,
+			Message: appErr.Message,
+			Details: appErr.Details,
+		},
+	}
+
+	ew.Header().Set("Content-Type", "application/json")
+	ew.WriteHeader(appErr.StatusCode)
+
+	// Use JSON encoder to write response
+	if err := json.NewEncoder(ew).Encode(response); err != nil {
+		log.Printf("Failed to encode error response: %v", err)
 	}
 }
 

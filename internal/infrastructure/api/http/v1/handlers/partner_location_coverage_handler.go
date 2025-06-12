@@ -156,48 +156,58 @@ func (h *PartnerLocationCoverageHandler) handleError(c *fiber.Ctx, err error, op
 
 	// Handle specific error types
 	if strings.Contains(errMsg, "partner validation failed") {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    "INVALID_PARTNER",
-				"message": "Partner not found or inactive",
-				"details": errMsg,
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid partner",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_PARTNER",
+				Message: "Partner not found or inactive",
+				Details: errMsg,
 			},
 		})
 	}
 
 	if strings.Contains(errMsg, "not found") {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    fiber.StatusNotFound,
-				"message": errMsg,
+		return c.Status(fiber.StatusNotFound).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Resource not found",
+			Error: dtos.ErrorInfo{
+				Code:    "NOT_FOUND",
+				Message: errMsg,
 			},
 		})
 	}
 
 	if strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "required") ||
 		strings.Contains(errMsg, "cannot be empty") || strings.Contains(errMsg, "validation failed") {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    fiber.StatusBadRequest,
-				"message": errMsg,
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: errMsg,
 			},
 		})
 	}
 
 	if strings.Contains(errMsg, "already exists") {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    fiber.StatusConflict,
-				"message": errMsg,
+		return c.Status(fiber.StatusConflict).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Resource conflict",
+			Error: dtos.ErrorInfo{
+				Code:    "CONFLICT",
+				Message: errMsg,
 			},
 		})
 	}
 
 	// Default to internal server error
-	return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-		"error": fiber.Map{
-			"code":    fiber.StatusInternalServerError,
-			"message": errMsg,
+	return c.Status(fiber.StatusInternalServerError).JSON(dtos.StandardErrorResponse{
+		Success: false,
+		Message: "Internal server error",
+		Error: dtos.ErrorInfo{
+			Code:    "INTERNAL_ERROR",
+			Message: errMsg,
 		},
 	})
 }
@@ -205,20 +215,25 @@ func (h *PartnerLocationCoverageHandler) handleError(c *fiber.Ctx, err error, op
 // Helper function to validate request body
 func (h *PartnerLocationCoverageHandler) validateRequest(c *fiber.Ctx, req interface{}) error {
 	if err := c.BodyParser(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    fiber.StatusBadRequest,
-				"message": "Invalid request body",
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
 			},
 		})
 	}
 
 	if err := h.validator.Struct(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": fiber.Map{
-				"code":    fiber.StatusBadRequest,
-				"message": "Validation failed",
-				"details": err.Error(),
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
 			},
 		})
 	}

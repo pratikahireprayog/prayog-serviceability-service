@@ -4,6 +4,8 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
+
+	"prayog-serviceability-service/internal/shared/dtos/v1"
 )
 
 // ValidationMiddleware represents the validation middleware with dependencies
@@ -26,10 +28,14 @@ func (vm *ValidationMiddleware) ValidateBody(target interface{}) fiber.Handler {
 		// Parse the request body into the target struct
 		if err := c.BodyParser(target); err != nil {
 			vm.logger.WithError(err).Error("Failed to parse request body")
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error":   "Invalid request body",
-				"message": "Failed to parse JSON request body",
-				"details": err.Error(),
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid request body",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "Failed to parse JSON request body",
+					Details: err.Error(),
+				},
 			})
 		}
 
@@ -50,10 +56,14 @@ func (vm *ValidationMiddleware) ValidateBody(target interface{}) fiber.Handler {
 				}
 			}
 
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error":   "Validation failed",
-				"message": "Request body contains invalid data",
-				"details": validationErrors,
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid request body",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "Request body contains invalid data",
+					Details: validationErrors,
+				},
 			})
 		}
 
@@ -63,34 +73,53 @@ func (vm *ValidationMiddleware) ValidateBody(target interface{}) fiber.Handler {
 	}
 }
 
-// ValidateParams returns a middleware that validates route parameters
-func (vm *ValidationMiddleware) ValidateParams(validators map[string]func(string) error) fiber.Handler {
+// ValidateParams returns a middleware that validates URL parameters
+func (vm *ValidationMiddleware) ValidateParams(target interface{}) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		for paramName, validatorFunc := range validators {
-			paramValue := c.Params(paramName)
-			if paramValue == "" {
-				vm.logger.Errorf("Missing required parameter: %s", paramName)
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":   "Missing parameter",
-					"message": "Required path parameter is missing",
-					"details": paramName,
-				})
-			}
-
-			if err := validatorFunc(paramValue); err != nil {
-				vm.logger.WithError(err).Errorf("Parameter validation failed for %s", paramName)
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"error":   "Invalid parameter",
-					"message": "Path parameter contains invalid value",
-					"details": fiber.Map{
-						"parameter": paramName,
-						"value":     paramValue,
-						"reason":    err.Error(),
-					},
-				})
-			}
+		// Parse URL parameters into the target struct
+		if err := c.ParamsParser(target); err != nil {
+			vm.logger.WithError(err).Error("Failed to parse URL parameters")
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid request parameters",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "Failed to parse URL parameters",
+					Details: err.Error(),
+				},
+			})
 		}
 
+		// Validate the parsed struct
+		if err := vm.validator.Struct(target); err != nil {
+			vm.logger.WithError(err).Error("URL parameters validation failed")
+
+			// Extract validation errors
+			validationErrors := make([]fiber.Map, 0)
+			if validatorErrors, ok := err.(validator.ValidationErrors); ok {
+				for _, fieldError := range validatorErrors {
+					validationErrors = append(validationErrors, fiber.Map{
+						"field":   fieldError.Field(),
+						"tag":     fieldError.Tag(),
+						"value":   fieldError.Value(),
+						"message": getValidationMessage(fieldError),
+					})
+				}
+			}
+
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid request parameters",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "URL parameters contain invalid data",
+					Details: validationErrors,
+				},
+			})
+		}
+
+		// Store the validated data in context for handler use
+		c.Locals("validatedParams", target)
 		return c.Next()
 	}
 }
@@ -101,10 +130,14 @@ func (vm *ValidationMiddleware) ValidateQuery(target interface{}) fiber.Handler 
 		// Parse query parameters into the target struct
 		if err := c.QueryParser(target); err != nil {
 			vm.logger.WithError(err).Error("Failed to parse query parameters")
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error":   "Invalid query parameters",
-				"message": "Failed to parse query parameters",
-				"details": err.Error(),
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid query parameters",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "Failed to parse query parameters",
+					Details: err.Error(),
+				},
 			})
 		}
 
@@ -125,10 +158,14 @@ func (vm *ValidationMiddleware) ValidateQuery(target interface{}) fiber.Handler 
 				}
 			}
 
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error":   "Validation failed",
-				"message": "Query parameters contain invalid data",
-				"details": validationErrors,
+			return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+				Success: false,
+				Message: "Invalid query parameters",
+				Error: dtos.ErrorInfo{
+					Code:    "INVALID_REQUEST",
+					Message: "Query parameters contain invalid data",
+					Details: validationErrors,
+				},
 			})
 		}
 
@@ -149,6 +186,8 @@ func getValidationMessage(fe validator.FieldError) string {
 		return "Value is too short"
 	case "max":
 		return "Value is too long"
+	case "len":
+		return "Invalid value"
 	case "uuid4":
 		return "Must be a valid UUID"
 	case "alpha":
