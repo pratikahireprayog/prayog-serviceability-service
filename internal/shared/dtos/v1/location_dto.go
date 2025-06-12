@@ -27,7 +27,7 @@ type PaginationResponse struct {
 
 // CreateCountryRequest represents request to create a new country
 type CreateCountryRequest struct {
-	Code         string  `json:"code" validate:"required,len=2"` // ISO 3166 A-2: exactly 2 characters, lowercase for consistency
+	Code         string  `json:"code" validate:"required,country_code_iso"` // ISO 3166 A-2: exactly 2 uppercase characters
 	Name         string  `json:"name" validate:"required,min=2,max=100"`
 	CurrencyCode *string `json:"currency_code,omitempty" validate:"omitempty,len=3,alpha"`
 	PhoneCode    *string `json:"phone_code,omitempty" validate:"omitempty,min=1,max=10"`
@@ -93,10 +93,10 @@ type RegionTypeListResponse = StandardListResponse[RegionTypeResponse]
 
 // CreateRegionRequest represents request to create a new region
 type CreateRegionRequest struct {
-	Code           string     `json:"code" validate:"required,min=2,max=20,snake_case"`
+	Code           string     `json:"code" validate:"required,region_code_iso"`
 	CountryID      *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode    *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
-	RegionTypeCode *string    `json:"region_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CountryCode    *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
+	RegionTypeCode *string    `json:"region_type_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name           string     `json:"name" validate:"required,min=2,max=100"`
 	IsActive       *bool      `json:"is_active,omitempty"`
 }
@@ -104,8 +104,8 @@ type CreateRegionRequest struct {
 // UpdateRegionRequest represents request to update a region
 type UpdateRegionRequest struct {
 	CountryID      *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode    *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
-	RegionTypeCode *string    `json:"region_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CountryCode    *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
+	RegionTypeCode *string    `json:"region_type_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name           *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	IsActive       *bool      `json:"is_active,omitempty"`
 }
@@ -135,9 +135,9 @@ type RegionListResponse = StandardListResponse[RegionResponse]
 type CreateDistrictRequest struct {
 	Code        string     `json:"code" validate:"required,min=2,max=20,snake_case"`
 	RegionID    *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode  *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode  *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CountryID   *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	Name        string     `json:"name" validate:"required,min=2,max=100"`
 	IsActive    *bool      `json:"is_active,omitempty"`
 }
@@ -145,9 +145,9 @@ type CreateDistrictRequest struct {
 // UpdateDistrictRequest represents request to update a district
 type UpdateDistrictRequest struct {
 	RegionID    *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode  *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode  *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CountryID   *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	Name        *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	IsActive    *bool      `json:"is_active,omitempty"`
 }
@@ -176,13 +176,13 @@ type DistrictListResponse = StandardListResponse[DistrictResponse]
 
 // CreateCityRequest represents request to create a new city
 type CreateCityRequest struct {
-	Code         string     `json:"code" validate:"required,min=2,max=20"`
+	Code         string     `json:"code" validate:"required,min=2,max=20,snake_case"`
 	RegionID     *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode   *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode   *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CountryID    *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode  *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode  *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	DistrictID   *uuid.UUID `json:"district_id,omitempty"`
-	DistrictCode *string    `json:"district_code,omitempty" validate:"omitempty,min=2,max=20"`
+	DistrictCode *string    `json:"district_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name         string     `json:"name" validate:"required,min=2,max=100"`
 	IsActive     *bool      `json:"is_active,omitempty"`
 }
@@ -190,11 +190,11 @@ type CreateCityRequest struct {
 // UpdateCityRequest represents request to update a city
 type UpdateCityRequest struct {
 	RegionID     *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode   *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode   *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CountryID    *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode  *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode  *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	DistrictID   *uuid.UUID `json:"district_id,omitempty"`
-	DistrictCode *string    `json:"district_code,omitempty" validate:"omitempty,min=2,max=20"`
+	DistrictCode *string    `json:"district_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name         *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	IsActive     *bool      `json:"is_active,omitempty"`
 }
@@ -226,9 +226,9 @@ type CityListResponse = StandardListResponse[CityResponse]
 
 // CreateAreaRequest represents request to create a new area
 type CreateAreaRequest struct {
-	Code     string     `json:"code" validate:"required,min=2,max=20"`
+	Code     string     `json:"code" validate:"required,min=2,max=20,snake_case"`
 	CityID   *uuid.UUID `json:"city_id,omitempty"`
-	CityCode *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityCode *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name     string     `json:"name" validate:"required,min=2,max=100"`
 	IsActive *bool      `json:"is_active,omitempty"`
 }
@@ -236,7 +236,7 @@ type CreateAreaRequest struct {
 // UpdateAreaRequest represents request to update an area
 type UpdateAreaRequest struct {
 	CityID   *uuid.UUID `json:"city_id,omitempty"`
-	CityCode *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityCode *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	Name     *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	IsActive *bool      `json:"is_active,omitempty"`
 }
@@ -264,13 +264,13 @@ type AreaListResponse = StandardListResponse[AreaResponse]
 type CreatePostalCodeRequest struct {
 	Code          string     `json:"code" validate:"required,min=3,max=20"`
 	CountryID     *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	RegionID      *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CityID        *uuid.UUID `json:"city_id,omitempty"`
-	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	AreaID        *uuid.UUID `json:"area_id,omitempty"`
-	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
 	IsActive      *bool      `json:"is_active,omitempty"`
 }
@@ -278,13 +278,13 @@ type CreatePostalCodeRequest struct {
 // UpdatePostalCodeRequest represents request to update a postal code
 type UpdatePostalCodeRequest struct {
 	CountryID     *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,min=2,max=10"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	RegionID      *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,min=2,max=20"`
+	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
 	CityID        *uuid.UUID `json:"city_id,omitempty"`
-	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20"`
+	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	AreaID        *uuid.UUID `json:"area_id,omitempty"`
-	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20"`
+	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
 	IsActive      *bool      `json:"is_active,omitempty"`
 }
@@ -342,10 +342,10 @@ type LocationTypeListResponse = StandardListResponse[LocationTypeResponse]
 
 // CreateLocationAliasRequest represents request to create a new location alias
 type CreateLocationAliasRequest struct {
-	EntityTypeCode *string   `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityTypeCode *string   `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	EntityType     *string   `json:"entity_type,omitempty" validate:"omitempty,min=2,max=20"`
 	EntityID       uuid.UUID `json:"entity_id" validate:"required"`
-	EntityCode     *string   `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityCode     *string   `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	AliasName      string    `json:"alias_name" validate:"required,min=1,max=100"`
 	IsPrimary      *bool     `json:"is_primary,omitempty"`
 	IsActive       *bool     `json:"is_active,omitempty"`
@@ -353,9 +353,9 @@ type CreateLocationAliasRequest struct {
 
 // UpdateLocationAliasRequest represents request to update a location alias
 type UpdateLocationAliasRequest struct {
-	EntityTypeCode *string `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityTypeCode *string `json:"entity_type_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	EntityType     *string `json:"entity_type,omitempty" validate:"omitempty,min=2,max=20"`
-	EntityCode     *string `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20"`
+	EntityCode     *string `json:"entity_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
 	AliasName      *string `json:"alias_name,omitempty" validate:"omitempty,min=1,max=100"`
 	IsPrimary      *bool   `json:"is_primary,omitempty"`
 	IsActive       *bool   `json:"is_active,omitempty"`

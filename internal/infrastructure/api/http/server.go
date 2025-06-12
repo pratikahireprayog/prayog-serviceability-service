@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
@@ -23,6 +22,7 @@ import (
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/shared/utils/v1"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -174,8 +174,9 @@ func (s *Server) setupRoutes() error {
 
 // createServiceabilityHandler creates a serviceability handler with all dependencies
 func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler, error) {
-	// Create validator instance
-	validator := validator.New()
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
 
 	// Create serviceability handler
 	serviceabilityHandler := handlers.NewServiceabilityHandler(
@@ -194,8 +195,9 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 		return nil, fmt.Errorf("database manager is required for location handler")
 	}
 
-	// Create validator instance
-	validator := validator.New()
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
 
 	// Create repository factory from database connection
 	db := s.dbManager.GetDB()
@@ -230,8 +232,9 @@ func (s *Server) createPartnerLocationCoverageHandler() (*handlers.PartnerLocati
 		return nil, fmt.Errorf("integration factory is required for partner location coverage handler")
 	}
 
-	// Create validator instance
-	validator := validator.New()
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
 
 	// Create repository factory from database connection
 	db := s.dbManager.GetDB()

@@ -222,6 +222,24 @@ func (eh *ErrorHandler) getValidationErrorMessage(fieldError validator.FieldErro
 		return fmt.Sprintf("%s must be exactly %s characters long", eh.getJSONFieldName(fieldError.Field()), fieldError.Param())
 	case "oneof":
 		return fmt.Sprintf("%s must be one of: %s", eh.getJSONFieldName(fieldError.Field()), fieldError.Param())
+	case "snake_case":
+		return fmt.Sprintf("%s must be in lowercase or snake_case format (e.g., 'state' or 'state_province')", eh.getJSONFieldName(fieldError.Field()))
+	case "country_code_iso":
+		return fmt.Sprintf("%s must be a valid ISO 3166 A-2 country code (2 uppercase letters)", eh.getJSONFieldName(fieldError.Field()))
+	case "postal_code":
+		return fmt.Sprintf("%s has invalid postal code format", eh.getJSONFieldName(fieldError.Field()))
+	case "country_code":
+		return fmt.Sprintf("%s must be a valid 2-character country code", eh.getJSONFieldName(fieldError.Field()))
+	case "partner_name":
+		return fmt.Sprintf("%s contains invalid characters", eh.getJSONFieldName(fieldError.Field()))
+	case "service_type":
+		return fmt.Sprintf("%s contains invalid service type", eh.getJSONFieldName(fieldError.Field()))
+	case "parcel_category":
+		return fmt.Sprintf("%s contains invalid parcel category", eh.getJSONFieldName(fieldError.Field()))
+	case "rating":
+		return fmt.Sprintf("%s must be between 0 and 10", eh.getJSONFieldName(fieldError.Field()))
+	case "region_code_iso":
+		return "must be a valid ISO 3166-2 region code (format: CC-XXX)"
 	default:
 		return fmt.Sprintf("%s is invalid", eh.getJSONFieldName(fieldError.Field()))
 	}

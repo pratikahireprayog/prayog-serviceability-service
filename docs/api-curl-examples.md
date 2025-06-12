@@ -151,7 +151,7 @@ curl -X POST \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "code": "STATE",
+    "code": "state",
     "name": "State",
     "description": "Administrative state or province",
     "is_active": true
@@ -163,7 +163,7 @@ curl -X POST \
 ```bash
 # Get region type by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/STATE" \
+  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -173,11 +173,10 @@ curl -X GET \
 ```bash
 # Update existing region type
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/STATE" \
+  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "code": "STATE",
     "name": "State/Province",
     "description": "Administrative state, province, or territory",
     "is_active": true
@@ -189,7 +188,7 @@ curl -X PUT \
 ```bash
 # Soft delete region type
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/STATE" \
+  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -215,9 +214,9 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "name": "California",
-    "code": "CA",
+    "code": "US-CA",
     "country_id": "123e4567-e89b-12d3-a456-426614174000",
-    "region_type_code": "STATE",
+    "region_type_code": "state",
     "is_active": true
   }'
 ```
@@ -257,14 +256,13 @@ curl -X GET \
 ```bash
 # Update existing region
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001" \
+  "${{serviceabilityBaseURL}}/serviceability/v1/regions/US-CA" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "California State",
-    "code": "CA",
     "country_id": "123e4567-e89b-12d3-a456-426614174000",
-    "region_type_code": "STATE",
+    "region_type_code": "state",
     "is_active": true
   }'
 ```
@@ -300,8 +298,9 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Los Angeles County",
-    "code": "LA",
-    "region_id": "456e7890-e89b-12d3-a456-426614174001",
+    "code": "los_angeles",
+    "region_code": "US-CA",
+    "country_id": "123e4567-e89b-12d3-a456-426614174000",
     "is_active": true
   }'
 ```
@@ -383,8 +382,10 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Los Angeles",
-    "code": "LA_CITY",
-    "region_id": "456e7890-e89b-12d3-a456-426614174001",
+    "code": "los_angeles",
+    "region_code": "US-CA",
+    "district_code": "los_angeles",
+    "country_id": "123e4567-e89b-12d3-a456-426614174000",
     "is_active": true
   }'
 ```
