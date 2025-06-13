@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
+	"prayog-serviceability-service/internal/shared/constants/v1"
 	"prayog-serviceability-service/internal/shared/dtos/v1"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/shared/utils/v1"
 )
 
 // ServiceabilityHandler handles serviceability check requests
@@ -17,6 +21,7 @@ type ServiceabilityHandler struct {
 	validator                       *validator.Validate
 	logger                          *logrus.Logger
 	errorHandler                    *ErrorHandler
+	postalCodeValidator             *utils.PostalCodeValidator
 }
 
 // NewServiceabilityHandler creates a new serviceability handler
@@ -32,6 +37,7 @@ func NewServiceabilityHandler(
 		validator:                       validator,
 		logger:                          logger,
 		errorHandler:                    NewErrorHandler(logger),
+		postalCodeValidator:             utils.NewPostalCodeValidator(),
 	}
 }
 
@@ -134,38 +140,164 @@ func (h *ServiceabilityHandler) BulkCheckServiceability(c *fiber.Ctx) error {
 func (h *ServiceabilityHandler) CheckPostalCodeServiceability(c *fiber.Ctx) error {
 	h.logger.Debug("Single postal code serviceability check requested")
 
-	// Get postal code from URL parameter
+	// 1. Validate and sanitize postal code from URL parameter
 	postalCode := c.Params("postal_code")
-	if postalCode == "" {
-		return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidPostalCode, "Postal code is required", nil)
+	if err := h.validatePostalCodeParam(postalCode); err != nil {
+		return h.errorHandler.HandleValidationError(c, err)
 	}
 
-	// Parse query parameters for filters
-	filters := &dtos.PostalCodeServiceabilityRequest{}
-	if parcelCategory := c.Query("parcel_category"); parcelCategory != "" {
-		filters.ParcelCategory = &parcelCategory
-	}
-	if productType := c.Query("product_type"); productType != "" {
-		filters.ProductType = &productType
+	// Normalize postal code
+	postalCode = h.normalizePostalCode(postalCode)
+
+	// 2. Parse and validate query parameters
+	filters, err := h.parseAndValidateQueryParams(c)
+	if err != nil {
+		return h.errorHandler.HandleValidationError(c, err)
 	}
 
-	// Call serviceability service
+	// 3. Validate postal code format (using default country IN for now)
+	if err := h.postalCodeValidator.ValidatePostalCode(postalCode, "IN"); err != nil {
+		return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidPostalCode, "Invalid postal code format", err)
+	}
+
+	// 4. Apply struct validation to filters
+	if err := h.validator.Struct(filters); err != nil {
+		return h.errorHandler.HandleValidationError(c, err)
+	}
+
+	// 5. Call serviceability service
 	response, err := h.postalCodeServiceabilityService.GetServiceabilityByPostalCode(c.Context(), postalCode, filters)
 	if err != nil {
 		return h.errorHandler.HandleServiceError(c, ErrorCodeServiceabilityCheckFailed, "Failed to check postal code serviceability", err)
 	}
 
-	// Return appropriate status code based on response
+	// 6. Return appropriate status code based on response
 	statusCode := fiber.StatusOK
 	if !response.Success {
-		if response.Error != nil && response.Error.Code == "POSTAL_CODE_NOT_FOUND" {
-			statusCode = fiber.StatusNotFound
+		if response.Error != nil {
+			switch response.Error.Code {
+			case "POSTAL_CODE_NOT_FOUND":
+				statusCode = fiber.StatusNotFound
+			case "POSTAL_CODE_NOT_SERVICEABLE":
+				statusCode = fiber.StatusOK // This is a valid business response
+			default:
+				statusCode = fiber.StatusInternalServerError
+			}
 		} else {
 			statusCode = fiber.StatusInternalServerError
 		}
 	}
 
 	return c.Status(statusCode).JSON(response)
+}
+
+// validatePostalCodeParam validates the postal code URL parameter
+func (h *ServiceabilityHandler) validatePostalCodeParam(postalCode string) error {
+	// Check if postal code is empty
+	if postalCode == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Postal code is required")
+	}
+
+	// Check length constraints
+	if len(postalCode) < constants.MinPostalCodeLength {
+		return fiber.NewError(fiber.StatusBadRequest, "Postal code must be at least 3 characters long")
+	}
+
+	if len(postalCode) > constants.MaxPostalCodeLength {
+		return fiber.NewError(fiber.StatusBadRequest, "Postal code cannot exceed 20 characters")
+	}
+
+	// Check for valid characters (alphanumeric, spaces, hyphens only)
+	if !h.isValidPostalCodeChars(postalCode) {
+		return fiber.NewError(fiber.StatusBadRequest, "Postal code contains invalid characters")
+	}
+
+	return nil
+}
+
+// parseAndValidateQueryParams parses and validates query parameters
+func (h *ServiceabilityHandler) parseAndValidateQueryParams(c *fiber.Ctx) (*dtos.PostalCodeServiceabilityRequest, error) {
+	filters := &dtos.PostalCodeServiceabilityRequest{}
+
+	// Parse and validate parcel_category
+	if parcelCategory := c.Query("parcel_category"); parcelCategory != "" {
+		// Sanitize input
+		parcelCategory = strings.TrimSpace(strings.ToLower(parcelCategory))
+
+		// Validate enum values
+		if !h.isValidParcelCategory(parcelCategory) {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "Invalid parcel_category. Must be one of: ecomm, cargo, courier")
+		}
+		filters.ParcelCategory = &parcelCategory
+	}
+
+	// Parse and validate product_type
+	if productType := c.Query("product_type"); productType != "" {
+		// Sanitize input
+		productType = strings.TrimSpace(productType)
+
+		// Basic validation - not empty after trimming
+		if productType == "" {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "Product type cannot be empty")
+		}
+
+		// Length validation
+		if len(productType) > 50 {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "Product type cannot exceed 50 characters")
+		}
+
+		// Character validation - alphanumeric, underscore, hyphen only
+		if !h.isValidProductType(productType) {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "Product type contains invalid characters")
+		}
+
+		filters.ProductType = &productType
+	}
+
+	return filters, nil
+}
+
+// normalizePostalCode normalizes postal code format
+func (h *ServiceabilityHandler) normalizePostalCode(postalCode string) string {
+	stringUtils := utils.StringUtils{}
+	return stringUtils.NormalizePostalCode(postalCode)
+}
+
+// isValidPostalCodeChars checks if postal code contains only valid characters
+func (h *ServiceabilityHandler) isValidPostalCodeChars(postalCode string) bool {
+	for _, char := range postalCode {
+		if !((char >= '0' && char <= '9') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= 'a' && char <= 'z') ||
+			char == ' ' || char == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidParcelCategory validates parcel category enum values
+func (h *ServiceabilityHandler) isValidParcelCategory(category string) bool {
+	validCategories := map[string]bool{
+		constants.ParcelCategoryEcom:    true, // "ecom"
+		constants.ParcelCategoryCourier: true, // "courier"
+		constants.ParcelCategoryCargo:   true, // "cargo"
+		"ecomm":                         true, // Alternative spelling
+	}
+	return validCategories[category]
+}
+
+// isValidProductType validates product type format
+func (h *ServiceabilityHandler) isValidProductType(productType string) bool {
+	for _, char := range productType {
+		if !((char >= '0' && char <= '9') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= 'a' && char <= 'z') ||
+			char == '_' || char == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // CheckPostalCodeServiceabilityPost handles POST /check (source and destination postal code serviceability check)
