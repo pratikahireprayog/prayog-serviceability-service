@@ -188,6 +188,8 @@ type PartnerLocationCoverageRepository interface {
 	GetByPartnerID(ctx context.Context, partnerID string) ([]models.PartnerLocationCoverage, error)
 	GetByPartnerIDWithDeleted(ctx context.Context, partnerID string) ([]models.PartnerLocationCoverage, error)
 	GetByPartnerCode(ctx context.Context, partnerCode string) ([]models.PartnerLocationCoverage, error)
+	GetByPostalCode(ctx context.Context, postalCode string) ([]models.PartnerLocationCoverage, error)
+	GetByPostalCodeWithDeleted(ctx context.Context, postalCode string) ([]models.PartnerLocationCoverage, error)
 	GetByLocationScopeAndID(ctx context.Context, locationScope string, locationID uint) ([]models.PartnerLocationCoverage, error)
 	GetByLocationScopeAndIDWithDeleted(ctx context.Context, locationScope string, locationID uint) ([]models.PartnerLocationCoverage, error)
 	GetByFilters(ctx context.Context, filters *models.PartnerLocationCoverageFilters) ([]models.PartnerLocationCoverageResult, error)

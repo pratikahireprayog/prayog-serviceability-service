@@ -373,6 +373,63 @@ type LegacyBulkServiceabilityResponseDTO struct {
 
 // Converter functions for legacy compatibility
 
+// NEW POSTAL CODE BASED SERVICEABILITY DTOS
+
+// PostalCodeServiceabilityRequest represents the request for postal code based serviceability API
+type PostalCodeServiceabilityRequest struct {
+	SourcePostalCode      *string `json:"source_postal_code,omitempty" validate:"omitempty,min=1,max=20"`
+	DestinationPostalCode string  `json:"destination_postal_code" validate:"required,min=1,max=20"`
+	ParcelCategory        *string `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm cargo courier"`
+	ProductType           *string `json:"product_type,omitempty"`
+}
+
+// PostalCodeServiceabilityResponse represents the response for postal code based serviceability API
+type PostalCodeServiceabilityResponse struct {
+	Success       bool                           `json:"success"`
+	IsServiceable *bool                          `json:"is_serviceable"`
+	Data          interface{}                    `json:"data,omitempty"`
+	Error         *PostalCodeServiceabilityError `json:"error,omitempty"`
+}
+
+// PostalCodeServiceabilityData contains the main serviceability data
+type PostalCodeServiceabilityData struct {
+	SourcePostalCode      *string                           `json:"source_postal_code,omitempty"`
+	DestinationPostalCode string                            `json:"destination_postal_code"`
+	Serviceability        []PostalCodeParcelCategoryService `json:"serviceability"`
+}
+
+// PostalCodeParcelCategoryService groups services by parcel category
+type PostalCodeParcelCategoryService struct {
+	ParcelCategoryCode string                  `json:"parcel_category_code"` // ecomm, courier, cargo
+	IsServiceable      bool                    `json:"is_serviceable"`
+	Services           []PostalCodeServiceInfo `json:"services"`
+}
+
+// PostalCodeServiceInfo represents an individual service offering
+type PostalCodeServiceInfo struct {
+	ServiceCode   string                         `json:"service_code"` // sdd, ndd, express, etc.
+	TATDays       *int                           `json:"tat_days,omitempty"`
+	IsCOD         bool                           `json:"is_cod"`
+	Pickup        *bool                          `json:"pickup,omitempty"`
+	Delivery      *bool                          `json:"delivery,omitempty"`
+	Insurance     *bool                          `json:"insurance,omitempty"`
+	ProductTypes  map[string]bool                `json:"product_types,omitempty"`
+	DeliveryModes PostalCodeServiceDeliveryModes `json:"delivery_modes"`
+}
+
+// PostalCodeServiceDeliveryModes represents delivery mode availability
+type PostalCodeServiceDeliveryModes struct {
+	Air     bool `json:"air"`
+	Surface bool `json:"surface"`
+}
+
+// PostalCodeServiceabilityError represents error information
+type PostalCodeServiceabilityError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+}
+
 // ConvertEnhancedToLegacyResponse converts enhanced response to legacy format
 func ConvertEnhancedToLegacyResponse(enhanced *ServiceabilityResponseDTO, postalCode string) *LegacyServiceabilityResponseDTO {
 	legacy := &LegacyServiceabilityResponseDTO{

@@ -174,13 +174,35 @@ func (s *Server) setupRoutes() error {
 
 // createServiceabilityHandler creates a serviceability handler with all dependencies
 func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler, error) {
+	// Check if database manager is available for postal code serviceability
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database manager is required for postal code serviceability handler")
+	}
+
 	// Create validator instance with all custom validations registered
 	validatorSetup := utils.NewValidatorSetup()
 	validator := validatorSetup.GetValidator()
 
-	// Create serviceability handler
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection is not available")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Get partner location coverage repository for postal code serviceability
+	partnerLocationCoverageRepo := repoFactory.GetPartnerLocationCoverageRepository()
+
+	// Create postal code serviceability service
+	postalCodeServiceabilityService := sharedServices.NewPostalCodeServiceabilityService(
+		partnerLocationCoverageRepo,
+	)
+
+	// Create serviceability handler with both orchestrator and postal code service
 	serviceabilityHandler := handlers.NewServiceabilityHandler(
 		s.orchestrator,
+		postalCodeServiceabilityService,
 		validator,
 		s.logger,
 	)

@@ -540,12 +540,12 @@ func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoverageByPostalCode(
 		return err
 	}
 
-	coverage, err := h.service.GetByPartnerIDAndPostalCode(c.Context(), partnerID, postalCode)
+	coverages, err := h.service.GetByPartnerIDAndPostalCode(c.Context(), partnerID, postalCode)
 	if err != nil {
 		return h.handleError(c, err, "GetPartnerLocationCoverageByPostalCode")
 	}
 
-	return c.JSON(coverage)
+	return c.JSON(coverages)
 }
 
 // UpdatePartnerLocationCoverageByPostalCode updates a location coverage by partner ID and postal code
@@ -795,12 +795,12 @@ func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoverageByCodeAndPost
 		return err
 	}
 
-	coverage, err := h.service.GetByPartnerCodeAndPostalCode(c.Context(), partnerCode, postalCode)
+	coverages, err := h.service.GetByPartnerCodeAndPostalCode(c.Context(), partnerCode, postalCode)
 	if err != nil {
 		return h.handleError(c, err, "GetPartnerLocationCoverageByCodeAndPostalCode")
 	}
 
-	return c.JSON(coverage)
+	return c.JSON(coverages)
 }
 
 // UpdatePartnerLocationCoverageByCodeAndPostalCode updates a location coverage by partner code and postal code

@@ -7,27 +7,31 @@ import (
 
 	"prayog-serviceability-service/internal/shared/dtos/v1"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
+	"prayog-serviceability-service/internal/shared/services/v1"
 )
 
 // ServiceabilityHandler handles serviceability check requests
 type ServiceabilityHandler struct {
-	orchestrator interfaces.ServiceabilityOrchestrator
-	validator    *validator.Validate
-	logger       *logrus.Logger
-	errorHandler *ErrorHandler
+	orchestrator                    interfaces.ServiceabilityOrchestrator
+	postalCodeServiceabilityService services.PostalCodeServiceabilityService
+	validator                       *validator.Validate
+	logger                          *logrus.Logger
+	errorHandler                    *ErrorHandler
 }
 
 // NewServiceabilityHandler creates a new serviceability handler
 func NewServiceabilityHandler(
 	orchestrator interfaces.ServiceabilityOrchestrator,
+	postalCodeServiceabilityService services.PostalCodeServiceabilityService,
 	validator *validator.Validate,
 	logger *logrus.Logger,
 ) *ServiceabilityHandler {
 	return &ServiceabilityHandler{
-		orchestrator: orchestrator,
-		validator:    validator,
-		logger:       logger,
-		errorHandler: NewErrorHandler(logger),
+		orchestrator:                    orchestrator,
+		postalCodeServiceabilityService: postalCodeServiceabilityService,
+		validator:                       validator,
+		logger:                          logger,
+		errorHandler:                    NewErrorHandler(logger),
 	}
 }
 
@@ -122,6 +126,80 @@ func (h *ServiceabilityHandler) BulkCheckServiceability(c *fiber.Ctx) error {
 	}
 
 	return c.Status(statusCode).JSON(responseDTO)
+}
+
+// NEW POSTAL CODE BASED SERVICEABILITY ENDPOINTS
+
+// CheckPostalCodeServiceability handles GET /check/{postal_code} (single postal code serviceability check)
+func (h *ServiceabilityHandler) CheckPostalCodeServiceability(c *fiber.Ctx) error {
+	h.logger.Debug("Single postal code serviceability check requested")
+
+	// Get postal code from URL parameter
+	postalCode := c.Params("postal_code")
+	if postalCode == "" {
+		return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidPostalCode, "Postal code is required", nil)
+	}
+
+	// Parse query parameters for filters
+	filters := &dtos.PostalCodeServiceabilityRequest{}
+	if parcelCategory := c.Query("parcel_category"); parcelCategory != "" {
+		filters.ParcelCategory = &parcelCategory
+	}
+	if productType := c.Query("product_type"); productType != "" {
+		filters.ProductType = &productType
+	}
+
+	// Call serviceability service
+	response, err := h.postalCodeServiceabilityService.GetServiceabilityByPostalCode(c.Context(), postalCode, filters)
+	if err != nil {
+		return h.errorHandler.HandleServiceError(c, ErrorCodeServiceabilityCheckFailed, "Failed to check postal code serviceability", err)
+	}
+
+	// Return appropriate status code based on response
+	statusCode := fiber.StatusOK
+	if !response.Success {
+		if response.Error != nil && response.Error.Code == "POSTAL_CODE_NOT_FOUND" {
+			statusCode = fiber.StatusNotFound
+		} else {
+			statusCode = fiber.StatusInternalServerError
+		}
+	}
+
+	return c.Status(statusCode).JSON(response)
+}
+
+// CheckPostalCodeServiceabilityPost handles POST /check (source and destination postal code serviceability check)
+func (h *ServiceabilityHandler) CheckPostalCodeServiceabilityPost(c *fiber.Ctx) error {
+	h.logger.Debug("Postal code serviceability check with source/destination requested")
+
+	// Parse request body
+	var requestDTO dtos.PostalCodeServiceabilityRequest
+	if err := c.BodyParser(&requestDTO); err != nil {
+		return h.errorHandler.HandleParsingError(c, err)
+	}
+
+	// Validate request
+	if err := h.validator.Struct(&requestDTO); err != nil {
+		return h.errorHandler.HandleValidationError(c, err)
+	}
+
+	// Call serviceability service
+	response, err := h.postalCodeServiceabilityService.CheckServiceability(c.Context(), &requestDTO)
+	if err != nil {
+		return h.errorHandler.HandleServiceError(c, ErrorCodeServiceabilityCheckFailed, "Failed to check serviceability", err)
+	}
+
+	// Return appropriate status code based on response
+	statusCode := fiber.StatusOK
+	if !response.Success {
+		if response.Error != nil && response.Error.Code == "POSTAL_CODE_NOT_FOUND" {
+			statusCode = fiber.StatusNotFound
+		} else {
+			statusCode = fiber.StatusInternalServerError
+		}
+	}
+
+	return c.Status(statusCode).JSON(response)
 }
 
 // validateRequestType validates that the request has either postal_code OR both pickup/delivery postal codes

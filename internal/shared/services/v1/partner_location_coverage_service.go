@@ -23,7 +23,7 @@ type PartnerLocationCoverageService interface {
 	BulkCreate(ctx context.Context, partnerID uuid.UUID, req *dtos.BulkCreatePartnerLocationCoverageRequest) (*dtos.BulkCreatePartnerLocationCoverageResponse, error)
 
 	// New postal code based methods (using partner ID)
-	GetByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) (*dtos.PartnerLocationCoverageResponse, error)
+	GetByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) (*dtos.PartnerLocationCoverageListResponse, error)
 	UpdateByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string, req *dtos.UpdatePartnerLocationCoverageRequest) (*dtos.PartnerLocationCoverageResponse, error)
 	DeleteByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) error
 	CheckCoverage(ctx context.Context, partnerID uuid.UUID, postalCode string, filters *dtos.PartnerLocationCoverageFiltersRequest) (*dtos.CoverageCheckResponse, error)
@@ -32,7 +32,7 @@ type PartnerLocationCoverageService interface {
 	GetByPartnerCode(ctx context.Context, partnerCode string, filters *dtos.PartnerLocationCoverageFiltersRequest) (*dtos.PartnerLocationCoverageListResponse, error)
 	CreateByPartnerCode(ctx context.Context, partnerCode string, req *dtos.CreatePartnerLocationCoverageRequest) (*dtos.PartnerLocationCoverageResponse, error)
 	BulkCreateByPartnerCode(ctx context.Context, partnerCode string, req *dtos.BulkCreatePartnerLocationCoverageRequest) (*dtos.BulkCreatePartnerLocationCoverageResponse, error)
-	GetByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string) (*dtos.PartnerLocationCoverageResponse, error)
+	GetByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string) (*dtos.PartnerLocationCoverageListResponse, error)
 	UpdateByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string, req *dtos.UpdatePartnerLocationCoverageRequest) (*dtos.PartnerLocationCoverageResponse, error)
 	DeleteByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string) error
 	CheckCoverageByPartnerCode(ctx context.Context, partnerCode string, postalCode string, filters *dtos.PartnerLocationCoverageFiltersRequest) (*dtos.CoverageCheckResponse, error)
@@ -314,15 +314,6 @@ func (s *partnerLocationCoverageService) Create(ctx context.Context, partnerID u
 
 	// Save to repository
 	if err := s.repo.Create(ctx, coverage); err != nil {
-		// Check for unique constraint violation (duplicate key)
-		if strings.Contains(err.Error(), "unique_partner_postal_coverage") ||
-			strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-			postalCode := "unknown"
-			if coverage.PostalCode != nil {
-				postalCode = *coverage.PostalCode
-			}
-			return nil, fmt.Errorf("partner location coverage already exists for postal code %s", postalCode)
-		}
 		return nil, fmt.Errorf("failed to create partner location coverage: %w", err)
 	}
 
@@ -708,8 +699,8 @@ func contains(slice []string, item string) bool {
 
 // NEW POSTAL CODE BASED METHODS (using partner ID)
 
-// GetByPartnerIDAndPostalCode retrieves a specific location coverage by partner ID and postal code
-func (s *partnerLocationCoverageService) GetByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) (*dtos.PartnerLocationCoverageResponse, error) {
+// GetByPartnerIDAndPostalCode retrieves all location coverages by partner ID and postal code
+func (s *partnerLocationCoverageService) GetByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) (*dtos.PartnerLocationCoverageListResponse, error) {
 	// Validate partner exists
 	if err := s.partnerValidationSvc.ValidatePartner(ctx, partnerID.String()); err != nil {
 		return nil, fmt.Errorf("partner validation failed: %w", err)
@@ -721,17 +712,39 @@ func (s *partnerLocationCoverageService) GetByPartnerIDAndPostalCode(ctx context
 		return nil, fmt.Errorf("failed to get partner location coverages: %w", err)
 	}
 
-	// Find the specific coverage by postal code
+	// Find all coverages matching the postal code
+	var matchingCoverages []models.PartnerLocationCoverage
 	for _, coverage := range coverages {
 		if coverage.PostalCode != nil && *coverage.PostalCode == postalCode {
-			return PartnerLocationCoverageToResponse(&coverage), nil
+			matchingCoverages = append(matchingCoverages, coverage)
 		}
 	}
 
-	return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	if len(matchingCoverages) == 0 {
+		return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	}
+
+	// Convert to response DTOs
+	responses := make([]dtos.PartnerLocationCoverageResponse, len(matchingCoverages))
+	for i, coverage := range matchingCoverages {
+		responses[i] = *PartnerLocationCoverageToResponse(&coverage)
+	}
+
+	return &dtos.PartnerLocationCoverageListResponse{
+		Data: responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
 }
 
 // UpdateByPartnerIDAndPostalCode updates a location coverage by partner ID and postal code
+// If service_type is provided in the request, it updates the specific service configuration
+// If no service_type is provided, it updates the first matching record
 func (s *partnerLocationCoverageService) UpdateByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string, req *dtos.UpdatePartnerLocationCoverageRequest) (*dtos.PartnerLocationCoverageResponse, error) {
 	// Validate partner exists
 	if err := s.partnerValidationSvc.ValidatePartner(ctx, partnerID.String()); err != nil {
@@ -744,24 +757,42 @@ func (s *partnerLocationCoverageService) UpdateByPartnerIDAndPostalCode(ctx cont
 		return nil, fmt.Errorf("failed to get partner location coverages: %w", err)
 	}
 
-	// Find the specific coverage by postal code
-	var targetCoverage *models.PartnerLocationCoverage
-	for i, coverage := range coverages {
+	// Find matching coverages by postal code
+	var matchingCoverages []models.PartnerLocationCoverage
+	for _, coverage := range coverages {
 		if coverage.PostalCode != nil && *coverage.PostalCode == postalCode {
-			targetCoverage = &coverages[i]
-			break
+			matchingCoverages = append(matchingCoverages, coverage)
 		}
 	}
 
-	if targetCoverage == nil {
+	if len(matchingCoverages) == 0 {
 		return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	}
+
+	var targetCoverage *models.PartnerLocationCoverage
+
+	// If service_type is provided in the request, find the specific service configuration
+	if req.ServiceType != nil {
+		for i, coverage := range matchingCoverages {
+			if coverage.ServiceType != nil && *coverage.ServiceType == *req.ServiceType {
+				targetCoverage = &matchingCoverages[i]
+				break
+			}
+		}
+		if targetCoverage == nil {
+			return nil, fmt.Errorf("partner location coverage not found for postal code: %s and service type: %s", postalCode, *req.ServiceType)
+		}
+	} else {
+		// If no service_type provided, update the first matching record
+		targetCoverage = &matchingCoverages[0]
 	}
 
 	// Use the existing Update method with the found coverage ID
 	return s.Update(ctx, partnerID, targetCoverage.ID, req)
 }
 
-// DeleteByPartnerIDAndPostalCode deletes a location coverage by partner ID and postal code
+// DeleteByPartnerIDAndPostalCode deletes all location coverages by partner ID and postal code
+// Note: This deletes ALL service configurations for the given partner and postal code
 func (s *partnerLocationCoverageService) DeleteByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string) error {
 	// Validate partner exists
 	if err := s.partnerValidationSvc.ValidatePartner(ctx, partnerID.String()); err != nil {
@@ -774,14 +805,26 @@ func (s *partnerLocationCoverageService) DeleteByPartnerIDAndPostalCode(ctx cont
 		return fmt.Errorf("failed to get partner location coverages: %w", err)
 	}
 
-	// Find the specific coverage by postal code
+	// Find all matching coverages by postal code
+	var matchingCoverages []models.PartnerLocationCoverage
 	for _, coverage := range coverages {
 		if coverage.PostalCode != nil && *coverage.PostalCode == postalCode {
-			return s.Delete(ctx, partnerID, coverage.ID)
+			matchingCoverages = append(matchingCoverages, coverage)
 		}
 	}
 
-	return fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	if len(matchingCoverages) == 0 {
+		return fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	}
+
+	// Delete all matching coverages
+	for _, coverage := range matchingCoverages {
+		if err := s.Delete(ctx, partnerID, coverage.ID); err != nil {
+			return fmt.Errorf("failed to delete coverage %s: %w", coverage.ID, err)
+		}
+	}
+
+	return nil
 }
 
 // CheckCoverage checks if a partner covers a specific postal code with optional service requirements
@@ -991,8 +1034,8 @@ func (s *partnerLocationCoverageService) BulkCreateByPartnerCode(ctx context.Con
 	return s.BulkCreate(ctx, partnerID, req)
 }
 
-// GetByPartnerCodeAndPostalCode retrieves a specific location coverage by partner code and postal code
-func (s *partnerLocationCoverageService) GetByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string) (*dtos.PartnerLocationCoverageResponse, error) {
+// GetByPartnerCodeAndPostalCode retrieves all location coverages by partner code and postal code
+func (s *partnerLocationCoverageService) GetByPartnerCodeAndPostalCode(ctx context.Context, partnerCode string, postalCode string) (*dtos.PartnerLocationCoverageListResponse, error) {
 	// Validate partner exists by code
 	if err := s.partnerValidationSvc.ValidatePartnerByCode(ctx, partnerCode); err != nil {
 		return nil, fmt.Errorf("partner validation failed: %w", err)
@@ -1004,14 +1047,34 @@ func (s *partnerLocationCoverageService) GetByPartnerCodeAndPostalCode(ctx conte
 		return nil, fmt.Errorf("failed to get partner location coverages: %w", err)
 	}
 
-	// Find the specific coverage by postal code
+	// Find all coverages matching the postal code
+	var matchingCoverages []models.PartnerLocationCoverage
 	for _, coverage := range coverages {
 		if coverage.PostalCode != nil && *coverage.PostalCode == postalCode {
-			return PartnerLocationCoverageToResponse(&coverage), nil
+			matchingCoverages = append(matchingCoverages, coverage)
 		}
 	}
 
-	return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	if len(matchingCoverages) == 0 {
+		return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
+	}
+
+	// Convert to response DTOs
+	responses := make([]dtos.PartnerLocationCoverageResponse, len(matchingCoverages))
+	for i, coverage := range matchingCoverages {
+		responses[i] = *PartnerLocationCoverageToResponse(&coverage)
+	}
+
+	return &dtos.PartnerLocationCoverageListResponse{
+		Data: responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
 }
 
 // UpdateByPartnerCodeAndPostalCode updates a location coverage by partner code and postal code

@@ -333,3 +333,141 @@ location_code: Required, must exist in the table corresponding to location_scope
 Warning: Some URLs are invalid
 
 Geographical location code will be in ISO standard format. Other than that all the code will be in snake_case
+
+# Serviceability API Implementation
+
+## Project Overview
+Implement a new serviceability API that provides postal code serviceability information based on the existing partner location coverage table. This API will transform the partner location coverage data into a serviceability-focused response structure without requiring partner validation.
+
+## Technical Requirements
+
+### Tech Stack
+- Go 1.24.2
+- Existing codebase structure following Standard Go Project Layout
+- HTTP handlers using Go standard library
+- Existing repository pattern with partner location coverage table
+
+### API Endpoints
+
+#### 1. GET /serviceability/v1/check/{postal_code}
+- Single postal code serviceability check
+- Path parameter: postal_code (destination postal code)
+- No partner validation required
+- Query partner location coverage table for all partners serving this postal code
+
+#### 2. POST /serviceability/v1/check
+- Source and destination postal code serviceability check
+- Request body with source_postal_code, destination_postal_code, and optional filters
+- Optional filters: parcel_category, product_type
+- Query based on destination postal code with applied filters
+
+### Data Transformation Requirements
+
+#### Input Data (Partner Location Coverage Table)
+- Multiple records per postal code (due to different delivery modes, service types)
+- Fields: partner_id, partner_code, postal_code, service_type, delivery_mode, tat_days, pickup, delivery, cod_available, insurance, parcel_category, product_type, etc.
+
+#### Output Data Structure
+- Group by parcel_category_code
+- Aggregate services within each category
+- Transform delivery_mode field into delivery_modes object with air/surface boolean flags
+- Consolidate duplicate service information
+
+### Request/Response Structures
+
+#### GET Request
+- URL: /serviceability/v1/check/{postal_code}
+- No request body
+
+#### POST Request
+```json
+{
+   "source_postal_code": "110001",
+   "destination_postal_code": "400001", 
+   "parcel_category": "ecomm",
+   "product_type": "travel_free"
+}
+```
+
+#### Response Structure
+```json
+{
+    "success": true,
+    "data": {
+        "postal_code": "400001",
+        "source_postal_code": "110001",
+        "destination_postal_code": "400001", 
+        "parcel_category": "ecomm",
+        "serviceability": [
+            {
+                "parcel_category_code": "ecomm",
+                "is_serviceable": true,
+                "services": [
+                    {
+                        "service_code": "sdd",
+                        "tat_days": 1,
+                        "is_cod": true,
+                        "pickup": true,
+                        "delivery": true,
+                        "insurance": true,
+                        "delivery_modes": {
+                            "air": true,
+                            "surface": true
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+## Implementation Components
+
+### 1. DTOs (Data Transfer Objects)
+- ServiceabilityCheckRequest (POST request)
+- ServiceabilityResponse and nested structures
+- Transform existing partner location coverage data
+
+### 2. Service Layer
+- ServiceabilityService interface and implementation
+- Data aggregation and transformation logic
+- Integration with existing PartnerLocationCoverageRepository
+
+### 3. Handler Layer
+- HTTP handlers for GET and POST endpoints
+- Request validation and response formatting
+- Error handling
+
+### 4. Route Registration
+- Add new routes to existing v1 route structure
+- Integrate with existing middleware
+
+## Business Logic
+
+### Data Aggregation Rules
+1. Group all partner location coverage records by postal code and parcel category
+2. For each parcel category, aggregate services by service_type (service_code)
+3. For each service, merge delivery modes (air/surface) into boolean flags
+4. Consolidate service capabilities (pickup, delivery, COD, insurance)
+5. Determine is_serviceable based on active records
+
+### Filtering Logic
+- Apply parcel_category filter if provided
+- Apply product_type filter if provided
+- Only include active records (is_active = true)
+- Handle cases where no serviceability exists
+
+## Error Handling
+- Invalid postal code format
+- No serviceability found
+- Database connection errors
+- Invalid request body for POST endpoint
+
+## Success Criteria
+1. GET endpoint returns correct serviceability data for single postal code
+2. POST endpoint handles source/destination and filters correctly
+3. Data transformation properly aggregates duplicate records
+4. Response structure matches specification exactly
+5. Error cases handled gracefully
+6. Integration with existing codebase patterns maintained

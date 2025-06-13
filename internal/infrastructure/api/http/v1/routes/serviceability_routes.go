@@ -19,12 +19,20 @@ func RegisterServiceabilityRoutes(router fiber.Router, serviceabilityHandler *ha
 	router.Use(serviceabilityMiddleware.RequestSizeLimit())
 	router.Use(serviceabilityMiddleware.RequestLogging())
 
-	// Single check endpoint with standard rate limiting
+	// NEW POSTAL CODE BASED SERVICEABILITY ROUTES
+
+	// Check endpoint group with standard rate limiting
 	checkRoute := router.Group("/check")
 	checkRoute.Use(serviceabilityMiddleware.RateLimiter())
-	checkRoute.Post("/", serviceabilityHandler.CheckServiceability)
 
-	// Bulk check endpoint with stricter rate limiting
+	// Single postal code check endpoint (GET /check/{postal_code})
+	checkRoute.Get("/:postal_code", serviceabilityHandler.CheckPostalCodeServiceability)
+
+	// Source and destination postal code check endpoint (POST /check)
+	// This replaces the existing enhanced serviceability endpoint
+	checkRoute.Post("/", serviceabilityHandler.CheckPostalCodeServiceabilityPost)
+
+	// Bulk check endpoint with stricter rate limiting (keeping existing functionality)
 	bulkCheckRoute := router.Group("/bulk-check")
 	bulkCheckRoute.Use(serviceabilityMiddleware.BulkRequestLimiter())
 	bulkCheckRoute.Post("/", serviceabilityHandler.BulkCheckServiceability)
