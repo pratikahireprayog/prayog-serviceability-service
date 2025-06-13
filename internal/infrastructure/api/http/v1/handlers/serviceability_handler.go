@@ -155,18 +155,24 @@ func (h *ServiceabilityHandler) CheckPostalCodeServiceability(c *fiber.Ctx) erro
 		return h.errorHandler.HandleValidationError(c, err)
 	}
 
-	// 3. Validate postal code format (using default country IN for now)
-	if err := h.postalCodeValidator.ValidatePostalCode(postalCode, "IN"); err != nil {
-		return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidPostalCode, "Invalid postal code format", err)
+	// 3. Skip country-specific postal code format validation to support international codes
+	// The service layer will handle postal code existence and serviceability validation
+	// This aligns with the POST API approach which doesn't enforce format validation
+
+	// Note: No struct validation needed for filters as they are simple query parameters
+	// The GET endpoint only accepts a single destination postal code + optional filters
+
+	// 5. Convert filters to DTO format for service call
+	// For GET endpoint, we only have destination postal code + optional filters
+	serviceRequest := &dtos.PostalCodeServiceabilityRequest{
+		DestinationPostalCode: postalCode,
+		ParcelCategory:        filters.ParcelCategory,
+		ProductType:           filters.ProductType,
+		// SourcePostalCode is nil for GET endpoint (single postal code check)
 	}
 
-	// 4. Apply struct validation to filters
-	if err := h.validator.Struct(filters); err != nil {
-		return h.errorHandler.HandleValidationError(c, err)
-	}
-
-	// 5. Call serviceability service
-	response, err := h.postalCodeServiceabilityService.GetServiceabilityByPostalCode(c.Context(), postalCode, filters)
+	// Call serviceability service
+	response, err := h.postalCodeServiceabilityService.GetServiceabilityByPostalCode(c.Context(), postalCode, serviceRequest)
 	if err != nil {
 		return h.errorHandler.HandleServiceError(c, ErrorCodeServiceabilityCheckFailed, "Failed to check postal code serviceability", err)
 	}
@@ -178,7 +184,7 @@ func (h *ServiceabilityHandler) CheckPostalCodeServiceability(c *fiber.Ctx) erro
 			switch response.Error.Code {
 			case "POSTAL_CODE_NOT_FOUND":
 				statusCode = fiber.StatusNotFound
-			case "POSTAL_CODE_NOT_SERVICEABLE":
+			case "DESTINATION_POSTAL_CODE_NOT_SERVICEABLE":
 				statusCode = fiber.StatusOK // This is a valid business response
 			default:
 				statusCode = fiber.StatusInternalServerError
@@ -215,9 +221,15 @@ func (h *ServiceabilityHandler) validatePostalCodeParam(postalCode string) error
 	return nil
 }
 
+// ServiceabilityFilters represents simple query filters for GET endpoint
+type ServiceabilityFilters struct {
+	ParcelCategory *string
+	ProductType    *string
+}
+
 // parseAndValidateQueryParams parses and validates query parameters
-func (h *ServiceabilityHandler) parseAndValidateQueryParams(c *fiber.Ctx) (*dtos.PostalCodeServiceabilityRequest, error) {
-	filters := &dtos.PostalCodeServiceabilityRequest{}
+func (h *ServiceabilityHandler) parseAndValidateQueryParams(c *fiber.Ctx) (*ServiceabilityFilters, error) {
+	filters := &ServiceabilityFilters{}
 
 	// Parse and validate parcel_category
 	if parcelCategory := c.Query("parcel_category"); parcelCategory != "" {

@@ -48,9 +48,9 @@ func (s *postalCodeServiceabilityService) GetServiceabilityByPostalCode(ctx cont
 			Success:       true,
 			IsServiceable: &isServiceable,
 			Data: map[string]interface{}{
-				"code":    "POSTAL_CODE_NOT_SERVICEABLE",
-				"message": "Postal code is not serviceable",
-				"details": fmt.Sprintf("Postal code %s is not available in our service area", postalCode),
+				"code":    "DESTINATION_POSTAL_CODE_NOT_SERVICEABLE",
+				"message": "Destination postal code is not serviceable",
+				"details": fmt.Sprintf("Destination postal code %s is not available in our service area", postalCode),
 			},
 		}, nil
 	}
@@ -68,9 +68,9 @@ func (s *postalCodeServiceabilityService) GetServiceabilityByPostalCode(ctx cont
 			Success:       true,
 			IsServiceable: &isServiceable,
 			Data: map[string]interface{}{
-				"code":    "POSTAL_CODE_NOT_SERVICEABLE",
-				"message": "Postal code is not serviceable",
-				"details": fmt.Sprintf("Postal code %s is not available in our service area", postalCode),
+				"code":    "DESTINATION_POSTAL_CODE_NOT_SERVICEABLE",
+				"message": "Destination postal code is not serviceable",
+				"details": fmt.Sprintf("Destination postal code %s is not available in our service area", postalCode),
 			},
 		}, nil
 	}

@@ -100,16 +100,16 @@ curl --request GET \
 }
 ```
 
-#### Error Response - Postal Code Not Found (404 Not Found)
+#### Error Response - Postal Code Not Serviceable (200 OK)
 
 ```json
 {
-  "success": false,
+  "success": true,
   "is_serviceable": false,
-  "error": {
-    "code": "POSTAL_CODE_NOT_FOUND",
-    "message": "No serviceability data found for postal code",
-    "details": "Postal code 385515 is not serviceable"
+  "data": {
+    "code": "DESTINATION_POSTAL_CODE_NOT_SERVICEABLE",
+    "message": "Destination postal code is not serviceable",
+    "details": "Destination postal code 385515 is not available in our service area"
   }
 }
 ```
