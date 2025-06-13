@@ -141,17 +141,6 @@ func (s *postalCodeServiceabilityService) CheckServiceability(ctx context.Contex
 	// Step 3: Apply filters to destination coverage
 	filteredDestinationCoverages := s.applyCoverageFilters(destinationCoverages, req)
 
-	// Debug logging
-	fmt.Printf("DEBUG: Original coverages: %d, Filtered coverages: %d, ProductType: %v\n",
-		len(destinationCoverages), len(filteredDestinationCoverages),
-		func() string {
-			if req.ProductType != nil {
-				return *req.ProductType
-			} else {
-				return "nil"
-			}
-		}())
-
 	// If product_type is specified and no coverages remain after filtering, return error response
 	if req.ProductType != nil && *req.ProductType != "" && len(filteredDestinationCoverages) == 0 {
 		// Return error response when product_type filtering results in no coverages
