@@ -258,7 +258,7 @@ func (s *districtService) Create(ctx context.Context, req *dtos.CreateDistrictRe
 	}
 
 	if req.CountryCode != nil {
-		countryCode := strings.ToUpper(strings.TrimSpace(*req.CountryCode))
+		countryCode := strings.ToLower(strings.TrimSpace(*req.CountryCode))
 		if countryCode != "" {
 			district.CountryCode = &countryCode
 		}
@@ -324,7 +324,7 @@ func (s *districtService) Update(ctx context.Context, id string, req *dtos.Updat
 	}
 
 	if req.CountryCode != nil {
-		countryCode := strings.ToUpper(strings.TrimSpace(*req.CountryCode))
+		countryCode := strings.ToLower(strings.TrimSpace(*req.CountryCode))
 		if countryCode != "" {
 			updated.CountryCode = &countryCode
 		} else {

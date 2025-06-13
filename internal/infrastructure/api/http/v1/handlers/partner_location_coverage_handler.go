@@ -47,6 +47,24 @@ func (h *PartnerLocationCoverageHandler) parsePartnerID(c *fiber.Ctx) (uuid.UUID
 	return partnerID, nil
 }
 
+// Helper function to parse partner code from URL parameters
+func (h *PartnerLocationCoverageHandler) parsePartnerCode(c *fiber.Ctx) (string, error) {
+	partnerCode := strings.TrimSpace(c.Params("partner_code"))
+	if partnerCode == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Partner code is required")
+	}
+	return partnerCode, nil
+}
+
+// Helper function to parse postal code from URL parameters
+func (h *PartnerLocationCoverageHandler) parsePostalCode(c *fiber.Ctx) (string, error) {
+	postalCode := strings.TrimSpace(c.Params("postal_code"))
+	if postalCode == "" {
+		return "", fiber.NewError(fiber.StatusBadRequest, "Postal code is required")
+	}
+	return postalCode, nil
+}
+
 // Helper function to parse coverage ID from URL parameters
 func (h *PartnerLocationCoverageHandler) parseCoverageID(c *fiber.Ctx) (uuid.UUID, error) {
 	coverageIDStr := c.Params("coverage_id")
@@ -66,15 +84,15 @@ func (h *PartnerLocationCoverageHandler) parseCoverageID(c *fiber.Ctx) (uuid.UUI
 func (h *PartnerLocationCoverageHandler) parseFilters(c *fiber.Ctx) *dtos.PartnerLocationCoverageFiltersRequest {
 	filters := &dtos.PartnerLocationCoverageFiltersRequest{}
 
-	// Parse location_scope
-	if locationScope := c.Query("location_scope"); locationScope != "" {
-		filters.LocationScope = &locationScope
+	// Parse postal_code
+	if postalCode := c.Query("postal_code"); postalCode != "" {
+		filters.PostalCode = &postalCode
 	}
 
-	// Parse location_id
-	if locationIDStr := c.Query("location_id"); locationIDStr != "" {
-		if locationID, err := uuid.Parse(locationIDStr); err == nil {
-			filters.LocationID = &locationID
+	// Parse postal_code_id
+	if postalCodeIDStr := c.Query("postal_code_id"); postalCodeIDStr != "" {
+		if postalCodeID, err := uuid.Parse(postalCodeIDStr); err == nil {
+			filters.PostalCodeID = &postalCodeID
 		}
 	}
 
@@ -83,27 +101,93 @@ func (h *PartnerLocationCoverageHandler) parseFilters(c *fiber.Ctx) *dtos.Partne
 		filters.ZoneType = &zoneType
 	}
 
-	// Parse source_postal_code
-	if sourcePostalCode := c.Query("source_postal_code"); sourcePostalCode != "" {
-		filters.SourcePostalCode = &sourcePostalCode
+	// Parse country_code
+	if countryCode := c.Query("country_code"); countryCode != "" {
+		filters.CountryCode = &countryCode
 	}
 
-	// Parse destination_postal_code
-	if destinationPostalCode := c.Query("destination_postal_code"); destinationPostalCode != "" {
-		filters.DestinationPostalCode = &destinationPostalCode
+	// Parse product_type
+	if productType := c.Query("product_type"); productType != "" {
+		filters.ProductType = &productType
 	}
 
-	// Parse source_postal_code_id
-	if sourcePostalCodeIDStr := c.Query("source_postal_code_id"); sourcePostalCodeIDStr != "" {
-		if sourcePostalCodeID, err := uuid.Parse(sourcePostalCodeIDStr); err == nil {
-			filters.SourcePostalCodeID = &sourcePostalCodeID
+	// Parse parcel_category
+	if parcelCategory := c.Query("parcel_category"); parcelCategory != "" {
+		filters.ParcelCategory = &parcelCategory
+	}
+
+	// Parse service_type
+	if serviceType := c.Query("service_type"); serviceType != "" {
+		filters.ServiceType = &serviceType
+	}
+
+	// Parse tat_days
+	if tatDaysStr := c.Query("tat_days"); tatDaysStr != "" {
+		if tatDays := parseInt(tatDaysStr, -1); tatDays >= 0 {
+			filters.TATDays = &tatDays
 		}
 	}
 
-	// Parse destination_postal_code_id
-	if destinationPostalCodeIDStr := c.Query("destination_postal_code_id"); destinationPostalCodeIDStr != "" {
-		if destinationPostalCodeID, err := uuid.Parse(destinationPostalCodeIDStr); err == nil {
-			filters.DestinationPostalCodeID = &destinationPostalCodeID
+	// Parse pickup
+	if pickupStr := c.Query("pickup"); pickupStr != "" {
+		if pickupStr == "true" {
+			pickup := true
+			filters.Pickup = &pickup
+		} else if pickupStr == "false" {
+			pickup := false
+			filters.Pickup = &pickup
+		}
+	}
+
+	// Parse delivery
+	if deliveryStr := c.Query("delivery"); deliveryStr != "" {
+		if deliveryStr == "true" {
+			delivery := true
+			filters.Delivery = &delivery
+		} else if deliveryStr == "false" {
+			delivery := false
+			filters.Delivery = &delivery
+		}
+	}
+
+	// Parse delivery_mode
+	if deliveryMode := c.Query("delivery_mode"); deliveryMode != "" {
+		filters.DeliveryMode = &deliveryMode
+	}
+
+	// Parse cod_available
+	if codAvailableStr := c.Query("cod_available"); codAvailableStr != "" {
+		if codAvailableStr == "true" {
+			codAvailable := true
+			filters.CODAvailable = &codAvailable
+		} else if codAvailableStr == "false" {
+			codAvailable := false
+			filters.CODAvailable = &codAvailable
+		}
+	}
+
+	// Parse insurance
+	if insuranceStr := c.Query("insurance"); insuranceStr != "" {
+		if insuranceStr == "true" {
+			insurance := true
+			filters.Insurance = &insurance
+		} else if insuranceStr == "false" {
+			insurance := false
+			filters.Insurance = &insurance
+		}
+	}
+
+	// Parse min_weight_kg
+	if minWeightStr := c.Query("min_weight_kg"); minWeightStr != "" {
+		if minWeight := parseFloat(minWeightStr, -1); minWeight >= 0 {
+			filters.MinWeightKG = &minWeight
+		}
+	}
+
+	// Parse max_weight_kg
+	if maxWeightStr := c.Query("max_weight_kg"); maxWeightStr != "" {
+		if maxWeight := parseFloat(maxWeightStr, -1); maxWeight >= 0 {
+			filters.MaxWeightKG = &maxWeight
 		}
 	}
 
@@ -212,35 +296,6 @@ func (h *PartnerLocationCoverageHandler) handleError(c *fiber.Ctx, err error, op
 	})
 }
 
-// Helper function to validate request body
-func (h *PartnerLocationCoverageHandler) validateRequest(c *fiber.Ctx, req interface{}) error {
-	if err := c.BodyParser(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
-			Success: false,
-			Message: "Invalid request body",
-			Error: dtos.ErrorInfo{
-				Code:    "INVALID_REQUEST",
-				Message: "Failed to parse request body",
-				Details: err.Error(),
-			},
-		})
-	}
-
-	if err := h.validator.Struct(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
-			Success: false,
-			Message: "Invalid request body",
-			Error: dtos.ErrorInfo{
-				Code:    "INVALID_REQUEST",
-				Message: "Request validation failed",
-				Details: err.Error(),
-			},
-		})
-	}
-
-	return nil
-}
-
 // GetPartnerLocationCoverages retrieves all location coverages for a partner
 // GET /partners/{partner_id}/location-coverages
 func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoverages(c *fiber.Ctx) error {
@@ -289,8 +344,40 @@ func (h *PartnerLocationCoverageHandler) CreatePartnerLocationCoverage(c *fiber.
 	}
 
 	var req dtos.CreatePartnerLocationCoverageRequest
-	if err := h.validateRequest(c, &req); err != nil {
-		return err
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
 	}
 
 	coverage, err := h.service.Create(c.Context(), partnerID, &req)
@@ -315,8 +402,40 @@ func (h *PartnerLocationCoverageHandler) UpdatePartnerLocationCoverage(c *fiber.
 	}
 
 	var req dtos.UpdatePartnerLocationCoverageRequest
-	if err := h.validateRequest(c, &req); err != nil {
-		return err
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
 	}
 
 	coverage, err := h.service.Update(c.Context(), partnerID, coverageID, &req)
@@ -357,8 +476,40 @@ func (h *PartnerLocationCoverageHandler) BulkCreatePartnerLocationCoverages(c *f
 	}
 
 	var req dtos.BulkCreatePartnerLocationCoverageRequest
-	if err := h.validateRequest(c, &req); err != nil {
-		return err
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
 	}
 
 	result, err := h.service.BulkCreate(c.Context(), partnerID, &req)
@@ -372,6 +523,415 @@ func (h *PartnerLocationCoverageHandler) BulkCreatePartnerLocationCoverages(c *f
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(result)
+}
+
+// NEW POSTAL CODE BASED METHODS FOR PARTNER ID
+
+// GetPartnerLocationCoverageByPostalCode retrieves a specific location coverage by partner ID and postal code
+// GET /partners/{partner_id}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoverageByPostalCode(c *fiber.Ctx) error {
+	partnerID, err := h.parsePartnerID(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	coverage, err := h.service.GetByPartnerIDAndPostalCode(c.Context(), partnerID, postalCode)
+	if err != nil {
+		return h.handleError(c, err, "GetPartnerLocationCoverageByPostalCode")
+	}
+
+	return c.JSON(coverage)
+}
+
+// UpdatePartnerLocationCoverageByPostalCode updates a location coverage by partner ID and postal code
+// PUT /partners/{partner_id}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) UpdatePartnerLocationCoverageByPostalCode(c *fiber.Ctx) error {
+	partnerID, err := h.parsePartnerID(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	var req dtos.UpdatePartnerLocationCoverageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	coverage, err := h.service.UpdateByPartnerIDAndPostalCode(c.Context(), partnerID, postalCode, &req)
+	if err != nil {
+		return h.handleError(c, err, "UpdatePartnerLocationCoverageByPostalCode")
+	}
+
+	return c.JSON(coverage)
+}
+
+// DeletePartnerLocationCoverageByPostalCode deletes a location coverage by partner ID and postal code
+// DELETE /partners/{partner_id}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) DeletePartnerLocationCoverageByPostalCode(c *fiber.Ctx) error {
+	partnerID, err := h.parsePartnerID(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	err = h.service.DeleteByPartnerIDAndPostalCode(c.Context(), partnerID, postalCode)
+	if err != nil {
+		return h.handleError(c, err, "DeletePartnerLocationCoverageByPostalCode")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// CheckPartnerLocationCoverage checks if a partner covers a specific postal code with optional service requirements
+// GET /partners/{partner_id}/location-coverages/postal-code/{postal_code}/check
+func (h *PartnerLocationCoverageHandler) CheckPartnerLocationCoverage(c *fiber.Ctx) error {
+	partnerID, err := h.parsePartnerID(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	// Parse service requirements from query parameters
+	filters := h.parseFilters(c)
+
+	result, err := h.service.CheckCoverage(c.Context(), partnerID, postalCode, filters)
+	if err != nil {
+		return h.handleError(c, err, "CheckPartnerLocationCoverage")
+	}
+
+	return c.JSON(result)
+}
+
+// NEW PARTNER CODE BASED METHODS
+
+// GetPartnerLocationCoveragesByCode retrieves all location coverages for a partner by partner code
+// GET /partners/code/{partner_code}/location-coverages
+func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoveragesByCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	filters := h.parseFilters(c)
+
+	coverages, err := h.service.GetByPartnerCode(c.Context(), partnerCode, filters)
+	if err != nil {
+		return h.handleError(c, err, "GetPartnerLocationCoveragesByCode")
+	}
+
+	return c.JSON(coverages)
+}
+
+// CreatePartnerLocationCoverageByCode creates a new location coverage for a partner by partner code
+// POST /partners/code/{partner_code}/location-coverages
+func (h *PartnerLocationCoverageHandler) CreatePartnerLocationCoverageByCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	var req dtos.CreatePartnerLocationCoverageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	coverage, err := h.service.CreateByPartnerCode(c.Context(), partnerCode, &req)
+	if err != nil {
+		return h.handleError(c, err, "CreatePartnerLocationCoverageByCode")
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(coverage)
+}
+
+// BulkCreatePartnerLocationCoveragesByCode creates multiple location coverages for a partner by partner code
+// POST /partners/code/{partner_code}/location-coverages/bulk
+func (h *PartnerLocationCoverageHandler) BulkCreatePartnerLocationCoveragesByCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	var req dtos.BulkCreatePartnerLocationCoverageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	result, err := h.service.BulkCreateByPartnerCode(c.Context(), partnerCode, &req)
+	if err != nil {
+		return h.handleError(c, err, "BulkCreatePartnerLocationCoveragesByCode")
+	}
+
+	// Return 207 Multi-Status if there were any failures
+	if len(result.Failed) > 0 {
+		return c.Status(fiber.StatusMultiStatus).JSON(result)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(result)
+}
+
+// GetPartnerLocationCoverageByCodeAndPostalCode retrieves a specific location coverage by partner code and postal code
+// GET /partners/code/{partner_code}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) GetPartnerLocationCoverageByCodeAndPostalCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	coverage, err := h.service.GetByPartnerCodeAndPostalCode(c.Context(), partnerCode, postalCode)
+	if err != nil {
+		return h.handleError(c, err, "GetPartnerLocationCoverageByCodeAndPostalCode")
+	}
+
+	return c.JSON(coverage)
+}
+
+// UpdatePartnerLocationCoverageByCodeAndPostalCode updates a location coverage by partner code and postal code
+// PUT /partners/code/{partner_code}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) UpdatePartnerLocationCoverageByCodeAndPostalCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	var req dtos.UpdatePartnerLocationCoverageRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Failed to parse request body")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Failed to parse request body",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":  err.Error(),
+			"method": c.Method(),
+			"path":   c.Path(),
+		}).Error("Request validation failed")
+
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request body",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Request validation failed",
+				Details: err.Error(),
+			},
+		})
+	}
+
+	coverage, err := h.service.UpdateByPartnerCodeAndPostalCode(c.Context(), partnerCode, postalCode, &req)
+	if err != nil {
+		return h.handleError(c, err, "UpdatePartnerLocationCoverageByCodeAndPostalCode")
+	}
+
+	return c.JSON(coverage)
+}
+
+// DeletePartnerLocationCoverageByCodeAndPostalCode deletes a location coverage by partner code and postal code
+// DELETE /partners/code/{partner_code}/location-coverages/postal-code/{postal_code}
+func (h *PartnerLocationCoverageHandler) DeletePartnerLocationCoverageByCodeAndPostalCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	err = h.service.DeleteByPartnerCodeAndPostalCode(c.Context(), partnerCode, postalCode)
+	if err != nil {
+		return h.handleError(c, err, "DeletePartnerLocationCoverageByCodeAndPostalCode")
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// CheckPartnerLocationCoverageByCode checks if a partner covers a specific postal code with optional service requirements
+// GET /partners/code/{partner_code}/location-coverages/postal-code/{postal_code}/check
+func (h *PartnerLocationCoverageHandler) CheckPartnerLocationCoverageByCode(c *fiber.Ctx) error {
+	partnerCode, err := h.parsePartnerCode(c)
+	if err != nil {
+		return err
+	}
+
+	postalCode, err := h.parsePostalCode(c)
+	if err != nil {
+		return err
+	}
+
+	// Parse service requirements from query parameters
+	filters := h.parseFilters(c)
+
+	result, err := h.service.CheckCoverageByPartnerCode(c.Context(), partnerCode, postalCode, filters)
+	if err != nil {
+		return h.handleError(c, err, "CheckPartnerLocationCoverageByCode")
+	}
+
+	return c.JSON(result)
+}
+
+// Helper function to parse float with default value
+func parseFloat(s string, defaultValue float64) float64 {
+	if s == "" {
+		return defaultValue
+	}
+
+	// Simple float parsing - in production, you'd want proper error handling
+	result := 0.0
+	decimal := false
+	decimalPlace := 1.0
+
+	for _, char := range s {
+		if char >= '0' && char <= '9' {
+			if decimal {
+				decimalPlace *= 10
+				result += float64(char-'0') / decimalPlace
+			} else {
+				result = result*10 + float64(char-'0')
+			}
+		} else if char == '.' && !decimal {
+			decimal = true
+		} else {
+			return defaultValue
+		}
+	}
+	return result
 }
 
 // Helper function to parse integer with default value

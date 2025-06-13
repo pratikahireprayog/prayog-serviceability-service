@@ -1,21 +1,25 @@
 package routes
 
 import (
-	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
 	"prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
 	"prayog-serviceability-service/internal/infrastructure/api/http/v1/middleware"
 	"prayog-serviceability-service/internal/shared/dtos/v1"
+	"prayog-serviceability-service/internal/shared/utils/v1"
 )
 
 // RegisterLocationRoutes registers all location-related routes
 func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandler, logger *logrus.Logger) {
 	logger.Info("Registering location routes...")
 
-	// Create validation middleware
-	validationMiddleware := middleware.NewValidationMiddleware(validator.New(), logger)
+	// Create validator with custom validation functions registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create validation middleware with properly configured validator
+	validationMiddleware := middleware.NewValidationMiddleware(validator, logger)
 	paramValidators := middleware.GetCommonParamValidators()
 
 	// Country routes

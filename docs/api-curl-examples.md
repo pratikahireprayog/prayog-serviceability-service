@@ -12,6 +12,7 @@ This document provides comprehensive curl examples for all Prayog Serviceability
 - [Districts](#districts)
 - [Cities](#cities)
 - [Areas](#areas)
+- [Postal Codes](#postal-codes)
 - [Location Aliases (Nested)](#location-aliases-nested)
 - [Location Aliases (Standalone)](#location-aliases-standalone)
 - [Partner Location Coverage](#partner-location-coverage)
@@ -528,6 +529,179 @@ curl -X DELETE \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
+## Postal Codes
+
+### List All Postal Codes
+
+```bash
+# Get all postal codes with pagination
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes?limit=20&offset=0" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Create Postal Code
+
+```bash
+# Create a new postal code
+curl -X POST \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "90210",
+    "country_id": "123e4567-e89b-12d3-a456-426614174000",
+    "country_code": "US",
+    "region_id": "456e7890-e89b-12d3-a456-426614174001",
+    "region_code": "US-CA",
+    "city_id": "012e3456-e89b-12d3-a456-426614174003",
+    "city_code": "BEVERLY_HILLS",
+    "area_id": "345e6789-e89b-12d3-a456-426614174004",
+    "area_code": "BEVERLY_HILLS_CENTRAL",
+    "location_scope": "area",
+    "is_active": true
+  }'
+```
+
+### Get Postal Code by ID
+
+```bash
+# Get specific postal code by UUID
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Get Postal Codes by Location
+
+```bash
+# Get postal codes by country
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+
+# Get postal codes by country and region
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+
+# Get postal codes by multiple location parameters
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA&city_code=BEVERLY_HILLS&area_code=BEVERLY_HILLS_CENTRAL" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Postal codes retrieved successfully",
+  "data": [
+    {
+      "id": "678e9012-e89b-12d3-a456-426614174005",
+      "code": "90210",
+      "country_id": "123e4567-e89b-12d3-a456-426614174000",
+      "country_code": "US",
+      "region_id": "456e7890-e89b-12d3-a456-426614174001",
+      "region_code": "US-CA",
+      "city_id": "012e3456-e89b-12d3-a456-426614174003",
+      "city_code": "BEVERLY_HILLS",
+      "area_id": "345e6789-e89b-12d3-a456-426614174004",
+      "area_code": "BEVERLY_HILLS_CENTRAL",
+      "location_scope": "area",
+      "is_active": true,
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-15T10:30:00Z",
+      "country": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "name": "United States",
+        "code": "US"
+      },
+      "region": {
+        "id": "456e7890-e89b-12d3-a456-426614174001",
+        "name": "California",
+        "code": "US-CA"
+      },
+      "city": {
+        "id": "012e3456-e89b-12d3-a456-426614174003",
+        "name": "Beverly Hills",
+        "code": "BEVERLY_HILLS"
+      },
+      "area": {
+        "id": "345e6789-e89b-12d3-a456-426614174004",
+        "name": "Beverly Hills Central",
+        "code": "BEVERLY_HILLS_CENTRAL"
+      }
+    }
+  ]
+}
+```
+
+### Update Postal Code
+
+```bash
+# Update existing postal code
+curl -X PUT \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "area_id": "345e6789-e89b-12d3-a456-426614174004",
+    "area_code": "BEVERLY_HILLS_WEST",
+    "location_scope": "area",
+    "is_active": true
+  }'
+```
+
+### Delete Postal Code
+
+```bash
+# Soft delete postal code
+curl -X DELETE \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  -H "Authorization: Bearer ${API_TOKEN}"
+```
+
+**Response:**
+
+```json
+{
+  "message": "Postal code soft deleted successfully",
+  "id": "678e9012-e89b-12d3-a456-426614174005"
+}
+```
+
+### Example with Indian Postal Codes
+
+```bash
+# Create Indian postal code
+curl -X POST \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "110001",
+    "country_code": "IN",
+    "region_code": "IN-DL",
+    "city_code": "NEW_DELHI",
+    "area_code": "CONNAUGHT_PLACE",
+    "location_scope": "area",
+    "is_active": true
+  }'
+
+# Get Indian postal codes by region
+curl -X GET \
+  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=IN&region_code=IN-DL" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
 ## Location Aliases (Nested)
 
 ### Create Country Alias
@@ -747,7 +921,7 @@ curl -X GET \
 
 # With filtering and pagination
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages?location_scope=CITY&zone_type=PRIMARY&limit=20&offset=0" \
+  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages?postal_code=10001&zone_type=PRIMARY&limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -763,9 +937,8 @@ curl -X GET \
         "id": "789e0123-e89b-12d3-a456-426655440000",
         "partner_id": "550e8400-e29b-41d4-a716-446655440000",
         "partner_code": "PARTNER_001",
-        "location_scope": "CITY",
-        "location_id": "123e4567-e89b-12d3-a456-426614174000",
-        "location_code": "NYC",
+        "postal_code": "10001",
+        "postal_code_id": "123e4567-e89b-12d3-a456-426614174000",
         "zone_type": "PRIMARY",
         "is_active": true,
         "created_at": "2023-01-01T00:00:00Z",
@@ -786,26 +959,24 @@ curl -X GET \
 ### Create Partner Location Coverage
 
 ```bash
-# Create a new location coverage for a partner
+# Create a new location coverage for a partner using postal code ID
 curl -X POST \
   "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "location_scope": "CITY",
-    "location_id": "123e4567-e89b-12d3-a456-426614174000",
+    "postal_code_id": "123e4567-e89b-12d3-a456-426614174000",
     "zone_type": "PRIMARY",
     "is_active": true
   }'
 
-# Using location code instead of location ID
+# Using postal code instead of postal code ID
 curl -X POST \
   "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "location_scope": "CITY",
-    "location_code": "NYC",
+    "postal_code": "10001",
     "zone_type": "SECONDARY",
     "is_active": true
   }'
@@ -830,6 +1001,7 @@ curl -X PUT \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
+    "postal_code": "10002",
     "zone_type": "BUFFER",
     "is_active": false
   }'
@@ -855,20 +1027,17 @@ curl -X POST \
   -d '{
     "coverages": [
       {
-        "location_scope": "CITY",
-        "location_code": "NYC",
+        "postal_code": "10001",
         "zone_type": "PRIMARY",
         "is_active": true
       },
       {
-        "location_scope": "CITY",
-        "location_code": "LA",
+        "postal_code": "90210",
         "zone_type": "SECONDARY",
         "is_active": true
       },
       {
-        "location_scope": "REGION",
-        "location_code": "CA",
+        "postal_code": "94102",
         "zone_type": "BUFFER",
         "is_active": true
       }
@@ -886,8 +1055,9 @@ curl -X POST \
       {
         "id": "111e1111-e89b-12d3-a456-426655440000",
         "partner_id": "550e8400-e29b-41d4-a716-446655440000",
-        "location_scope": "CITY",
-        "location_code": "NYC",
+        "partner_code": "PARTNER_001",
+        "postal_code": "10001",
+        "postal_code_id": "111e1111-e89b-12d3-a456-426614174000",
         "zone_type": "PRIMARY",
         "is_active": true,
         "created_at": "2023-01-01T00:00:00Z",
@@ -896,8 +1066,9 @@ curl -X POST \
       {
         "id": "222e2222-e89b-12d3-a456-426655440000",
         "partner_id": "550e8400-e29b-41d4-a716-446655440000",
-        "location_scope": "CITY",
-        "location_code": "LA",
+        "partner_code": "PARTNER_001",
+        "postal_code": "90210",
+        "postal_code_id": "222e2222-e89b-12d3-a456-426614174000",
         "zone_type": "SECONDARY",
         "is_active": true,
         "created_at": "2023-01-01T00:00:00Z",
@@ -907,10 +1078,9 @@ curl -X POST \
     "failed": [
       {
         "index": 2,
-        "error": "Invalid location_code: CA not found for REGION scope",
+        "error": "Invalid postal_code: 94102 not found in system",
         "request": {
-          "location_scope": "REGION",
-          "location_code": "CA",
+          "postal_code": "94102",
           "zone_type": "BUFFER",
           "is_active": true
         }

@@ -8,46 +8,96 @@ import (
 
 // CreatePartnerLocationCoverageRequest represents the request to create a partner location coverage
 type CreatePartnerLocationCoverageRequest struct {
-	LocationScope           *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=POSTAL_CODE AREA CITY REGION COUNTRY" example:"CITY"`
-	LocationID              *uuid.UUID `json:"location_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	LocationCode            *string    `json:"location_code,omitempty" validate:"omitempty,max=20" example:"NYC"`
-	ZoneType                *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
-	SourcePostalCode        *string    `json:"source_postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
-	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty" validate:"omitempty,max=20" example:"110002"`
-	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	IsActive                *bool      `json:"is_active,omitempty" validate:"omitempty" example:"true"`
+	PartnerCode  *string    `json:"partner_code,omitempty" validate:"omitempty,max=50" example:"shipyaari"`
+	PostalCode   *string    `json:"postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
+	PostalCodeID *uuid.UUID `json:"postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ZoneType     *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
+
+	// Geographic context
+	CountryCode *string `json:"country_code,omitempty" validate:"omitempty,max=10" example:"IN"`
+
+	// Core serviceability attributes
+	ProductType    *string `json:"product_type,omitempty" validate:"omitempty,max=50" example:"travel_free"`
+	ParcelCategory *string `json:"parcel_category,omitempty" validate:"omitempty,max=50" example:"ecomm"`
+	ServiceType    *string `json:"service_type,omitempty" validate:"omitempty,max=50" example:"sdd"`
+	TATDays        *int    `json:"tat_days,omitempty" validate:"omitempty,min=0,max=365" example:"1"`
+
+	// Service capabilities
+	Pickup       *bool   `json:"pickup,omitempty" validate:"omitempty" example:"true"`
+	Delivery     *bool   `json:"delivery,omitempty" validate:"omitempty" example:"true"`
+	DeliveryMode *string `json:"delivery_mode,omitempty" validate:"omitempty,max=50,oneof=air surface rail" example:"surface"`
+	CODAvailable *bool   `json:"cod_available,omitempty" validate:"omitempty" example:"true"`
+	Insurance    *bool   `json:"insurance,omitempty" validate:"omitempty" example:"true"`
+
+	// Weight constraints
+	MinWeightKG *float64 `json:"min_weight_kg,omitempty" validate:"omitempty,min=0" example:"0.1"`
+	MaxWeightKG *float64 `json:"max_weight_kg,omitempty" validate:"omitempty,min=0" example:"50.0"`
+
+	IsActive *bool `json:"is_active,omitempty" validate:"omitempty" example:"true"`
 }
 
 // UpdatePartnerLocationCoverageRequest represents the request to update a partner location coverage
 type UpdatePartnerLocationCoverageRequest struct {
-	LocationScope           *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=POSTAL_CODE AREA CITY REGION COUNTRY" example:"CITY"`
-	LocationID              *uuid.UUID `json:"location_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	LocationCode            *string    `json:"location_code,omitempty" validate:"omitempty,max=20" example:"NYC"`
-	ZoneType                *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
-	SourcePostalCode        *string    `json:"source_postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
-	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty" validate:"omitempty,max=20" example:"110002"`
-	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	IsActive                *bool      `json:"is_active,omitempty" validate:"omitempty" example:"true"`
+	PartnerCode  *string    `json:"partner_code,omitempty" validate:"omitempty,max=50" example:"shipyaari"`
+	PostalCode   *string    `json:"postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
+	PostalCodeID *uuid.UUID `json:"postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ZoneType     *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
+
+	// Geographic context
+	CountryCode *string `json:"country_code,omitempty" validate:"omitempty,max=10" example:"IN"`
+
+	// Core serviceability attributes
+	ProductType    *string `json:"product_type,omitempty" validate:"omitempty,max=50" example:"travel_free"`
+	ParcelCategory *string `json:"parcel_category,omitempty" validate:"omitempty,max=50" example:"ecomm"`
+	ServiceType    *string `json:"service_type,omitempty" validate:"omitempty,max=50" example:"sdd"`
+	TATDays        *int    `json:"tat_days,omitempty" validate:"omitempty,min=0,max=365" example:"1"`
+
+	// Service capabilities
+	Pickup       *bool   `json:"pickup,omitempty" validate:"omitempty" example:"true"`
+	Delivery     *bool   `json:"delivery,omitempty" validate:"omitempty" example:"true"`
+	DeliveryMode *string `json:"delivery_mode,omitempty" validate:"omitempty,max=50,oneof=air surface rail" example:"surface"`
+	CODAvailable *bool   `json:"cod_available,omitempty" validate:"omitempty" example:"true"`
+	Insurance    *bool   `json:"insurance,omitempty" validate:"omitempty" example:"true"`
+
+	// Weight constraints
+	MinWeightKG *float64 `json:"min_weight_kg,omitempty" validate:"omitempty,min=0" example:"0.1"`
+	MaxWeightKG *float64 `json:"max_weight_kg,omitempty" validate:"omitempty,min=0" example:"50.0"`
+
+	IsActive *bool `json:"is_active,omitempty" validate:"omitempty" example:"true"`
 }
 
 // PartnerLocationCoverageResponse represents the response for a partner location coverage
 type PartnerLocationCoverageResponse struct {
-	ID                      uuid.UUID  `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	PartnerID               *uuid.UUID `json:"partner_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
-	PartnerCode             *string    `json:"partner_code,omitempty" example:"PARTNER_001"`
-	LocationScope           *string    `json:"location_scope,omitempty" example:"CITY"`
-	LocationID              *uuid.UUID `json:"location_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
-	LocationCode            *string    `json:"location_code,omitempty" example:"NYC"`
-	ZoneType                *string    `json:"zone_type,omitempty" example:"PRIMARY"`
-	SourcePostalCode        *string    `json:"source_postal_code,omitempty" example:"110001"`
-	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty" example:"110002"`
-	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
-	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
-	IsActive                bool       `json:"is_active" example:"true"`
-	CreatedAt               time.Time  `json:"created_at" example:"2023-01-01T00:00:00Z"`
-	UpdatedAt               time.Time  `json:"updated_at" example:"2023-01-01T00:00:00Z"`
+	ID           uuid.UUID  `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	PartnerID    *uuid.UUID `json:"partner_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
+	PartnerCode  *string    `json:"partner_code,omitempty" example:"PARTNER_001"`
+	PostalCode   *string    `json:"postal_code,omitempty" example:"110001"`
+	PostalCodeID *uuid.UUID `json:"postal_code_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ZoneType     *string    `json:"zone_type,omitempty" example:"PRIMARY"`
+
+	// Geographic context
+	CountryCode *string `json:"country_code,omitempty" example:"IN"`
+
+	// Core serviceability attributes
+	ProductType    *string `json:"product_type,omitempty" example:"travel_free"`
+	ParcelCategory *string `json:"parcel_category,omitempty" example:"ecomm"`
+	ServiceType    *string `json:"service_type,omitempty" example:"sdd"`
+	TATDays        *int    `json:"tat_days,omitempty" example:"1"`
+
+	// Service capabilities
+	Pickup       bool    `json:"pickup" example:"true"`
+	Delivery     bool    `json:"delivery" example:"true"`
+	DeliveryMode *string `json:"delivery_mode,omitempty" example:"surface"`
+	CODAvailable bool    `json:"cod_available" example:"true"`
+	Insurance    bool    `json:"insurance" example:"true"`
+
+	// Weight constraints
+	MinWeightKG *float64 `json:"min_weight_kg,omitempty" example:"0.1"`
+	MaxWeightKG *float64 `json:"max_weight_kg,omitempty" example:"50.0"`
+
+	IsActive  bool      `json:"is_active" example:"true"`
+	CreatedAt time.Time `json:"created_at" example:"2023-01-01T00:00:00Z"`
+	UpdatedAt time.Time `json:"updated_at" example:"2023-01-01T00:00:00Z"`
 }
 
 // PartnerLocationCoverageListResponse represents the response for listing partner location coverages
@@ -58,16 +108,29 @@ type PartnerLocationCoverageListResponse struct {
 
 // PartnerLocationCoverageFiltersRequest represents filters for querying partner location coverages
 type PartnerLocationCoverageFiltersRequest struct {
-	LocationScope           *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=POSTAL_CODE AREA CITY REGION COUNTRY" example:"CITY"`
-	LocationID              *uuid.UUID `json:"location_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	ZoneType                *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
-	SourcePostalCode        *string    `json:"source_postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
-	DestinationPostalCode   *string    `json:"destination_postal_code,omitempty" validate:"omitempty,max=20" example:"110002"`
-	SourcePostalCodeID      *uuid.UUID `json:"source_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	DestinationPostalCodeID *uuid.UUID `json:"destination_postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	IsActive                *bool      `json:"is_active,omitempty" validate:"omitempty" example:"true"`
-	Limit                   *int       `json:"limit,omitempty" validate:"omitempty,min=1,max=100" example:"10"`
-	Offset                  *int       `json:"offset,omitempty" validate:"omitempty,min=0" example:"0"`
+	PostalCode   *string    `json:"postal_code,omitempty" validate:"omitempty,max=20" example:"110001"`
+	PostalCodeID *uuid.UUID `json:"postal_code_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ZoneType     *string    `json:"zone_type,omitempty" validate:"omitempty,oneof=PRIMARY SECONDARY BUFFER" example:"PRIMARY"`
+
+	// Geographic filters
+	CountryCode *string `json:"country_code,omitempty" validate:"omitempty,max=10" example:"IN"`
+
+	// Serviceability filters
+	ProductType    *string  `json:"product_type,omitempty" validate:"omitempty,max=50" example:"travel_free"`
+	ParcelCategory *string  `json:"parcel_category,omitempty" validate:"omitempty,max=50" example:"ecomm"`
+	ServiceType    *string  `json:"service_type,omitempty" validate:"omitempty,max=50" example:"sdd"`
+	TATDays        *int     `json:"tat_days,omitempty" validate:"omitempty,min=0,max=365" example:"1"`
+	Pickup         *bool    `json:"pickup,omitempty" validate:"omitempty" example:"true"`
+	Delivery       *bool    `json:"delivery,omitempty" validate:"omitempty" example:"true"`
+	DeliveryMode   *string  `json:"delivery_mode,omitempty" validate:"omitempty,max=50,oneof=air surface rail" example:"surface"`
+	CODAvailable   *bool    `json:"cod_available,omitempty" validate:"omitempty" example:"true"`
+	Insurance      *bool    `json:"insurance,omitempty" validate:"omitempty" example:"true"`
+	MinWeightKG    *float64 `json:"min_weight_kg,omitempty" validate:"omitempty,min=0" example:"0.1"`
+	MaxWeightKG    *float64 `json:"max_weight_kg,omitempty" validate:"omitempty,min=0" example:"50.0"`
+
+	IsActive *bool `json:"is_active,omitempty" validate:"omitempty" example:"true"`
+	Limit    *int  `json:"limit,omitempty" validate:"omitempty,min=1,max=100" example:"10"`
+	Offset   *int  `json:"offset,omitempty" validate:"omitempty,min=0" example:"0"`
 }
 
 // BulkCreatePartnerLocationCoverageRequest represents the request to create multiple partner location coverages
@@ -91,8 +154,8 @@ type BulkCreateError struct {
 // PartnerLocationCoverageResultResponse represents partner coverage with location details
 type PartnerLocationCoverageResultResponse struct {
 	PartnerID         uuid.UUID                  `json:"partner_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	LocationScope     string                     `json:"location_scope" example:"CITY"`
-	LocationID        uuid.UUID                  `json:"location_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	PostalCode        string                     `json:"postal_code" example:"110001"`
+	PostalCodeID      uuid.UUID                  `json:"postal_code_id" example:"550e8400-e29b-41d4-a716-446655440000"`
 	ZoneType          string                     `json:"zone_type" example:"PRIMARY"`
 	LocationHierarchy *LocationHierarchyResponse `json:"location_hierarchy,omitempty"`
 }
@@ -108,4 +171,31 @@ type LocationHierarchyResponse struct {
 	CityCode    string `json:"city_code,omitempty" example:"NYC"`
 	Area        string `json:"area,omitempty" example:"Manhattan"`
 	AreaCode    string `json:"area_code,omitempty" example:"MAN"`
+}
+
+// CoverageCheckResponse represents the response for checking coverage availability
+type CoverageCheckResponse struct {
+	Covered             bool                         `json:"covered" example:"true"`
+	PartnerCode         *string                      `json:"partner_code,omitempty" example:"SHIPYAARI_001"`
+	PostalCode          string                       `json:"postal_code" example:"110001"`
+	ServiceCapabilities *CoverageServiceCapabilities `json:"service_capabilities,omitempty"`
+	Message             *string                      `json:"message,omitempty" example:"Coverage available with all requested services"`
+}
+
+// CoverageServiceCapabilities represents the service capabilities for a coverage check
+type CoverageServiceCapabilities struct {
+	Pickup       bool                 `json:"pickup" example:"true"`
+	Delivery     bool                 `json:"delivery" example:"true"`
+	CODAvailable bool                 `json:"cod_available" example:"true"`
+	Insurance    bool                 `json:"insurance" example:"true"`
+	ServiceType  *string              `json:"service_type,omitempty" example:"sdd"`
+	TATDays      *int                 `json:"tat_days,omitempty" example:"1"`
+	DeliveryMode *string              `json:"delivery_mode,omitempty" example:"surface"`
+	WeightRange  *CoverageWeightRange `json:"weight_range,omitempty"`
+}
+
+// CoverageWeightRange represents the weight range for coverage
+type CoverageWeightRange struct {
+	MinKG *float64 `json:"min_kg,omitempty" example:"0.1"`
+	MaxKG *float64 `json:"max_kg,omitempty" example:"50.0"`
 }

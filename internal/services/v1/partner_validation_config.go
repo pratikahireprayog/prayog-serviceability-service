@@ -11,7 +11,7 @@ import (
 // LoadPartnerValidationConfig loads configuration from environment variables
 func LoadPartnerValidationConfig() PartnerValidationConfig {
 	config := PartnerValidationConfig{
-		BaseURL:        getEnvString(constants.EnvPrayogBaseURL, ""),
+		BaseURL:        getEnvString(constants.EnvPartnerServiceBaseURL, ""),
 		RequestTimeout: getEnvDuration("PARTNER_VALIDATION_TIMEOUT", 30*time.Second),
 		RetryAttempts:  getEnvInt("PARTNER_VALIDATION_RETRY_ATTEMPTS", 3),
 		RetryDelay:     getEnvDuration("PARTNER_VALIDATION_RETRY_DELAY", 1*time.Second),
@@ -19,7 +19,7 @@ func LoadPartnerValidationConfig() PartnerValidationConfig {
 
 	// Validate required configuration
 	if config.BaseURL == "" {
-		config.BaseURL = "http://localhost:8080" // Default for development
+		config.BaseURL = "http://localhost:9024" // Default for development
 	}
 
 	return config
@@ -56,7 +56,7 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 // GetDefaultConfig returns a default configuration for testing and development
 func GetDefaultConfig() PartnerValidationConfig {
 	return PartnerValidationConfig{
-		BaseURL:        "http://localhost:8080",
+		BaseURL:        "http://localhost:9024",
 		RequestTimeout: 30 * time.Second,
 		RetryAttempts:  3,
 		RetryDelay:     1 * time.Second,

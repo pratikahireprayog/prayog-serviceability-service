@@ -992,7 +992,6 @@ components:
           default: false
         is_active:
           type: boolean
-          default: true
 
     UpdateLocationAliasRequest:
       type: object
@@ -1171,7 +1170,7 @@ components:
     # Partner Location Coverage Schemas
     PartnerLocationCoverage:
       type: object
-      description: Partner location coverage information
+      description: Partner location coverage entity
       properties:
         id:
           type: string
@@ -1187,20 +1186,15 @@ components:
           type: string
           description: Partner code reference
           example: "PARTNER_001"
-        location_scope:
+        postal_code:
           type: string
-          enum: [POSTAL_CODE, AREA, CITY, REGION, COUNTRY]
-          description: The scope/level of location coverage
-          example: "CITY"
-        location_id:
+          description: Postal code for coverage area
+          example: "110001"
+        postal_code_id:
           type: string
           format: uuid
-          description: Location entity unique identifier
+          description: Postal code entity unique identifier
           example: "550e8400-e29b-41d4-a716-446655440000"
-        location_code:
-          type: string
-          description: Location code reference
-          example: "NYC"
         zone_type:
           type: string
           enum: [PRIMARY, SECONDARY, BUFFER]
@@ -1225,21 +1219,21 @@ components:
       type: object
       description: Request to create a new partner location coverage
       properties:
-        location_scope:
+        partner_code:
           type: string
-          enum: [POSTAL_CODE, AREA, CITY, REGION, COUNTRY]
-          description: The scope/level of location coverage
-          example: "CITY"
-        location_id:
+          description: Partner code reference
+          maxLength: 50
+          example: "shipyaari"
+        postal_code:
+          type: string
+          description: Postal code for coverage area
+          maxLength: 20
+          example: "110001"
+        postal_code_id:
           type: string
           format: uuid
-          description: Location entity unique identifier (required if location_code not provided)
+          description: Postal code entity unique identifier
           example: "550e8400-e29b-41d4-a716-446655440000"
-        location_code:
-          type: string
-          description: Location code reference (required if location_id not provided)
-          maxLength: 20
-          example: "NYC"
         zone_type:
           type: string
           enum: [PRIMARY, SECONDARY, BUFFER]
@@ -1255,21 +1249,21 @@ components:
       type: object
       description: Request to update an existing partner location coverage
       properties:
-        location_scope:
+        partner_code:
           type: string
-          enum: [POSTAL_CODE, AREA, CITY, REGION, COUNTRY]
-          description: The scope/level of location coverage
-          example: "CITY"
-        location_id:
+          description: Partner code reference
+          maxLength: 50
+          example: "shipyaari"
+        postal_code:
+          type: string
+          description: Postal code for coverage area
+          maxLength: 20
+          example: "110001"
+        postal_code_id:
           type: string
           format: uuid
-          description: Location entity unique identifier
+          description: Postal code entity unique identifier
           example: "550e8400-e29b-41d4-a716-446655440000"
-        location_code:
-          type: string
-          description: Location code reference
-          maxLength: 20
-          example: "NYC"
         zone_type:
           type: string
           enum: [PRIMARY, SECONDARY, BUFFER]

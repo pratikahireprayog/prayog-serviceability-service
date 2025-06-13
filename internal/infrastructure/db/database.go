@@ -71,8 +71,21 @@ func (dm *DatabaseManager) Connect() error {
 		},
 	}
 
-	// Connect to PostgreSQL
-	db, err := gorm.Open(postgres.Open(dm.config.DB.DSN()), gormConfig)
+	// Log database connection details before connecting
+	dsn := dm.config.DB.DSN()
+	dm.logger.WithFields(logrus.Fields{
+		"host":     dm.config.DB.Host,
+		"port":     dm.config.DB.Port,
+		"database": dm.config.DB.Name,
+		"user":     dm.config.DB.User,
+		"ssl_mode": dm.config.DB.SSLMode,
+	}).Info("Attempting to connect to database")
+
+	// Connect to PostgreSQL with UUID support
+	db, err := gorm.Open(postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true, // disables implicit prepared statement usage
+	}), gormConfig)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}

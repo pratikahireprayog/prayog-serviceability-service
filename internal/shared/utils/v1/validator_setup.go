@@ -143,7 +143,8 @@ func isValidSnakeCase(s string) bool {
 }
 
 // validateCountryCodeISO validates country codes according to ISO 3166-1 A-2 standard
-// Country codes are exactly 2 uppercase letters (e.g., "US", "IN", "GB", "DE")
+// Country codes are exactly 2 lowercase letters (e.g., "us", "in", "gb", "de")
+// This follows the project's snake_case convention for database storage.
 //
 // This validation is specifically for country codes and should not be used for other location codes.
 func validateCountryCodeISO(fl validator.FieldLevel) bool {
@@ -152,9 +153,9 @@ func validateCountryCodeISO(fl validator.FieldLevel) bool {
 		return false
 	}
 
-	// Must be exactly 2 uppercase letters for ISO 3166-1 A-2
+	// Must be exactly 2 lowercase letters for consistency with database storage
 	for _, char := range value {
-		if char < 'A' || char > 'Z' {
+		if char < 'a' || char > 'z' {
 			return false
 		}
 	}

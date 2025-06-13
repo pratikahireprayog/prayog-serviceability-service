@@ -53,35 +53,57 @@ func (db *DBConfig) DSN() string {
 	)
 }
 
+// envVars holds the loaded environment variables from .env file and system
+var envVars map[string]string
+
 // LoadAppConfig loads all application configuration from environment variables
 func LoadAppConfig() (*AppConfig, error) {
-	// Load .env file - ignore error if file doesn't exist
-	if err := godotenv.Load(); err != nil {
-		// Silently continue - .env file is optional if environment variables are set
+	// Load .env file first and prioritize its values
+	envVars = make(map[string]string)
+
+	// Load .env file values
+	if envMap, err := godotenv.Read(); err == nil {
+		for key, value := range envMap {
+			envVars[key] = value
+		}
+	}
+
+	// Load system environment variables only if not present in .env
+	for _, env := range os.Environ() {
+		if len(env) > 0 {
+			if idx := findIndex(env, '='); idx > 0 {
+				key := env[:idx]
+				value := env[idx+1:]
+				// Only use system env var if not already set from .env file
+				if _, exists := envVars[key]; !exists {
+					envVars[key] = value
+				}
+			}
+		}
 	}
 
 	config := &AppConfig{
 		DB: DBConfig{
-			Host:            getAppEnvOrDefault("DB_HOST", "localhost"),
-			Port:            getAppEnvAsIntOrDefault("DB_PORT", 5432),
-			User:            getAppEnvOrDefault("DB_USER", "postgres"),
-			Password:        getAppEnvOrDefault("DB_PASSWORD", "postgres"),
-			Name:            getAppEnvOrDefault("DB_NAME", "serviceability_db"),
-			SSLMode:         getAppEnvOrDefault("DB_SSL_MODE", "require"),
-			MaxOpenConns:    getAppEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    getAppEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
-			ConnMaxLifetime: getAppEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+			Host:            getEnvOrDefault("DB_HOST", "localhost"),
+			Port:            getEnvAsIntOrDefault("DB_PORT", 5432),
+			User:            getEnvOrDefault("DB_USER", "postgres"),
+			Password:        getEnvOrDefault("DB_PASSWORD", "postgres"),
+			Name:            getEnvOrDefault("DB_NAME", "serviceability_db"),
+			SSLMode:         getEnvOrDefault("DB_SSL_MODE", "require"),
+			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
+			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Log: LogConfig{
-			Level:      getAppEnvOrDefault("LOG_LEVEL", "info"),
-			Format:     getAppEnvOrDefault("LOG_FORMAT", "json"),
-			OutputPath: getAppEnvOrDefault("LOG_OUTPUT_PATH", "stdout"),
+			Level:      getEnvOrDefault("LOG_LEVEL", "info"),
+			Format:     getEnvOrDefault("LOG_FORMAT", "json"),
+			OutputPath: getEnvOrDefault("LOG_OUTPUT_PATH", "stdout"),
 		},
 		Server: ServerConfig{
-			Port:         getAppEnvAsIntOrDefault("SERVER_PORT", 9022),
-			ReadTimeout:  getAppEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
-			WriteTimeout: getAppEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
-			IdleTimeout:  getAppEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			Port:         getEnvAsIntOrDefault("SERVER_PORT", 9022),
+			ReadTimeout:  getEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
+			WriteTimeout: getEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Integration: LoadIntegrationConfig(),
 	}
@@ -89,16 +111,26 @@ func LoadAppConfig() (*AppConfig, error) {
 	return config, nil
 }
 
-// Helper functions for environment variables
-func getAppEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
+// findIndex finds the first occurrence of a character in a string
+func findIndex(s string, char rune) int {
+	for i, c := range s {
+		if c == char {
+			return i
+		}
+	}
+	return -1
+}
+
+// Helper functions for environment variables using the prioritized envVars map
+func getEnvOrDefault(key, defaultValue string) string {
+	if value, exists := envVars[key]; exists && value != "" {
 		return value
 	}
 	return defaultValue
 }
 
-func getAppEnvAsIntOrDefault(key string, defaultValue int) int {
-	if valueStr := os.Getenv(key); valueStr != "" {
+func getEnvAsIntOrDefault(key string, defaultValue int) int {
+	if valueStr := getEnvOrDefault(key, ""); valueStr != "" {
 		if value, err := strconv.Atoi(valueStr); err == nil {
 			return value
 		}
@@ -106,8 +138,8 @@ func getAppEnvAsIntOrDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
-func getAppEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
-	if valueStr := os.Getenv(key); valueStr != "" {
+func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
+	if valueStr := getEnvOrDefault(key, ""); valueStr != "" {
 		if value, err := time.ParseDuration(valueStr); err == nil {
 			return value
 		}
@@ -115,8 +147,8 @@ func getAppEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.D
 	return defaultValue
 }
 
-func getAppEnvAsBoolOrDefault(key string, defaultValue bool) bool {
-	if valueStr := os.Getenv(key); valueStr != "" {
+func getEnvAsBoolOrDefault(key string, defaultValue bool) bool {
+	if valueStr := getEnvOrDefault(key, ""); valueStr != "" {
 		if value, err := strconv.ParseBool(valueStr); err == nil {
 			return value
 		}
@@ -124,6 +156,6 @@ func getAppEnvAsBoolOrDefault(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
-func getAppEnvOrError(key string) string {
-	return os.Getenv(key)
+func getEnvOrError(key string) string {
+	return getEnvOrDefault(key, "")
 }

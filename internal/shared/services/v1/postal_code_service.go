@@ -206,56 +206,23 @@ func (s *postalCodeService) ValidateLocationScope(ctx context.Context, req *dtos
 		return fmt.Errorf("request cannot be nil")
 	}
 
-	// Validate that required location fields are provided based on scope
+	// Location scope validation is now optional - only validate if provided
 	if req.LocationScope != nil {
-		switch *req.LocationScope {
-		case "country":
-			if req.CountryCode == nil && req.CountryID == nil {
-				return fmt.Errorf("country code or ID is required for country scope")
+		validScopes := []string{"country", "region", "city", "area"}
+		scopeValid := false
+		for _, validScope := range validScopes {
+			if *req.LocationScope == validScope {
+				scopeValid = true
+				break
 			}
-		case "region":
-			if (req.CountryCode == nil && req.CountryID == nil) || (req.RegionCode == nil && req.RegionID == nil) {
-				return fmt.Errorf("country and region codes/IDs are required for region scope")
-			}
-		case "city":
-			if (req.CountryCode == nil && req.CountryID == nil) || (req.RegionCode == nil && req.RegionID == nil) || (req.CityCode == nil && req.CityID == nil) {
-				return fmt.Errorf("country, region, and city codes/IDs are required for city scope")
-			}
-		case "area":
-			if (req.CountryCode == nil && req.CountryID == nil) || (req.RegionCode == nil && req.RegionID == nil) || (req.CityCode == nil && req.CityID == nil) || (req.AreaCode == nil && req.AreaID == nil) {
-				return fmt.Errorf("country, region, city, and area codes/IDs are required for area scope")
-			}
+		}
+		if !scopeValid {
+			return fmt.Errorf("invalid location scope: %s, must be one of: %v", *req.LocationScope, validScopes)
 		}
 	}
 
-	// Validate that referenced entities exist
-	if req.CountryCode != nil {
-		country, err := s.countryRepo.GetByCode(ctx, *req.CountryCode)
-		if err != nil || country == nil {
-			return fmt.Errorf("invalid country code: %s", *req.CountryCode)
-		}
-	}
-
-	if req.RegionCode != nil {
-		region, err := s.regionRepo.GetByCode(ctx, *req.RegionCode)
-		if err != nil || region == nil {
-			return fmt.Errorf("invalid region code: %s", *req.RegionCode)
-		}
-	}
-
-	if req.CityCode != nil {
-		city, err := s.cityRepo.GetByCode(ctx, *req.CityCode)
-		if err != nil || city == nil {
-			return fmt.Errorf("invalid city code: %s", *req.CityCode)
-		}
-	}
-
-	if req.AreaCode != nil {
-		area, err := s.areaRepo.GetByCode(ctx, *req.AreaCode)
-		if err != nil || area == nil {
-			return fmt.Errorf("invalid area code: %s", *req.AreaCode)
-		}
-	}
+	// Removed entity existence validation - entities can be created independently
+	// This allows postal codes to be created without requiring pre-existing country/region/city/area records
 
 	return nil
 }

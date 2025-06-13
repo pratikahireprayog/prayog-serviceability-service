@@ -185,22 +185,23 @@ type LocationAliasRepository interface {
 
 // PartnerLocationCoverageRepository defines the interface for partner location coverage operations
 type PartnerLocationCoverageRepository interface {
-	GetByPartnerID(ctx context.Context, partnerID uint) ([]models.PartnerLocationCoverage, error)
-	GetByPartnerIDWithDeleted(ctx context.Context, partnerID uint) ([]models.PartnerLocationCoverage, error)
+	GetByPartnerID(ctx context.Context, partnerID string) ([]models.PartnerLocationCoverage, error)
+	GetByPartnerIDWithDeleted(ctx context.Context, partnerID string) ([]models.PartnerLocationCoverage, error)
+	GetByPartnerCode(ctx context.Context, partnerCode string) ([]models.PartnerLocationCoverage, error)
 	GetByLocationScopeAndID(ctx context.Context, locationScope string, locationID uint) ([]models.PartnerLocationCoverage, error)
 	GetByLocationScopeAndIDWithDeleted(ctx context.Context, locationScope string, locationID uint) ([]models.PartnerLocationCoverage, error)
 	GetByFilters(ctx context.Context, filters *models.PartnerLocationCoverageFilters) ([]models.PartnerLocationCoverageResult, error)
 	GetByFiltersWithDeleted(ctx context.Context, filters *models.PartnerLocationCoverageFilters) ([]models.PartnerLocationCoverageResult, error)
 	GetPartnersForLocation(ctx context.Context, locationScope string, locationID uint, zoneTypes []string) ([]models.PartnerLocationCoverageResult, error)
 	GetPartnersForLocationWithDeleted(ctx context.Context, locationScope string, locationID uint, zoneTypes []string) ([]models.PartnerLocationCoverageResult, error)
-	GetCoverageForPartner(ctx context.Context, partnerID uint, isActive bool) ([]models.PartnerLocationCoverageResult, error)
-	GetCoverageForPartnerWithDeleted(ctx context.Context, partnerID uint, isActive bool) ([]models.PartnerLocationCoverageResult, error)
+	GetCoverageForPartner(ctx context.Context, partnerID string, isActive bool) ([]models.PartnerLocationCoverageResult, error)
+	GetCoverageForPartnerWithDeleted(ctx context.Context, partnerID string, isActive bool) ([]models.PartnerLocationCoverageResult, error)
 	GetOnlyDeleted(ctx context.Context, offset, limit int) ([]models.PartnerLocationCoverage, int64, error)
 	Create(ctx context.Context, coverage *models.PartnerLocationCoverage) error
 	Update(ctx context.Context, coverage *models.PartnerLocationCoverage) error
-	Delete(ctx context.Context, id uint) error
-	Restore(ctx context.Context, id uint) error
-	ForceDelete(ctx context.Context, id uint) error
+	Delete(ctx context.Context, id string) error
+	Restore(ctx context.Context, id string) error
+	ForceDelete(ctx context.Context, id string) error
 	BulkCreate(ctx context.Context, coverages []models.PartnerLocationCoverage) error
 }
 

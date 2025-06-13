@@ -13,6 +13,10 @@ type PartnerValidationService interface {
 	// ValidatePartner validates if a partner exists and is active
 	// Returns INVALID_PARTNER error if validation fails
 	ValidatePartner(ctx context.Context, partnerID string) error
+
+	// ValidatePartnerByCode validates if a partner exists and is active by partner code
+	// Returns INVALID_PARTNER error if validation fails
+	ValidatePartnerByCode(ctx context.Context, partnerCode string) error
 }
 
 // PartnerValidationServiceImpl implements the PartnerValidationService interface
@@ -107,6 +111,57 @@ func (s *PartnerValidationServiceImpl) ValidatePartner(ctx context.Context, part
 	default:
 		if s.logger != nil {
 			s.logger.Printf("Partner validation failed for %s with status %d", partnerID, response.StatusCode)
+		}
+		return NewPartnerValidationError(constants.ErrorCodePartnerServiceError, "Partner service returned error", nil)
+	}
+}
+
+// ValidatePartnerByCode validates if a partner exists and is active by calling the Partner API with partner code
+func (s *PartnerValidationServiceImpl) ValidatePartnerByCode(ctx context.Context, partnerCode string) error {
+	if partnerCode == "" {
+		if s.logger != nil {
+			s.logger.Printf("Partner validation failed: empty partner code")
+		}
+		return NewPartnerValidationError(constants.ErrorCodeInvalidPartner, "Partner code cannot be empty", nil)
+	}
+
+	url := s.baseURL + "/partner/v1/partners/code/" + partnerCode
+	if s.logger != nil {
+		s.logger.Printf("Validating partner with code %s at URL: %s", partnerCode, url)
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	response, err := s.client.Get(ctx, url)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Printf("Partner validation failed for code %s: %v", partnerCode, err)
+		}
+		return NewPartnerValidationError(constants.ErrorCodePartnerServiceError, "Failed to validate partner by code", err)
+	}
+
+	// Handle response based on status code
+	switch response.StatusCode {
+	case constants.StatusOK:
+		if s.logger != nil {
+			s.logger.Printf("Partner with code %s validation successful", partnerCode)
+		}
+		return nil
+	case constants.StatusNotFound:
+		if s.logger != nil {
+			s.logger.Printf("Partner with code %s not found", partnerCode)
+		}
+		return NewPartnerValidationError(constants.ErrorCodeInvalidPartner, "Partner not found", nil)
+	case constants.StatusUnauthorized:
+		if s.logger != nil {
+			s.logger.Printf("Unauthorized access when validating partner with code %s", partnerCode)
+		}
+		return NewPartnerValidationError(constants.ErrorCodeAuthFailed, "Unauthorized access to partner service", nil)
+	default:
+		if s.logger != nil {
+			s.logger.Printf("Partner validation failed for code %s with status %d", partnerCode, response.StatusCode)
 		}
 		return NewPartnerValidationError(constants.ErrorCodePartnerServiceError, "Partner service returned error", nil)
 	}

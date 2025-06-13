@@ -510,25 +510,8 @@ func (p *PostalCode) ValidateBusinessRules() error {
 		return fmt.Errorf("postal code must be between 1 and 20 characters")
 	}
 
-	// Validate that either both or neither country ID and code are provided
-	if (p.CountryID == nil) != (p.CountryCode == nil) {
-		return fmt.Errorf("country ID and country code must both be provided or both be nil")
-	}
-
-	// Validate that either both or neither region ID and code are provided
-	if (p.RegionID == nil) != (p.RegionCode == nil) {
-		return fmt.Errorf("region ID and region code must both be provided or both be nil")
-	}
-
-	// Validate that either both or neither city ID and code are provided
-	if (p.CityID == nil) != (p.CityCode == nil) {
-		return fmt.Errorf("city ID and city code must both be provided or both be nil")
-	}
-
-	// Validate that either both or neither area ID and code are provided
-	if (p.AreaID == nil) != (p.AreaCode == nil) {
-		return fmt.Errorf("area ID and area code must both be provided or both be nil")
-	}
+	// Relaxed validation - allow ID and code to be provided independently
+	// This allows more flexible postal code creation
 
 	// Soft delete validation: cannot update essential fields of soft-deleted records
 	if p.IsDeleted {

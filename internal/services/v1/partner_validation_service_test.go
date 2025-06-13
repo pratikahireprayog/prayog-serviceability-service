@@ -25,17 +25,17 @@ func (m *MockHTTPClient) Get(ctx context.Context, url string) (*HTTPResponse, er
 
 func TestLoadPartnerValidationConfig(t *testing.T) {
 	// Test with environment variable set
-	originalBaseURL := os.Getenv(constants.EnvPrayogBaseURL)
+	originalBaseURL := os.Getenv(constants.EnvPartnerServiceBaseURL)
 	defer func() {
 		if originalBaseURL == "" {
-			os.Unsetenv(constants.EnvPrayogBaseURL)
+			os.Unsetenv(constants.EnvPartnerServiceBaseURL)
 		} else {
-			os.Setenv(constants.EnvPrayogBaseURL, originalBaseURL)
+			os.Setenv(constants.EnvPartnerServiceBaseURL, originalBaseURL)
 		}
 	}()
 
 	testBaseURL := "https://test.example.com"
-	os.Setenv(constants.EnvPrayogBaseURL, testBaseURL)
+	os.Setenv(constants.EnvPartnerServiceBaseURL, testBaseURL)
 
 	config := LoadPartnerValidationConfig()
 
@@ -58,20 +58,20 @@ func TestLoadPartnerValidationConfig(t *testing.T) {
 
 func TestLoadPartnerValidationConfigWithoutEnv(t *testing.T) {
 	// Test without environment variable (should use default)
-	originalBaseURL := os.Getenv(constants.EnvPrayogBaseURL)
+	originalBaseURL := os.Getenv(constants.EnvPartnerServiceBaseURL)
 	defer func() {
 		if originalBaseURL == "" {
-			os.Unsetenv(constants.EnvPrayogBaseURL)
+			os.Unsetenv(constants.EnvPartnerServiceBaseURL)
 		} else {
-			os.Setenv(constants.EnvPrayogBaseURL, originalBaseURL)
+			os.Setenv(constants.EnvPartnerServiceBaseURL, originalBaseURL)
 		}
 	}()
 
-	os.Unsetenv(constants.EnvPrayogBaseURL)
+	os.Unsetenv(constants.EnvPartnerServiceBaseURL)
 
 	config := LoadPartnerValidationConfig()
 
-	expectedDefault := "http://localhost:8080"
+	expectedDefault := "http://localhost:9024"
 	if config.BaseURL != expectedDefault {
 		t.Errorf("Expected default BaseURL %s, got %s", expectedDefault, config.BaseURL)
 	}
@@ -80,7 +80,7 @@ func TestLoadPartnerValidationConfigWithoutEnv(t *testing.T) {
 func TestGetDefaultConfig(t *testing.T) {
 	config := GetDefaultConfig()
 
-	expectedBaseURL := "http://localhost:8080"
+	expectedBaseURL := "http://localhost:9024"
 	if config.BaseURL != expectedBaseURL {
 		t.Errorf("Expected BaseURL %s, got %s", expectedBaseURL, config.BaseURL)
 	}

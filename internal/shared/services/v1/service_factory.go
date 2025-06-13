@@ -26,7 +26,7 @@ func NewLocationService(repoFactory repositories.LocationRepository, logger *log
 		regionTypeService:    NewRegionTypeService(repoFactory.RegionTypes()),
 		regionService:        NewRegionService(repoFactory.Regions()),
 		districtService:      NewDistrictService(repoFactory.Districts()),
-		cityService:          NewCityService(repoFactory.Cities()),
+		cityService:          NewCityService(repoFactory.Cities(), repoFactory.Regions()),
 		areaService:          NewAreaService(repoFactory.Areas()),
 		postalCodeService:    NewPostalCodeService(repoFactory.PostalCodes(), repoFactory.Countries(), repoFactory.Regions(), repoFactory.Cities(), repoFactory.Areas()),
 		locationTypeService:  NewLocationTypeService(repoFactory.LocationTypes()),

@@ -27,7 +27,7 @@ type PaginationResponse struct {
 
 // CreateCountryRequest represents request to create a new country
 type CreateCountryRequest struct {
-	Code         string  `json:"code" validate:"required,country_code_iso"` // ISO 3166 A-2: exactly 2 uppercase characters
+	Code         string  `json:"code" validate:"required,country_code_iso"` // ISO 3166 A-2: exactly 2 lowercase characters (database format)
 	Name         string  `json:"name" validate:"required,min=2,max=100"`
 	CurrencyCode *string `json:"currency_code,omitempty" validate:"omitempty,len=3,alpha"`
 	PhoneCode    *string `json:"phone_code,omitempty" validate:"omitempty,min=1,max=10"`
@@ -263,29 +263,29 @@ type AreaListResponse = StandardListResponse[AreaResponse]
 // CreatePostalCodeRequest represents request to create a new postal code
 type CreatePostalCodeRequest struct {
 	Code          string     `json:"code" validate:"required,min=3,max=20"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,len=2"`
 	CountryID     *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
 	RegionID      *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
+	RegionCode    *string    `json:"region_code,omitempty"`
 	CityID        *uuid.UUID `json:"city_id,omitempty"`
-	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
+	CityCode      *string    `json:"city_code,omitempty"`
 	AreaID        *uuid.UUID `json:"area_id,omitempty"`
-	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
-	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
+	AreaCode      *string    `json:"area_code,omitempty"`
+	LocationScope *string    `json:"location_scope,omitempty"`
 	IsActive      *bool      `json:"is_active,omitempty"`
 }
 
 // UpdatePostalCodeRequest represents request to update a postal code
 type UpdatePostalCodeRequest struct {
 	CountryID     *uuid.UUID `json:"country_id,omitempty"`
-	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,country_code_iso"`
+	CountryCode   *string    `json:"country_code,omitempty" validate:"omitempty,len=2"`
 	RegionID      *uuid.UUID `json:"region_id,omitempty"`
-	RegionCode    *string    `json:"region_code,omitempty" validate:"omitempty,region_code_iso"`
+	RegionCode    *string    `json:"region_code,omitempty"`
 	CityID        *uuid.UUID `json:"city_id,omitempty"`
-	CityCode      *string    `json:"city_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
+	CityCode      *string    `json:"city_code,omitempty"`
 	AreaID        *uuid.UUID `json:"area_id,omitempty"`
-	AreaCode      *string    `json:"area_code,omitempty" validate:"omitempty,min=2,max=20,snake_case"`
-	LocationScope *string    `json:"location_scope,omitempty" validate:"omitempty,oneof=country region city area"`
+	AreaCode      *string    `json:"area_code,omitempty"`
+	LocationScope *string    `json:"location_scope,omitempty"`
 	IsActive      *bool      `json:"is_active,omitempty"`
 }
 

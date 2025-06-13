@@ -14,13 +14,15 @@ import (
 
 // cityService implements the CityService interface
 type cityService struct {
-	repo repositories.CityRepository
+	repo       repositories.CityRepository
+	regionRepo repositories.RegionRepository
 }
 
 // NewCityService creates a new city service instance
-func NewCityService(repo repositories.CityRepository) CityService {
+func NewCityService(repo repositories.CityRepository, regionRepo repositories.RegionRepository) CityService {
 	return &cityService{
-		repo: repo,
+		repo:       repo,
+		regionRepo: regionRepo,
 	}
 }
 
@@ -232,8 +234,16 @@ func (s *cityService) Create(ctx context.Context, req *dtos.CreateCityRequest) (
 		IsActive: true, // Default to active
 	}
 
-	// Set optional fields
+	// Set optional fields with validation
 	if req.RegionID != nil {
+		// Validate that the region exists
+		_, err := s.regionRepo.GetByID(ctx, req.RegionID.String())
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return nil, fmt.Errorf("region with ID '%s' not found", req.RegionID.String())
+			}
+			return nil, fmt.Errorf("failed to validate region: %w", err)
+		}
 		city.RegionID = req.RegionID
 	}
 
@@ -252,7 +262,7 @@ func (s *cityService) Create(ctx context.Context, req *dtos.CreateCityRequest) (
 	}
 
 	if req.CountryCode != nil {
-		countryCode := strings.ToUpper(strings.TrimSpace(*req.CountryCode))
+		countryCode := strings.ToLower(strings.TrimSpace(*req.CountryCode))
 		if countryCode != "" {
 			city.CountryCode = &countryCode
 		}
@@ -332,7 +342,7 @@ func (s *cityService) Update(ctx context.Context, id string, req *dtos.UpdateCit
 	}
 
 	if req.CountryCode != nil {
-		countryCode := strings.ToUpper(strings.TrimSpace(*req.CountryCode))
+		countryCode := strings.ToLower(strings.TrimSpace(*req.CountryCode))
 		if countryCode != "" {
 			updated.CountryCode = &countryCode
 		} else {

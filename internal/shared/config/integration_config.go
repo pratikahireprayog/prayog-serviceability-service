@@ -2,14 +2,10 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"prayog-serviceability-service/internal/infrastructure/api/http/outbound"
 	"prayog-serviceability-service/internal/infrastructure/resilience"
-
-	"github.com/joho/godotenv"
 )
 
 // IntegrationConfig holds configuration for all service integrations
@@ -96,8 +92,7 @@ type ServiceDefinitionResolverConfig struct {
 
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
-	// Load .env file
-	godotenv.Load()
+	// Environment variables are loaded and prioritized in app_config.go
 
 	partnerConfig := PartnerServiceConfig{
 		BaseURL:       getEnvOrDefault("PARTNER_SERVICE_BASE_URL", "http://localhost:9024"),
@@ -252,37 +247,5 @@ func NewConfigError(message string) ConfigError {
 	}
 }
 
-// Helper functions using os.Getenv() directly
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvAsIntOrDefault(key string, defaultValue int) int {
-	if valueStr := os.Getenv(key); valueStr != "" {
-		if value, err := strconv.Atoi(valueStr); err == nil {
-			return value
-		}
-	}
-	return defaultValue
-}
-
-func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
-	if valueStr := os.Getenv(key); valueStr != "" {
-		if value, err := time.ParseDuration(valueStr); err == nil {
-			return value
-		}
-	}
-	return defaultValue
-}
-
-func getEnvAsBoolOrDefault(key string, defaultValue bool) bool {
-	if valueStr := os.Getenv(key); valueStr != "" {
-		if value, err := strconv.ParseBool(valueStr); err == nil {
-			return value
-		}
-	}
-	return defaultValue
-}
+// Note: Helper functions (getEnvOrDefault, getEnvAsIntOrDefault, etc.)
+// are now defined in app_config.go and shared across configuration files

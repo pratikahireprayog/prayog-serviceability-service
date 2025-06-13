@@ -223,7 +223,7 @@ const (
 	EnvRedisURL                = "REDIS_URL"
 	EnvPartnerServiceURL       = "PARTNER_SERVICE_URL"
 	EnvSpecificationServiceURL = "SPECIFICATION_SERVICE_URL"
-	EnvPrayogBaseURL           = "PRAYOG_BASE_URL"
+	EnvPartnerServiceBaseURL   = "PARTNER_SERVICE_BASE_URL"
 	EnvAPIKey                  = "API_KEY"
 	EnvEnvironment             = "ENVIRONMENT"
 )
