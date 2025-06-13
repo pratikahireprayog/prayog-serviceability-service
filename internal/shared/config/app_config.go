@@ -53,6 +53,20 @@ func (db *DBConfig) DSN() string {
 	)
 }
 
+// GetConnectionInfo returns a map of connection information for logging (without password)
+func (db *DBConfig) GetConnectionInfo() map[string]interface{} {
+	return map[string]interface{}{
+		"host":              db.Host,
+		"port":              db.Port,
+		"database":          db.Name,
+		"user":              db.User,
+		"ssl_mode":          db.SSLMode,
+		"max_open_conns":    db.MaxOpenConns,
+		"max_idle_conns":    db.MaxIdleConns,
+		"conn_max_lifetime": db.ConnMaxLifetime.String(),
+	}
+}
+
 // envVars holds the loaded environment variables from .env file and system
 var envVars map[string]string
 
@@ -89,7 +103,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			User:            getEnvOrDefault("DB_USER", "postgres"),
 			Password:        getEnvOrDefault("DB_PASSWORD", "postgres"),
 			Name:            getEnvOrDefault("DB_NAME", "serviceability_db"),
-			SSLMode:         getEnvOrDefault("DB_SSL_MODE", "require"),
+			SSLMode:         enforceSSLMode(),
 			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
 			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
@@ -158,4 +172,33 @@ func getEnvAsBoolOrDefault(key string, defaultValue bool) bool {
 
 func getEnvOrError(key string) string {
 	return getEnvOrDefault(key, "")
+}
+
+// enforceSSLMode ensures SSL is always required for database connections
+// This is enforced at the code level for security reasons, especially for cloud databases like AWS RDS
+func enforceSSLMode() string {
+	// Get the environment variable but validate it
+	envSSLMode := getEnvOrDefault("DB_SSL_MODE", "require")
+
+	// For production and cloud databases, SSL should always be required
+	// Only allow "disable" for local development with explicit override
+	switch envSSLMode {
+	case "disable":
+		// Only allow SSL disable for localhost development
+		host := getEnvOrDefault("DB_HOST", "localhost")
+		if host == "localhost" || host == "127.0.0.1" {
+			return "disable"
+		}
+		// For non-localhost connections, force SSL
+		return "require"
+	case "allow", "prefer", "require", "verify-ca", "verify-full":
+		// These are all valid SSL modes, prefer "require" as minimum
+		if envSSLMode == "allow" {
+			return "require" // Upgrade "allow" to "require" for security
+		}
+		return envSSLMode
+	default:
+		// Unknown/invalid SSL mode, default to require
+		return "require"
+	}
 }

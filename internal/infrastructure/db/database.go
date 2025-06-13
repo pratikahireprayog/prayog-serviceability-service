@@ -73,13 +73,13 @@ func (dm *DatabaseManager) Connect() error {
 
 	// Log database connection details before connecting
 	dsn := dm.config.DB.DSN()
-	dm.logger.WithFields(logrus.Fields{
-		"host":     dm.config.DB.Host,
-		"port":     dm.config.DB.Port,
-		"database": dm.config.DB.Name,
-		"user":     dm.config.DB.User,
-		"ssl_mode": dm.config.DB.SSLMode,
-	}).Info("Attempting to connect to database")
+	connectionInfo := dm.config.DB.GetConnectionInfo()
+	dm.logger.WithFields(logrus.Fields(connectionInfo)).Info("Attempting to connect to database")
+
+	// Log SSL enforcement details
+	if dm.config.DB.SSLMode == "require" || dm.config.DB.SSLMode == "verify-ca" || dm.config.DB.SSLMode == "verify-full" {
+		dm.logger.WithField("ssl_mode", dm.config.DB.SSLMode).Info("SSL is enforced for database connection")
+	}
 
 	// Connect to PostgreSQL with UUID support
 	db, err := gorm.Open(postgres.New(postgres.Config{

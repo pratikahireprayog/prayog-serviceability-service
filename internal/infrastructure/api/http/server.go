@@ -143,50 +143,110 @@ func (s *Server) setupRoutes() error {
 
 	// Add a status route for the serviceability service
 	v1.Get("/status", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
+		status := fiber.Map{
 			"service": "serviceability",
 			"status":  "available",
 			"message": "Serviceability API is ready",
-		})
+		}
+
+		// Add database status information
+		if s.dbManager == nil {
+			status["database"] = "unavailable"
+			status["features"] = fiber.Map{
+				"basic_serviceability":       "available",
+				"postal_code_serviceability": "unavailable - database required",
+				"location_management":        "unavailable - database required",
+				"partner_location_coverage":  "unavailable - database required",
+			}
+		} else {
+			status["database"] = "available"
+			status["features"] = fiber.Map{
+				"basic_serviceability":       "available",
+				"postal_code_serviceability": "available",
+				"location_management":        "available",
+				"partner_location_coverage":  "available",
+			}
+		}
+
+		return c.JSON(status)
 	})
 
-	// Create location handler and register location routes
+	// Try to create location handler and register location routes if database is available
 	locationHandler, err := s.createLocationHandler()
 	if err != nil {
-		return fmt.Errorf("failed to create location handler: %w", err)
+		s.logger.WithError(err).Warn("Location management features are disabled")
+		// Create a placeholder route that returns service unavailable
+		v1.All("/locations/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Location management features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register location routes under /serviceability/v1/
+		routes.RegisterLocationRoutes(v1, locationHandler, s.logger)
 	}
 
-	// Register location routes under /serviceability/v1/
-	routes.RegisterLocationRoutes(v1, locationHandler, s.logger)
-
-	// Create partner location coverage handler and register routes
+	// Try to create partner location coverage handler and register routes if database is available
 	partnerLocationCoverageHandler, err := s.createPartnerLocationCoverageHandler()
 	if err != nil {
-		return fmt.Errorf("failed to create partner location coverage handler: %w", err)
+		s.logger.WithError(err).Warn("Partner location coverage features are disabled")
+		// Create a placeholder route that returns service unavailable
+		v1.All("/partner-location-coverage/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner location coverage features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register partner location coverage routes under /serviceability/v1/
+		routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
 	}
 
-	// Register partner location coverage routes under /serviceability/v1/
-	routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
-
-	s.logger.Info("All routes configured successfully")
+	s.logger.Info("Routes configured successfully - some features may be disabled due to database unavailability")
 	return nil
 }
 
 // createServiceabilityHandler creates a serviceability handler with all dependencies
 func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler, error) {
-	// Check if database manager is available for postal code serviceability
-	if s.dbManager == nil {
-		return nil, fmt.Errorf("database manager is required for postal code serviceability handler")
-	}
-
 	// Create validator instance with all custom validations registered
 	validatorSetup := utils.NewValidatorSetup()
 	validator := validatorSetup.GetValidator()
 
+	// Check if database manager is available for postal code serviceability
+	if s.dbManager == nil {
+		s.logger.Warn("Database manager is not available - creating serviceability handler without postal code serviceability features")
+
+		// Create serviceability handler with only orchestrator (no postal code service)
+		// This allows the service to run with limited functionality
+		serviceabilityHandler := handlers.NewServiceabilityHandler(
+			s.orchestrator,
+			nil, // No postal code serviceability service
+			validator,
+			s.logger,
+		)
+
+		return serviceabilityHandler, nil
+	}
+
 	// Create repository factory from database connection
 	db := s.dbManager.GetDB()
 	if db == nil {
-		return nil, fmt.Errorf("database connection is not available")
+		s.logger.Warn("Database connection is not available - creating serviceability handler without postal code serviceability features")
+
+		// Create serviceability handler with only orchestrator (no postal code service)
+		serviceabilityHandler := handlers.NewServiceabilityHandler(
+			s.orchestrator,
+			nil, // No postal code serviceability service
+			validator,
+			s.logger,
+		)
+
+		return serviceabilityHandler, nil
 	}
 
 	repoFactory := repositories.NewRepositoryFactory(db)
@@ -214,7 +274,8 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	// Check if database manager is available
 	if s.dbManager == nil {
-		return nil, fmt.Errorf("database manager is required for location handler")
+		s.logger.Warn("Database manager is not available - location management features will be disabled")
+		return nil, fmt.Errorf("location management features require database connection - currently unavailable")
 	}
 
 	// Create validator instance with all custom validations registered
@@ -224,7 +285,8 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	// Create repository factory from database connection
 	db := s.dbManager.GetDB()
 	if db == nil {
-		return nil, fmt.Errorf("database connection is not available")
+		s.logger.Warn("Database connection is not available - location management features will be disabled")
+		return nil, fmt.Errorf("location management features require database connection - currently unavailable")
 	}
 
 	repoFactory := repositories.NewRepositoryFactory(db)
