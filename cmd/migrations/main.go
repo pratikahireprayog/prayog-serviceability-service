@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
 
-	"prayog-serviceability-service/pkg/config"
-	"prayog-serviceability-service/pkg/database"
+	"prayog-serviceability-service/internal/infrastructure/db"
+	"prayog-serviceability-service/internal/shared/config"
+
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -20,25 +23,33 @@ func main() {
 	flag.Parse()
 
 	// Load configuration
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadAppConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+	logger.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
 	// Connect to database
-	db, err := database.NewDatabase(cfg)
+	dbManager, err := db.NewDatabaseManager(cfg, logger)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer func() {
 		log.Println("Closing database connection...")
-		if err := db.Close(); err != nil {
+		if err := dbManager.Close(); err != nil {
 			log.Printf("Error closing database connection: %v", err)
 		}
 	}()
 
 	// Test connection
-	if err := db.Ping(); err != nil {
+	ctx := context.Background()
+	if err := dbManager.Ping(ctx); err != nil {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 	log.Println("Successfully connected to database")
@@ -46,7 +57,7 @@ func main() {
 	// Handle drop tables if requested
 	if *drop {
 		log.Println("WARNING: Dropping all tables...")
-		if err := dropAllTables(db); err != nil {
+		if err := dbManager.DropAllTables(); err != nil {
 			log.Fatalf("Failed to drop tables: %v", err)
 		}
 		log.Println("All tables dropped successfully")
@@ -55,22 +66,16 @@ func main() {
 	// Run migrations if requested
 	if *migrate {
 		log.Println("Running database migrations...")
-		if err := db.RunMigrations(); err != nil {
+		if err := dbManager.RunMigrations(); err != nil {
 			log.Fatalf("Failed to run migrations: %v", err)
 		}
-
-		log.Println("Setting up foreign keys...")
-		if err := db.CreateForeignKeys(); err != nil {
-			log.Fatalf("Failed to create foreign keys: %v", err)
-		}
-
 		log.Println("Migrations completed successfully")
 	}
 
 	// Seed database if requested
 	if *seed {
 		log.Println("Seeding database...")
-		if err := db.SeedDatabase(); err != nil {
+		if err := dbManager.SeedDatabase(); err != nil {
 			log.Fatalf("Failed to seed database: %v", err)
 		}
 		log.Println("Database seeded successfully")
@@ -84,28 +89,4 @@ func main() {
 	}
 
 	log.Println("All operations completed successfully")
-}
-
-// dropAllTables drops all tables in the database
-func dropAllTables(db *database.DB) error {
-	// Drop all tables in the correct order to avoid foreign key constraints
-	tables := []string{
-		"service_availabilities",
-		"service_types",
-		"order_types",
-		"postal_codes",
-		"areas",
-		"cities",
-		"administrative_regions",
-		"countries",
-	}
-
-	for _, table := range tables {
-		if err := db.DB.Exec("DROP TABLE IF EXISTS " + table + " CASCADE").Error; err != nil {
-			return err
-		}
-		log.Printf("Dropped table %s", table)
-	}
-
-	return nil
 }

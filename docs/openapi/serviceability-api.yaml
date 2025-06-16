@@ -1,196 +1,727 @@
 openapi: 3.0.3
 info:
   title: Prayog Serviceability API
-  description: API for managing service area coverage, delivery options, and order types
+  description: |
+    Comprehensive API for managing service area coverage, geographical entities, location management, and delivery serviceability.
+
+    ## Features
+    - **Geographical Management**: Countries, regions, districts, cities, and areas
+    - **Location Types & Aliases**: Flexible location classification and aliasing system
+    - **Postal Code Management**: Postal code management with location scope validation
+    - **Partner Integration**: External partner service integration and validation
+    - **Serviceability Check**: Service area coverage and delivery options
+
+    ## Authentication
+    All endpoints require valid authentication. Include your API key in the Authorization header:
+    ```
+    Authorization: Bearer <your-api-key>
+    ```
+
+    ## Response Format
+    All successful responses follow this format:
+    ```json
+    {
+      "status": "success",
+      "data": { ... }
+    }
+    ```
+
+    Error responses follow this format:
+    ```json
+    {
+      "status": "error", 
+      "message": "Error description",
+      "code": "error_code"
+    }
+    ```
   version: 1.0.0
   contact:
     email: api@prayog.com
+    name: Prayog API Support
+  license:
+    name: Proprietary
+    url: https://prayog.com/license
+
 servers:
-  - url: 'https://api.prayog.com/serviceability'
+  - url: "https://api.prayog.com"
     description: Production server
-  - url: 'https://api.staging.prayog.com/serviceability'
+  - url: "https://api.staging.prayog.com"
     description: Staging server
-  - url: 'http://localhost:8080'
+  - url: "http://localhost:8080"
     description: Local development
 
 tags:
   - name: countries
-    description: Country management
+    description: Country management operations
+  - name: region-types
+    description: Administrative region type definitions
   - name: regions
     description: Administrative region management
+  - name: districts
+    description: District/administrative subdivision management
   - name: cities
-    description: City management
+    description: City management operations
   - name: areas
     description: Area/neighborhood management
+  - name: location-types
+    description: Location type definitions and management
   - name: postal-codes
-    description: Postal/ZIP code management
-  - name: order-types
-    description: Order types supported by regions
-  - name: service-types
-    description: Service types available in different areas
+    description: Postal/ZIP code management with location validation
+  - name: location-aliases
+    description: Location alias management and nested operations
+  - name: partner-location-coverage
+    description: Partner service coverage management
   - name: serviceability
-    description: Check serviceability for locations
+    description: Service area coverage checking
+
+# Authentication Security Schemes
+security:
+  - BearerAuth: []
 
 paths:
-  /health:
+  # Health Check
+  /serviceability/ping:
     get:
       summary: Check API health
       description: Returns the status of the API and its dependencies
       operationId: getHealth
+      tags: []
+      security: [] # Health check doesn't require auth
       responses:
-        '200':
+        "200":
           description: API is healthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '500':
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
           description: API is unhealthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /api/v1/countries:
+  # Countries
+  /serviceability/v1/countries:
     get:
       tags:
         - countries
       summary: List all countries
+      description: Retrieve a paginated list of all countries
       operationId: listCountries
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
       responses:
-        '200':
+        "200":
           description: Successfully retrieved countries
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [success]
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Country'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/CountryListResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
     post:
       tags:
         - countries
       summary: Create a new country
+      description: Create a new country with validation
       operationId: createCountry
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CountryInput'
+              $ref: "#/components/schemas/CreateCountryRequest"
       responses:
-        '201':
+        "201":
           description: Country created successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [success]
-                  data:
-                    $ref: '#/components/schemas/Country'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/CountryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
-  /api/v1/countries/{id}:
+  /serviceability/v1/countries/{id}:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
+      - $ref: "#/components/parameters/UUIDParam"
     get:
       tags:
         - countries
       summary: Get country by ID
+      description: Retrieve a specific country by its UUID
       operationId: getCountryById
       responses:
-        '200':
+        "200":
           description: Successfully retrieved country
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [success]
-                  data:
-                    $ref: '#/components/schemas/Country'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/CountryResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
     put:
       tags:
         - countries
       summary: Update country
+      description: Update an existing country
       operationId: updateCountry
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CountryInput'
+              $ref: "#/components/schemas/UpdateCountryRequest"
       responses:
-        '200':
+        "200":
           description: Country updated successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [success]
-                  data:
-                    $ref: '#/components/schemas/Country'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: "#/components/schemas/CountryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
     delete:
       tags:
         - countries
       summary: Delete country
+      description: Soft delete a country (sets is_active to false)
       operationId: deleteCountry
       responses:
-        '200':
+        "204":
           description: Country deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/countries/code/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: Country code (e.g., 'US', 'IN')
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 3
+    get:
+      tags:
+        - countries
+      summary: Get country by code
+      description: Retrieve a country by its country code
+      operationId: getCountryByCode
+      responses:
+        "200":
+          description: Successfully retrieved country
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # Country Aliases (Nested)
+  /serviceability/v1/countries/{entityID}/aliases:
+    parameters:
+      - name: entityID
+        in: path
+        required: true
+        description: Country UUID
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - countries
+        - location-aliases
+      summary: Get aliases for a country
+      description: Retrieve all aliases for a specific country
+      operationId: getCountryAliases
+      responses:
+        "200":
+          description: Successfully retrieved country aliases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationAliasListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - countries
+        - location-aliases
+      summary: Create alias for a country
+      description: Create a new alias for a specific country
+      operationId: createCountryAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLocationAliasRequest"
+      responses:
+        "201":
+          description: Country alias created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationAliasResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # Serviceability Check Endpoints
+  /serviceability/v1/check:
+    post:
+      tags:
+        - serviceability
+      summary: Check serviceability for a location
+      description: Check if a postal code or origin-destination pair is serviceable
+      operationId: checkServiceability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceabilityCheckRequest"
+      responses:
+        "200":
+          description: Serviceability check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceabilityResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/bulk-check:
+    post:
+      tags:
+        - serviceability
+      summary: Bulk serviceability check
+      description: Check serviceability for multiple locations in a single request
+      operationId: bulkCheckServiceability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkServiceabilityRequest"
+      responses:
+        "200":
+          description: Bulk serviceability check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkServiceabilityResponse"
+        "207":
+          description: Multi-status - partial success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkServiceabilityResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/status:
+    get:
+      tags:
+        - serviceability
+      summary: Service status
+      description: Check if the serviceability service is available and ready to handle requests
+      operationId: getServiceStatus
+      responses:
+        "200":
+          description: Service is available
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  service:
+                    type: string
+                    example: "serviceability"
                   status:
                     type: string
-                    enum: [success]
-                  data:
-                    type: object
-                    properties:
-                      message:
-                        type: string
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                    example: "available"
+                  message:
+                    type: string
+                    example: "Serviceability API is ready"
+
+  # Partner Location Coverage
+  /serviceability/v1/partners/{partner_id}/location-coverages:
+    parameters:
+      - name: partner_id
+        in: path
+        required: true
+        description: Partner UUID
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - partner-location-coverage
+      summary: List partner location coverages
+      description: Retrieve all location coverages for a specific partner with optional filtering
+      operationId: listPartnerLocationCoverages
+      parameters:
+        - name: location_scope
+          in: query
+          description: Filter by location scope
+          schema:
+            type: string
+            enum: [POSTAL_CODE, AREA, CITY, REGION, COUNTRY]
+        - name: location_id
+          in: query
+          description: Filter by location ID
+          schema:
+            type: string
+            format: uuid
+        - name: zone_type
+          in: query
+          description: Filter by zone type
+          schema:
+            type: string
+            enum: [PRIMARY, SECONDARY, BUFFER]
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Successfully retrieved partner location coverages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerLocationCoverageListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - partner-location-coverage
+      summary: Create partner location coverage
+      description: Create a new location coverage area for a partner
+      operationId: createPartnerLocationCoverage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePartnerLocationCoverageRequest"
+      responses:
+        "201":
+          description: Partner location coverage created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerLocationCoverageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/partners/{partner_id}/location-coverages/bulk:
+    parameters:
+      - name: partner_id
+        in: path
+        required: true
+        description: Partner UUID
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags:
+        - partner-location-coverage
+      summary: Bulk create partner location coverages
+      description: Create multiple location coverage areas for a partner in a single request
+      operationId: bulkCreatePartnerLocationCoverages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkCreatePartnerLocationCoverageRequest"
+      responses:
+        "201":
+          description: Bulk creation completed (check individual results for success/failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkCreatePartnerLocationCoverageResponse"
+        "207":
+          description: Multi-status - partial success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkCreatePartnerLocationCoverageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/partners/{partner_id}/location-coverages/{coverage_id}:
+    parameters:
+      - name: partner_id
+        in: path
+        required: true
+        description: Partner UUID
+        schema:
+          type: string
+          format: uuid
+      - name: coverage_id
+        in: path
+        required: true
+        description: Location coverage UUID
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - partner-location-coverage
+      summary: Get partner location coverage
+      description: Retrieve a specific location coverage for a partner
+      operationId: getPartnerLocationCoverage
+      responses:
+        "200":
+          description: Successfully retrieved partner location coverage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerLocationCoverageResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags:
+        - partner-location-coverage
+      summary: Update partner location coverage
+      description: Update an existing location coverage for a partner
+      operationId: updatePartnerLocationCoverage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePartnerLocationCoverageRequest"
+      responses:
+        "200":
+          description: Partner location coverage updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerLocationCoverageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags:
+        - partner-location-coverage
+      summary: Delete partner location coverage
+      description: Delete a location coverage area for a partner
+      operationId: deletePartnerLocationCoverage
+      responses:
+        "204":
+          description: Partner location coverage deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # Region Types
+  /serviceability/v1/region-types:
+    get:
+      tags:
+        - region-types
+      summary: List all region types
+      description: Retrieve a paginated list of all region types
+      operationId: listRegionTypes
+      parameters:
+        - $ref: "#/components/parameters/OffsetParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Successfully retrieved region types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionTypeListResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags:
+        - region-types
+      summary: Create a new region type
+      description: Create a new region type with validation
+      operationId: createRegionType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRegionTypeRequest"
+      responses:
+        "201":
+          description: Region type created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionTypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /serviceability/v1/region-types/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: Region type code
+        schema:
+          type: string
+    get:
+      tags:
+        - region-types
+      summary: Get region type by code
+      description: Retrieve a specific region type by its code
+      operationId: getRegionTypeByCode
+      responses:
+        "200":
+          description: Successfully retrieved region type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionTypeResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags:
+        - region-types
+      summary: Update region type
+      description: Update an existing region type
+      operationId: updateRegionType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRegionTypeRequest"
+      responses:
+        "200":
+          description: Region type updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionTypeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags:
+        - region-types
+      summary: Delete region type
+      description: Soft delete a region type
+      operationId: deleteRegionType
+      responses:
+        "204":
+          description: Region type deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for API authentication
+
+  parameters:
+    UUIDParam:
+      name: id
+      in: path
+      required: true
+      description: Entity UUID
+      schema:
+        type: string
+        format: uuid
+    OffsetParam:
+      name: offset
+      in: query
+      description: Number of items to skip for pagination
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    LimitParam:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
   schemas:
+    # Base Schemas
     HealthResponse:
       type: object
       properties:
@@ -225,27 +756,41 @@ components:
         code:
           type: string
 
+    PaginationInfo:
+      type: object
+      properties:
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+
+    # Country Schemas
     Country:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          format: uuid
         name:
           type: string
         code:
           type: string
           description: ISO country code
-        active:
+        is_active:
           type: boolean
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
 
-    CountryInput:
+    CreateCountryRequest:
       type: object
       required:
         - name
@@ -254,60 +799,618 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 255
+          description: Country name
         code:
           type: string
           minLength: 2
           maxLength: 3
           description: ISO country code
-        active:
+        is_active:
           type: boolean
           default: true
 
+    UpdateCountryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        code:
+          type: string
+          minLength: 2
+          maxLength: 3
+        is_active:
+          type: boolean
+
+    CountryResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          $ref: "#/components/schemas/Country"
+
+    CountryListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            countries:
+              type: array
+              items:
+                $ref: "#/components/schemas/Country"
+            pagination:
+              $ref: "#/components/schemas/PaginationInfo"
+
+    # Region Type Schemas
+    RegionType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateRegionTypeRequest:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 500
+        is_active:
+          type: boolean
+          default: true
+
+    UpdateRegionTypeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 500
+        is_active:
+          type: boolean
+
+    RegionTypeResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          $ref: "#/components/schemas/RegionType"
+
+    RegionTypeListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            region_types:
+              type: array
+              items:
+                $ref: "#/components/schemas/RegionType"
+            pagination:
+              $ref: "#/components/schemas/PaginationInfo"
+
+    # Location Alias Schemas
+    LocationAlias:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entity_type_code:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        entity_code:
+          type: string
+        alias_name:
+          type: string
+        is_primary:
+          type: boolean
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        location_type:
+          $ref: "#/components/schemas/LocationType"
+
+    CreateLocationAliasRequest:
+      type: object
+      required:
+        - entity_type_code
+        - entity_type
+        - entity_id
+        - alias_name
+      properties:
+        entity_type_code:
+          type: string
+          enum: [COUNTRY, REGION, DISTRICT, CITY, AREA, POSTAL_CODE]
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        entity_code:
+          type: string
+        alias_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_primary:
+          type: boolean
+          default: false
+        is_active:
+          type: boolean
+
+    UpdateLocationAliasRequest:
+      type: object
+      properties:
+        entity_type_code:
+          type: string
+          enum: [COUNTRY, REGION, DISTRICT, CITY, AREA, POSTAL_CODE]
+        entity_type:
+          type: string
+        entity_code:
+          type: string
+        alias_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_primary:
+          type: boolean
+        is_active:
+          type: boolean
+
+    LocationAliasResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          $ref: "#/components/schemas/LocationAlias"
+
+    LocationAliasListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            location_aliases:
+              type: array
+              items:
+                $ref: "#/components/schemas/LocationAlias"
+            pagination:
+              $ref: "#/components/schemas/PaginationInfo"
+
+    # Location Type Schema
+    LocationType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Serviceability Schemas
+    ServiceabilityCheckRequest:
+      type: object
+      description: Request for checking serviceability of a location or route
+      properties:
+        postal_code:
+          type: string
+          description: Postal code for single location check
+          example: "110001"
+        pickup_postal_code:
+          type: string
+          description: Pickup postal code for origin-destination check
+          example: "110001"
+        delivery_postal_code:
+          type: string
+          description: Delivery postal code for origin-destination check
+          example: "560001"
+        country_code:
+          type: string
+          pattern: "^[A-Z]{2}$"
+          description: ISO 3166-1 alpha-2 country code
+          example: "IN"
+          default: "IN"
+        service_types:
+          type: array
+          items:
+            type: string
+            enum: [STANDARD, EXPRESS, OVERNIGHT, SAME_DAY]
+          description: List of service types to check
+          example: ["STANDARD", "EXPRESS"]
+        partner_ids:
+          type: array
+          items:
+            type: string
+          description: Optional list of specific partner IDs to check
+          example: ["partner-123", "partner-456"]
+
+    BulkServiceabilityRequest:
+      type: object
+      description: Request for bulk serviceability checking
+      required:
+        - requests
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceabilityCheckRequest"
+          minItems: 1
+          maxItems: 100
+          description: Array of serviceability check requests
+
+    ServiceabilityResponse:
+      type: object
+      description: Response for serviceability check
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          description: Whether the request was processed successfully
+        data:
+          $ref: "#/components/schemas/ServiceabilityData"
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    BulkServiceabilityResponse:
+      type: object
+      description: Response for bulk serviceability check
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          description: Whether all requests were processed successfully
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceabilityResponse"
+          description: Array of individual serviceability responses
+
+    ServiceabilityData:
+      type: object
+      description: Serviceability data for a location or route
+      properties:
+        serviceable:
+          type: boolean
+          description: Whether the location/route is serviceable
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              service_type:
+                type: string
+              partner_id:
+                type: string
+              service_available:
+                type: boolean
+              estimated_delivery_days:
+                type: integer
+          description: Available services for the location/route
+
+    # Partner Location Coverage Schemas
+    PartnerLocationCoverage:
+      type: object
+      description: Partner location coverage entity
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the coverage record
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        partner_id:
+          type: string
+          format: uuid
+          description: Partner unique identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        partner_code:
+          type: string
+          description: Partner code reference
+          example: "PARTNER_001"
+        postal_code:
+          type: string
+          description: Postal code for coverage area
+          example: "110001"
+        postal_code_id:
+          type: string
+          format: uuid
+          description: Postal code entity unique identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        zone_type:
+          type: string
+          enum: [PRIMARY, SECONDARY, BUFFER]
+          description: Zone classification for coverage area
+          example: "PRIMARY"
+        is_active:
+          type: boolean
+          description: Whether the coverage is currently active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Coverage creation timestamp
+          example: "2023-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Coverage last update timestamp
+          example: "2023-01-01T00:00:00Z"
+
+    CreatePartnerLocationCoverageRequest:
+      type: object
+      description: Request to create a new partner location coverage
+      properties:
+        partner_code:
+          type: string
+          description: Partner code reference
+          maxLength: 50
+          example: "shipyaari"
+        postal_code:
+          type: string
+          description: Postal code for coverage area
+          maxLength: 20
+          example: "110001"
+        postal_code_id:
+          type: string
+          format: uuid
+          description: Postal code entity unique identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        zone_type:
+          type: string
+          enum: [PRIMARY, SECONDARY, BUFFER]
+          description: Zone classification for coverage area
+          example: "PRIMARY"
+        is_active:
+          type: boolean
+          description: Whether the coverage should be active
+          default: true
+          example: true
+
+    UpdatePartnerLocationCoverageRequest:
+      type: object
+      description: Request to update an existing partner location coverage
+      properties:
+        partner_code:
+          type: string
+          description: Partner code reference
+          maxLength: 50
+          example: "shipyaari"
+        postal_code:
+          type: string
+          description: Postal code for coverage area
+          maxLength: 20
+          example: "110001"
+        postal_code_id:
+          type: string
+          format: uuid
+          description: Postal code entity unique identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        zone_type:
+          type: string
+          enum: [PRIMARY, SECONDARY, BUFFER]
+          description: Zone classification for coverage area
+          example: "PRIMARY"
+        is_active:
+          type: boolean
+          description: Whether the coverage should be active
+          example: true
+
+    PartnerLocationCoverageResponse:
+      type: object
+      description: Response containing partner location coverage data
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          $ref: "#/components/schemas/PartnerLocationCoverage"
+
+    PartnerLocationCoverageListResponse:
+      type: object
+      description: Response containing list of partner location coverages
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            coverages:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartnerLocationCoverage"
+              description: Array of partner location coverage records
+            pagination:
+              $ref: "#/components/schemas/PaginationInfo"
+
+    BulkCreatePartnerLocationCoverageRequest:
+      type: object
+      description: Request to create multiple partner location coverages
+      required:
+        - coverages
+      properties:
+        coverages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatePartnerLocationCoverageRequest"
+          minItems: 1
+          maxItems: 100
+          description: Array of coverage creation requests
+
+    BulkCreatePartnerLocationCoverageResponse:
+      type: object
+      description: Response for bulk partner location coverage creation
+      properties:
+        status:
+          type: string
+          enum: [success, partial_success, error]
+        data:
+          type: object
+          properties:
+            created:
+              type: array
+              items:
+                $ref: "#/components/schemas/PartnerLocationCoverage"
+              description: Successfully created coverage records
+            failed:
+              type: array
+              items:
+                type: object
+                properties:
+                  index:
+                    type: integer
+                    description: Index of the failed request in the input array
+                  error:
+                    type: string
+                    description: Error message for the failed request
+                  request:
+                    $ref: "#/components/schemas/CreatePartnerLocationCoverageRequest"
+              description: Failed coverage creation attempts
+
   responses:
     ValidationError:
-      description: Validation error
+      description: Request validation failed
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              status:
-                type: string
-                enum: [error]
-              message:
-                type: string
-              code:
-                type: string
-                enum: [validation_error]
+            allOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [validation_error]
+          example:
+            status: error
+            message: "Field 'name' is required"
+            code: validation_error
+
+    ConflictError:
+      description: Resource already exists or constraint violation
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [conflict_error]
+          example:
+            status: error
+            message: "Country with code 'US' already exists"
+            code: conflict_error
 
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              status:
-                type: string
-                enum: [error]
-              message:
-                type: string
-              code:
-                type: string
-                enum: [not_found]
+            allOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [not_found]
+          example:
+            status: error
+            message: "Country not found"
+            code: not_found
 
     InternalError:
       description: Internal server error
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              status:
-                type: string
-                enum: [error]
-              message:
-                type: string
-              code:
-                type: string
-                enum: [internal_error] 
+            allOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [internal_error]
+          example:
+            status: error
+            message: "An internal error occurred"
+            code: internal_error

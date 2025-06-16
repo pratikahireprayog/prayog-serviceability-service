@@ -104,10 +104,10 @@ go.work
 *~
 
 # Environment variables
-.env
-.env.*
-!.env.example
-!configs/example.env
+# .env
+# .env.*
+# !.env.example
+# !configs/example.env
 
 # System files
 .DS_Store

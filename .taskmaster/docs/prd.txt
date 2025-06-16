@@ -1,0 +1,473 @@
+1. Overview
+This document outlines the technical requirements for creating a set of RESTful CRUD APIs to manage the serviceability and location hierarchy data. The primary goal is to provide a robust, stable, and consistent interface for creating, reading, updating, and deleting geographical and logistical entities as defined by the database schema.
+
+This PRD is strictly focused on the API implementation and does not cover front-end or other business logic aspects.
+
+2. Global Conventions & Requirements
+All endpoints defined in this document MUST adhere to the following global conventions.
+
+2.1. Base URL Structure
+All API endpoints will be prefixed with a global service identifier and version.
+
+Structure: {{BaseURL}}/serviceability/v1/{resource}
+Example: http://127.0.0.1:9024/serviceability/v1/countries
+2.2. Authentication
+All requests to these endpoints MUST be authenticated. The API implementation must assume that unauthenticated requests will be rejected with a 401 Unauthorized status.
+
+2.3. Standard Success Response Structure
+All successful responses (200 OK, 201 Created) MUST follow this structure to ensure consistency.
+
+Single Resource (GET /resource/{id}, POST, PUT):
+json
+Copy Code
+{
+    "success": true,
+    "message": "Country retrieved successfully",
+    "data": {
+        "id": "...",
+        "code": "...",
+        "..." : "..."
+    }
+}
+List of Resources (GET /resource):
+json
+Copy Code
+{
+    "success": true,
+    "message": "Countries retrieved successfully",
+    "data": [
+        {
+            "id": "...",
+            "code": "...",
+            "..." : "..."
+        }
+    ],
+    "pagination": {
+        "offset": 0,
+        "limit": 20,
+        "total": 150,
+        "has_next": true,
+        "has_previous": false
+    }
+}
+2.4. Standard Error Response Structure
+All client-side errors (4xx) and server-side errors (5xx) MUST return a body with the following consistent structure.
+
+Error JSON Structure:
+json
+Copy Code
+{
+  "success": false,
+  "message": "Human-readable error message",
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Detailed error description",
+    "details": {}
+  }
+}
+2.5. Common HTTP Status Codes & Error Codes
+200 OK: Request succeeded.
+201 Created: Resource was successfully created.
+204 No Content: Request succeeded, no response body (for DELETE).
+400 Bad Request: VALIDATION_ERROR, INVALID_PARTNER.
+401 Unauthorized: UNAUTHENTICATED.
+404 Not Found: NOT_FOUND.
+409 Conflict: RESOURCE_CONFLICT.
+500 Internal Server Error: INTERNAL_SERVER_ERROR.
+2.6. Global Validation Rules
+Foreign Key / Reference Validation: For any POST or PUT request, if a field in the request body references another resource (e.g., country_code), the API MUST validate that the referenced resource exists. If not, return a 400 Bad Request with a VALIDATION_ERROR code.
+Code Formatting:
+Geographical Codes: Codes for country, region, district, city, and area MUST follow their respective ISO standards or established internal conventions (e.g., ISO 3166-1 for countries like "US", "IN"). The strict snake_case validation is removed for these fields. They should generally be uppercase.
+Internal Codes: System-internal codes such as hub.code, region_type.code, location_type.code, and spec_code MUST be in snake_case.
+3. External Service Integration: Partner Service
+3.1. Requirement
+The Partner Location Coverage resource requires validation against an external Partner Service to ensure the partner_id is valid before creating a record.
+
+3.2. API Details
+Base URL: Sourced from the PRAYOG_BASE_URL environment variable.
+Endpoint to Call: GET {{PRAYOG_BASE_URL}}/partner/v1/partners/{partner_id}
+Trigger: This external call MUST be made during any POST request to the /serviceability/v1/partners/{partner_id}/location-coverages endpoint.
+Success Condition: The external API returns a 200 OK response.
+Failure Condition: The external API returns any non-200 status. If the call fails, the Serviceability API MUST return a 400 Bad Request with an error code of INVALID_PARTNER.
+4. API Endpoint Specifications
+1. Country Resource
+Endpoints:
+POST /serviceability/v1/countries
+GET /serviceability/v1/countries
+GET /serviceability/v1/countries/{id}
+PUT /serviceability/v1/countries/{id}
+DELETE /serviceability/v1/countries/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "US",
+    "name": "United States",
+    "currency_code": "USD",
+    "phone_code": "+1"
+}
+Validation:
+code: Required, unique (409 Conflict), must follow ISO 3166-1 standard (e.g., uppercase "US").
+name: Required.
+2. Region Type Resource
+Endpoints:
+POST /serviceability/v1/region-types
+GET /serviceability/v1/region-types
+GET /serviceability/v1/region-types/{code}
+PUT /serviceability/v1/region-types/{code}
+DELETE /serviceability/v1/region-types/{code}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "state",
+    "name": "State",
+    "description": "A major administrative division of a country."
+}
+Validation:
+code: Required, unique (409 Conflict), snake_case.
+name: Required.
+3. Region Resource
+Endpoints:
+POST /serviceability/v1/regions
+GET /serviceability/v1/regions
+GET /serviceability/v1/regions/{id}
+PUT /serviceability/v1/regions/{id}
+DELETE /serviceability/v1/regions/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "US-CA",
+    "name": "California",
+    "country_code": "US",
+    "region_type_code": "state"
+}
+Validation:
+code: Required, unique (409 Conflict), must follow ISO 3166-2 standard.
+name: Required.
+country_code: Required, must exist in country table.
+region_type_code: Required, must exist in region_type table.
+4. District Resource
+Endpoints:
+POST /serviceability/v1/districts
+GET /serviceability/v1/districts
+GET /serviceability/v1/districts/{id}
+PUT /serviceability/v1/districts/{id}
+DELETE /serviceability/v1/districts/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "LA-COUNTY",
+    "name": "Los Angeles County",
+    "region_code": "US-CA",
+    "country_code": "US"
+}
+Validation:
+code: Required, unique (409 Conflict).
+name: Required.
+region_code: Required, must exist in region table.
+country_code: Required, must exist in country table.
+5. City Resource
+Endpoints:
+POST /serviceability/v1/cities
+GET /serviceability/v1/cities
+GET /serviceability/v1/cities/{id}
+PUT /serviceability/v1/cities/{id}
+DELETE /serviceability/v1/cities/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "LAX",
+    "name": "Los Angeles",
+    "region_code": "US-CA",
+    "country_code": "US",
+    "district_code": "LA-COUNTY"
+}
+Validation:
+code: Required, unique (409 Conflict).
+name: Required.
+region_code, country_code: Required, must exist in respective tables.
+district_code: Optional, but if provided, must exist in district table.
+6. Area Resource
+Endpoints:
+POST /serviceability/v1/areas
+GET /serviceability/v1/areas
+GET /serviceability/v1/areas/{id}
+PUT /serviceability/v1/areas/{id}
+DELETE /serviceability/v1/areas/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "BEVERLY-HILLS",
+    "name": "Beverly Hills",
+    "city_code": "LAX"
+}
+Validation:
+code: Required, unique (409 Conflict).
+name: Required.
+city_code: Required, must exist in city table.
+7. Postal Code Resource
+Endpoints:
+POST /serviceability/v1/postal-codes
+GET /serviceability/v1/postal-codes
+GET /serviceability/v1/postal-codes/{id}
+PUT /serviceability/v1/postal-codes/{id}
+DELETE /serviceability/v1/postal-codes/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "90210",
+    "country_code": "US",
+    "region_code": "US-CA",
+    "city_code": "LAX",
+    "area_code": "BEVERLY-HILLS",
+    "location_scope": "AREA"
+}
+Validation:
+code: Required, unique (409 Conflict).
+country_code, region_code, city_code: Required, must exist in respective tables.
+area_code: Optional, but if provided, must exist in area table.
+8. Hub Resource
+Endpoints:
+POST /serviceability/v1/hubs
+GET /serviceability/v1/hubs
+GET /serviceability/v1/hubs/{id}
+PUT /serviceability/v1/hubs/{id}
+DELETE /serviceability/v1/hubs/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "lax_main_hub",
+    "name": "Los Angeles Central Hub",
+    "contact_name": "John Doe",
+    "contact_number": "555-123-4567",
+    "address": "123 Main Street, Los Angeles, CA"
+}
+Validation:
+code: Required, unique (409 Conflict), snake_case.
+name: Required.
+9. Hub Location Coverage Resource (Nested)
+Endpoints:
+POST /serviceability/v1/hubs/{hub_id}/location-coverages
+GET /serviceability/v1/hubs/{hub_id}/location-coverages
+DELETE /serviceability/v1/hub-location-coverages/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "location_scope": "CITY",
+    "location_code": "LAX"
+}
+Validation:
+hub_id (from URL): Must exist in hub table.
+location_scope: Required.
+location_code: Required, must exist in the table corresponding to location_scope.
+10. Hub Specification Resource (Nested)
+Endpoints:
+POST /serviceability/v1/hubs/{hub_id}/specifications
+GET /serviceability/v1/hubs/{hub_id}/specifications
+DELETE /serviceability/v1/hub-specifications/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "spec_code": "cold_storage"
+}
+Validation:
+hub_id (from URL): Must exist in hub table.
+spec_code: Required, must exist in a specification lookup table (assumed), snake_case.
+11. Location Type Resource
+Endpoints:
+POST /serviceability/v1/location-types
+GET /serviceability/v1/location-types
+GET /serviceability/v1/location-types/{code}
+POST Request Body:
+json
+Copy Code
+{
+    "code": "city",
+    "description": "Represents a city entity."
+}
+Validation:
+code: Required, unique (409 Conflict), snake_case.
+12. Location Alias Resource
+Architectural Note: This resource no longer uses a polymorphic relationship. It is now linked directly to a central location entity. The API should be nested under a new /locations resource path.
+Endpoints:
+POST /serviceability/v1/locations/{location_id}/aliases
+GET /serviceability/v1/locations/{location_id}/aliases
+PUT /serviceability/v1/location-aliases/{id}
+DELETE /serviceability/v1/location-aliases/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "alias_name": "City of Angels",
+    "is_primary": false
+}
+Validation:
+location_id (from URL): Must exist in the central location table.
+alias_name: Required.
+13. Partner Location Coverage Resource (Nested with External Call)
+Endpoints:
+POST /serviceability/v1/partners/{partner_id}/location-coverages
+GET /serviceability/v1/partners/{partner_id}/location-coverages
+DELETE /serviceability/v1/partner-location-coverages/{id}
+POST Request Body:
+json
+Copy Code
+{
+    "location_scope": "POSTAL_CODE",
+    "location_code": "90210",
+    "zone_type": "A"
+}
+Validation:
+partner_id (from URL): MUST be validated by calling the external Partner Service API as defined in Section 3. If invalid, return 400 Bad Request with INVALID_PARTNER code.
+location_scope: Required.
+location_code: Required, must exist in the table corresponding to location_scope.
+Warning: Some URLs are invalid
+
+Geographical location code will be in ISO standard format. Other than that all the code will be in snake_case
+
+# Serviceability API Implementation
+
+## Project Overview
+Implement a new serviceability API that provides postal code serviceability information based on the existing partner location coverage table. This API will transform the partner location coverage data into a serviceability-focused response structure without requiring partner validation.
+
+## Technical Requirements
+
+### Tech Stack
+- Go 1.24.2
+- Existing codebase structure following Standard Go Project Layout
+- HTTP handlers using Go standard library
+- Existing repository pattern with partner location coverage table
+
+### API Endpoints
+
+#### 1. GET /serviceability/v1/check/{postal_code}
+- Single postal code serviceability check
+- Path parameter: postal_code (destination postal code)
+- No partner validation required
+- Query partner location coverage table for all partners serving this postal code
+
+#### 2. POST /serviceability/v1/check
+- Source and destination postal code serviceability check
+- Request body with source_postal_code, destination_postal_code, and optional filters
+- Optional filters: parcel_category, product_type
+- Query based on destination postal code with applied filters
+
+### Data Transformation Requirements
+
+#### Input Data (Partner Location Coverage Table)
+- Multiple records per postal code (due to different delivery modes, service types)
+- Fields: partner_id, partner_code, postal_code, service_type, delivery_mode, tat_days, pickup, delivery, cod_available, insurance, parcel_category, product_type, etc.
+
+#### Output Data Structure
+- Group by parcel_category_code
+- Aggregate services within each category
+- Transform delivery_mode field into delivery_modes object with air/surface boolean flags
+- Consolidate duplicate service information
+
+### Request/Response Structures
+
+#### GET Request
+- URL: /serviceability/v1/check/{postal_code}
+- No request body
+
+#### POST Request
+```json
+{
+   "source_postal_code": "110001",
+   "destination_postal_code": "400001", 
+   "parcel_category": "ecomm",
+   "product_type": "travel_free"
+}
+```
+
+#### Response Structure
+```json
+{
+    "success": true,
+    "data": {
+        "postal_code": "400001",
+        "source_postal_code": "110001",
+        "destination_postal_code": "400001", 
+        "parcel_category": "ecomm",
+        "serviceability": [
+            {
+                "parcel_category_code": "ecomm",
+                "is_serviceable": true,
+                "services": [
+                    {
+                        "service_code": "sdd",
+                        "tat_days": 1,
+                        "is_cod": true,
+                        "pickup": true,
+                        "delivery": true,
+                        "insurance": true,
+                        "delivery_modes": {
+                            "air": true,
+                            "surface": true
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+## Implementation Components
+
+### 1. DTOs (Data Transfer Objects)
+- ServiceabilityCheckRequest (POST request)
+- ServiceabilityResponse and nested structures
+- Transform existing partner location coverage data
+
+### 2. Service Layer
+- ServiceabilityService interface and implementation
+- Data aggregation and transformation logic
+- Integration with existing PartnerLocationCoverageRepository
+
+### 3. Handler Layer
+- HTTP handlers for GET and POST endpoints
+- Request validation and response formatting
+- Error handling
+
+### 4. Route Registration
+- Add new routes to existing v1 route structure
+- Integrate with existing middleware
+
+## Business Logic
+
+### Data Aggregation Rules
+1. Group all partner location coverage records by postal code and parcel category
+2. For each parcel category, aggregate services by service_type (service_code)
+3. For each service, merge delivery modes (air/surface) into boolean flags
+4. Consolidate service capabilities (pickup, delivery, COD, insurance)
+5. Determine is_serviceable based on active records
+
+### Filtering Logic
+- Apply parcel_category filter if provided
+- Apply product_type filter if provided
+- Only include active records (is_active = true)
+- Handle cases where no serviceability exists
+
+## Error Handling
+- Invalid postal code format
+- No serviceability found
+- Database connection errors
+- Invalid request body for POST endpoint
+
+## Success Criteria
+1. GET endpoint returns correct serviceability data for single postal code
+2. POST endpoint handles source/destination and filters correctly
+3. Data transformation properly aggregates duplicate records
+4. Response structure matches specification exactly
+5. Error cases handled gracefully
+6. Integration with existing codebase patterns maintained
