@@ -743,8 +743,7 @@ func (s *partnerLocationCoverageService) GetByPartnerIDAndPostalCode(ctx context
 }
 
 // UpdateByPartnerIDAndPostalCode updates a location coverage by partner ID and postal code
-// If service_type is provided in the request, it updates the specific service configuration
-// If no service_type is provided, it updates the first matching record
+// Updates the first matching record for the specified partner and postal code
 func (s *partnerLocationCoverageService) UpdateByPartnerIDAndPostalCode(ctx context.Context, partnerID uuid.UUID, postalCode string, req *dtos.UpdatePartnerLocationCoverageRequest) (*dtos.PartnerLocationCoverageResponse, error) {
 	// Validate partner exists
 	if err := s.partnerValidationSvc.ValidatePartner(ctx, partnerID.String()); err != nil {
@@ -769,23 +768,9 @@ func (s *partnerLocationCoverageService) UpdateByPartnerIDAndPostalCode(ctx cont
 		return nil, fmt.Errorf("partner location coverage not found for postal code: %s", postalCode)
 	}
 
-	var targetCoverage *models.PartnerLocationCoverage
-
-	// If service_type is provided in the request, find the specific service configuration
-	if req.ServiceType != nil {
-		for i, coverage := range matchingCoverages {
-			if coverage.ServiceType != nil && *coverage.ServiceType == *req.ServiceType {
-				targetCoverage = &matchingCoverages[i]
-				break
-			}
-		}
-		if targetCoverage == nil {
-			return nil, fmt.Errorf("partner location coverage not found for postal code: %s and service type: %s", postalCode, *req.ServiceType)
-		}
-	} else {
-		// If no service_type provided, update the first matching record
-		targetCoverage = &matchingCoverages[0]
-	}
+	// Always update the first matching record for the postal code
+	// The service_type in the request body is treated as data to be updated, not a lookup key
+	targetCoverage := &matchingCoverages[0]
 
 	// Use the existing Update method with the found coverage ID
 	return s.Update(ctx, partnerID, targetCoverage.ID, req)
