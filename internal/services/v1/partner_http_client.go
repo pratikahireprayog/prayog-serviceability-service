@@ -25,15 +25,19 @@ func NewPartnerHTTPClient(config PartnerValidationConfig, logger *log.Logger) HT
 	// Create HTTP client with timeout and connection pooling
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second, // Connection timeout
-			KeepAlive: 30 * time.Second, // Keep-alive timeout
+			Timeout:   5 * time.Second,  // Faster connection timeout
+			KeepAlive: 60 * time.Second, // Longer keep-alive timeout
 		}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 15 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   10,
-		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,        // Faster TLS handshake
+		ResponseHeaderTimeout: 10 * time.Second,       // Faster response timeout
+		ExpectContinueTimeout: 500 * time.Millisecond, // Faster expect timeout
+		MaxIdleConns:          10000,                  // 10x more idle connections
+		MaxIdleConnsPerHost:   1000,                   // 100x more idle connections per host
+		MaxConnsPerHost:       0,                      // 0 = unlimited connections per host
+		IdleConnTimeout:       300 * time.Second,      // Longer idle timeout (5 minutes)
+		DisableCompression:    false,                  // Keep compression for efficiency
+		DisableKeepAlives:     false,                  // Keep alive for reuse
+		ForceAttemptHTTP2:     true,                   // Use HTTP/2 for better performance
 	}
 
 	client := &http.Client{

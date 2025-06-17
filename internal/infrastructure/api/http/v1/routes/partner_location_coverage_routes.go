@@ -9,7 +9,7 @@ import (
 
 // RegisterPartnerLocationCoverageRoutes registers all partner location coverage routes
 func RegisterPartnerLocationCoverageRoutes(router fiber.Router, handler *handlers.PartnerLocationCoverageHandler, logger *logrus.Logger) {
-	logger.Info("Registering partner location coverage routes...")
+	logger.Info("🤝 Registering partner location coverage routes...")
 
 	// Partner location coverage routes - nested under /partners
 	partners := router.Group("/partners")
@@ -92,5 +92,5 @@ func RegisterPartnerLocationCoverageRoutes(router fiber.Router, handler *handler
 		}
 	}
 
-	logger.Info("Partner location coverage routes registered successfully")
+	logger.Info("🤝 Partner location coverage routes registered successfully")
 }

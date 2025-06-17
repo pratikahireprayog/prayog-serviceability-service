@@ -25,7 +25,7 @@ func NewIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (
 func (f *IntegrationFactory) CreatePartnerServiceClient() (interfaces.PartnerServiceClient, error) {
 	partnerConfig := f.config.Integration.Partner
 
-	f.logger.WithField("base_url", partnerConfig.BaseURL).Info("Creating Partner Service integration client")
+	f.logger.WithField("base_url", partnerConfig.BaseURL).Info("🤝 Creating Partner Service integration client")
 
 	return NewPartnerIntegrationService(partnerConfig), nil
 }
@@ -34,7 +34,7 @@ func (f *IntegrationFactory) CreatePartnerServiceClient() (interfaces.PartnerSer
 func (f *IntegrationFactory) CreateSpecificationServiceClient() (interfaces.SpecificationServiceClient, error) {
 	specConfig := f.config.Integration.Specification
 
-	f.logger.WithField("base_url", specConfig.BaseURL).Info("Creating Specification Service integration client")
+	f.logger.WithField("base_url", specConfig.BaseURL).Info("📋 Creating Specification Service integration client")
 
 	return NewSpecificationIntegrationService(specConfig), nil
 }

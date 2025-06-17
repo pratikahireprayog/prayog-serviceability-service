@@ -50,14 +50,25 @@ func NewServer(deps *ServerDependencies) (*Server, error) {
 		return nil, fmt.Errorf("server dependencies cannot be nil")
 	}
 
-	// Initialize Fiber app with configuration
+	// Initialize Fiber app with configuration optimized for MAXIMUM performance
 	app := fiber.New(fiber.Config{
-		AppName:               "Prayog Serviceability Service",
-		DisableStartupMessage: false,
-		ReadTimeout:           30 * time.Second,
-		WriteTimeout:          30 * time.Second,
-		IdleTimeout:           120 * time.Second,
-		ErrorHandler:          customErrorHandler(deps.Logger),
+		AppName:                   "prayog-serviceability-service",
+		DisableStartupMessage:     false,            // Enable startup message for better UX
+		ReadTimeout:               5 * time.Second,  // Aggressive timeout for faster resource recycling
+		WriteTimeout:              5 * time.Second,  // Aggressive timeout
+		IdleTimeout:               30 * time.Second, // Quick connection recycling
+		BodyLimit:                 50 * 1024 * 1024, // 50MB body limit
+		Concurrency:               1024 * 1024,      // 1 MILLION concurrent connections
+		ReadBufferSize:            16384,            // 16KB read buffer (increased)
+		WriteBufferSize:           16384,            // 16KB write buffer (increased)
+		CompressedFileSuffix:      ".fiber.gz",      // Enable compression
+		ProxyHeader:               fiber.HeaderXForwardedFor,
+		DisableKeepalive:          false, // Keep connections alive
+		DisableDefaultDate:        true,  // Disable date header for performance
+		DisableDefaultContentType: true,  // Disable default content type for performance
+		DisableHeaderNormalizing:  true,  // Disable header normalization for performance
+		ReduceMemoryUsage:         false, // Don't reduce memory for maximum performance
+		ErrorHandler:              customErrorHandler(deps.Logger),
 	})
 
 	// Setup global middleware
@@ -207,7 +218,7 @@ func (s *Server) setupRoutes() error {
 		routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
 	}
 
-	s.logger.Info("Routes configured successfully - some features may be disabled due to database unavailability")
+	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
 	return nil
 }
 
