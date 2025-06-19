@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"prayog-serviceability-service/pkg/version"
-
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -18,6 +16,10 @@ func NewVersionHandler() *VersionHandler {
 func (h *VersionHandler) GetVersion(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "success",
-		"data":   version.VersionInfo(),
+		"data": map[string]interface{}{
+			"version": "1.0.0",
+			"service": "prayog-serviceability-service",
+			"commit":  "unknown",
+		},
 	})
 }

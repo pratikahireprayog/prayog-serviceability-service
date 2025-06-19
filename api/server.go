@@ -9,8 +9,7 @@ import (
 	"prayog-serviceability-service/api/handlers"
 	v1 "prayog-serviceability-service/api/handlers/v1"
 	v1routes "prayog-serviceability-service/api/routes/v1"
-	"prayog-serviceability-service/pkg/services"
-	"prayog-serviceability-service/pkg/version"
+	"prayog-serviceability-service/internal/shared/interfaces/v1"
 )
 
 // Server represents an HTTP server.
@@ -19,7 +18,7 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(serviceabilityService services.ServiceabilityService) *Server {
+func NewServer(serviceabilityService interfaces.ServiceabilityOrchestrator) *Server {
 	app := fiber.New(fiber.Config{
 		AppName: "Prayog Serviceability Service",
 	})
@@ -38,9 +37,9 @@ func NewServer(serviceabilityService services.ServiceabilityService) *Server {
 		MaxAge:           86400, // 24 hours
 	}))
 
-	// Add version header to all responses
+	// Add version header to all responses (temporarily hardcoded)
 	app.Use(func(c *fiber.Ctx) error {
-		c.Set("X-API-Version", version.Version())
+		c.Set("X-API-Version", "1.0.0")
 		return c.Next()
 	})
 
