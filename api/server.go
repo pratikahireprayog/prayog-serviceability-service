@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
@@ -26,6 +27,16 @@ func NewServer(serviceabilityService services.ServiceabilityService) *Server {
 	// Use global middlewares
 	app.Use(logger.New())
 	app.Use(recover.New())
+
+	// Configure CORS with wildcard origin support
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",
+		AllowCredentials: false, // Set to false when using wildcard origin
+		ExposeHeaders:    "Content-Length, X-API-Version",
+		MaxAge:           86400, // 24 hours
+	}))
 
 	// Add version header to all responses
 	app.Use(func(c *fiber.Ctx) error {
