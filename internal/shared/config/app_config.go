@@ -104,8 +104,8 @@ func LoadAppConfig() (*AppConfig, error) {
 			Password:        getEnvOrDefault("DB_PASSWORD", "postgres"),
 			Name:            getEnvOrDefault("DB_NAME", "serviceability_db"),
 			SSLMode:         enforceSSLMode(),
-			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 25),
+			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 0),    // 0 = unlimited
+			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 1000), // High idle pool
 			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		},
 		Log: LogConfig{

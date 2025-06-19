@@ -74,11 +74,11 @@ func (dm *DatabaseManager) Connect() error {
 	// Log database connection details before connecting
 	dsn := dm.config.DB.DSN()
 	connectionInfo := dm.config.DB.GetConnectionInfo()
-	dm.logger.WithFields(logrus.Fields(connectionInfo)).Info("Attempting to connect to database")
+	dm.logger.WithFields(logrus.Fields(connectionInfo)).Info("🗄️ Attempting to connect to database")
 
 	// Log SSL enforcement details
 	if dm.config.DB.SSLMode == "require" || dm.config.DB.SSLMode == "verify-ca" || dm.config.DB.SSLMode == "verify-full" {
-		dm.logger.WithField("ssl_mode", dm.config.DB.SSLMode).Info("SSL is enforced for database connection")
+		dm.logger.WithField("ssl_mode", dm.config.DB.SSLMode).Info("🔒 SSL is enforced for database connection")
 	}
 
 	// Connect to PostgreSQL with UUID support
@@ -96,7 +96,7 @@ func (dm *DatabaseManager) Connect() error {
 	}
 
 	dm.db = db
-	dm.logger.Info("Successfully connected to database")
+	dm.logger.Info("✅ Successfully connected to database")
 
 	return nil
 }
@@ -119,7 +119,7 @@ func (dm *DatabaseManager) configureConnectionPool(db *gorm.DB) error {
 		"max_open_conns":     dm.config.DB.MaxOpenConns,
 		"conn_max_lifetime":  dm.config.DB.ConnMaxLifetime,
 		"conn_max_idle_time": 5 * time.Minute,
-	}).Info("Database connection pool configured")
+	}).Info("⚙️ Database connection pool configured")
 
 	return nil
 }

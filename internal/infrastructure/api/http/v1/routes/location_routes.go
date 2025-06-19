@@ -12,7 +12,7 @@ import (
 
 // RegisterLocationRoutes registers all location-related routes
 func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandler, logger *logrus.Logger) {
-	logger.Info("Registering location routes...")
+	logger.Info("📍 Registering location routes...")
 
 	// Create validator with custom validation functions registered
 	validatorSetup := utils.NewValidatorSetup()
@@ -141,5 +141,5 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 			handler.DeleteLocationType)
 	}
 
-	logger.Info("Location routes registered successfully")
+	logger.Info("📍 Location routes registered successfully")
 }

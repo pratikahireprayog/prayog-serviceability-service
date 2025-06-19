@@ -22,13 +22,13 @@ import (
 func main() {
 	// Initialize logger
 	logger := initLogger()
-	logger.Info("Starting Prayog Serviceability Service...")
-	logger.Info("Note: Starting with HTTP server only - gRPC server is disabled for now")
+	logger.Info("🚀 Starting Prayog Serviceability Service...")
+	logger.Info("📝 Note: Starting with HTTP server only - gRPC server is disabled for now")
 
 	// Load configuration
 	appConfig, err := initConfig(logger)
 	if err != nil {
-		logger.WithError(err).Fatal("Failed to initialize configuration")
+		logger.WithError(err).Fatal("❌ Failed to initialize configuration")
 	}
 
 	// Initialize database manager
@@ -67,19 +67,29 @@ func main() {
 
 	// Start server
 	port := getPort(appConfig)
-	logger.WithField("port", port).Info("Starting HTTP server")
-	logger.Info("gRPC server is disabled - only HTTP endpoints are available")
+	logger.WithField("port", port).Info("🚀 Starting HTTP server")
+	logger.Info("📝 gRPC server is disabled - only HTTP endpoints are available")
+
+	// Add some startup info like the partner service
+	logger.Infof("📍 Health check available at: http://localhost:%d/serviceability/ping", port)
+	logger.Infof("🌐 API endpoints available at: http://localhost:%d/serviceability/v1/", port)
+	logger.Info("🔥 High-concurrency mode: 1048576 max connections")
 
 	if err := server.Start(fmt.Sprintf(":%d", port)); err != nil {
-		logger.WithError(err).Fatal("Failed to start HTTP server")
+		logger.WithError(err).Fatal("❌ Failed to start HTTP server")
 	}
 }
 
 // initLogger initializes the application logger
 func initLogger() *logrus.Logger {
 	logger := logrus.New()
-	logger.SetFormatter(&logrus.JSONFormatter{
-		TimestampFormat: time.RFC3339,
+
+	// Use text formatter for human-readable logs with colors and timestamps
+	logger.SetFormatter(&logrus.TextFormatter{
+		TimestampFormat: "2006/01/02 15:04:05",
+		FullTimestamp:   true,
+		ForceColors:     true,
+		DisableQuote:    true,
 	})
 
 	// Set log level from environment or default to Info
@@ -100,24 +110,24 @@ func initLogger() *logrus.Logger {
 
 // initConfig initializes the configuration
 func initConfig(logger *logrus.Logger) (*config.AppConfig, error) {
-	logger.Info("Initializing configuration...")
+	logger.Info("🔧 Initializing configuration...")
 
 	appConfig, err := config.LoadAppConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	logger.Info("Configuration initialized successfully")
+	logger.Info("✅ Configuration initialized successfully")
 	return appConfig, nil
 }
 
 // initDatabase initializes the database manager
 func initDatabase(appConfig *config.AppConfig, logger *logrus.Logger) (*db.DatabaseManager, error) {
-	logger.Info("Initializing database connection...")
+	logger.Info("🗄️ Initializing database connection...")
 
 	dbManager, err := db.NewDatabaseManager(appConfig, logger)
 	if err != nil {
-		logger.WithError(err).Warn("Failed to create database manager - continuing without database")
+		logger.WithError(err).Warn("⚠️ Failed to create database manager - continuing without database")
 		// Return nil for database manager but don't fail startup
 		return nil, nil
 	}
@@ -127,10 +137,10 @@ func initDatabase(appConfig *config.AppConfig, logger *logrus.Logger) (*db.Datab
 	defer cancel()
 
 	if err := dbManager.Ping(ctx); err != nil {
-		logger.WithError(err).Warn("Database connection test failed - continuing with service startup")
+		logger.WithError(err).Warn("⚠️ Database connection test failed - continuing with service startup")
 		// Don't fail the startup for database connectivity issues
 	} else {
-		logger.Info("Database connection successful")
+		logger.Info("✅ Database connection successful")
 	}
 
 	return dbManager, nil
@@ -138,20 +148,20 @@ func initDatabase(appConfig *config.AppConfig, logger *logrus.Logger) (*db.Datab
 
 // initIntegrationFactory initializes the integration factory for external services
 func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (*services.IntegrationFactory, error) {
-	logger.Info("Initializing integration factory...")
+	logger.Info("🔌 Initializing integration factory...")
 
 	factory, err := services.NewIntegrationFactory(appConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create integration factory: %w", err)
 	}
 
-	logger.Info("Integration factory initialized successfully")
+	logger.Info("✅ Integration factory initialized successfully")
 	return factory, nil
 }
 
 // initOrchestrator initializes the serviceability orchestrator with all dependencies
 func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
-	logger.Info("Initializing serviceability orchestrator with real service integrations...")
+	logger.Info("⚙️ Initializing serviceability orchestrator with real service integrations...")
 
 	// Create external service clients
 	partnerService, err := integrationFactory.CreatePartnerServiceClient()
@@ -178,7 +188,7 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 		serviceabilityCalculator,
 	)
 
-	logger.Info("Successfully initialized real serviceability orchestrator")
+	logger.Info("✅ Successfully initialized real serviceability orchestrator")
 	return orchestrator, nil
 }
 
@@ -190,13 +200,13 @@ func initHTTPServer(
 	orchestrator interfaces.ServiceabilityOrchestrator,
 	logger *logrus.Logger,
 ) (*httpServer.Server, error) {
-	logger.Info("Initializing HTTP server...")
+	logger.Info("🌐 Initializing HTTP server...")
 
 	// Create a proper config manager
 	configManager, err := config.NewConfigManager()
 	if err != nil {
 		// If we can't create a proper config manager, create a minimal one
-		logger.WithError(err).Warn("Failed to create full config manager, using minimal version")
+		logger.WithError(err).Warn("⚠️ Failed to create full config manager, using minimal version")
 		configManager = &config.ConfigManager{
 			App:         appConfig,
 			Integration: config.LoadIntegrationConfig(),
@@ -217,7 +227,7 @@ func initHTTPServer(
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}
 
-	logger.Info("HTTP server initialized successfully")
+	logger.Info("✅ HTTP server initialized successfully")
 	return server, nil
 }
 
@@ -228,7 +238,7 @@ func setupGracefulShutdown(server *httpServer.Server, logger *logrus.Logger) {
 
 	go func() {
 		<-c
-		logger.Info("Received shutdown signal, starting graceful shutdown...")
+		logger.Info("🛑 Received shutdown signal, starting graceful shutdown...")
 
 		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -236,10 +246,10 @@ func setupGracefulShutdown(server *httpServer.Server, logger *logrus.Logger) {
 
 		// Shutdown server
 		if err := server.Shutdown(ctx); err != nil {
-			logger.WithError(err).Error("Error during server shutdown")
+			logger.WithError(err).Error("❌ Error during server shutdown")
 		}
 
-		logger.Info("Server shutdown complete")
+		logger.Info("✅ Server shutdown complete")
 		os.Exit(0)
 	}()
 }

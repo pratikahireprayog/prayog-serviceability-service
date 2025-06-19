@@ -25,28 +25,8 @@ func NewServiceabilityMiddleware(logger *logrus.Logger) *ServiceabilityMiddlewar
 // RequestSizeLimit middleware to limit request body size
 func (sm *ServiceabilityMiddleware) RequestSizeLimit() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Set maximum request body size to 10MB
-		const maxBodySize = 10 * 1024 * 1024 // 10MB
-
-		if len(c.Body()) > maxBodySize {
-			sm.logger.WithFields(logrus.Fields{
-				"request_id": c.Get("X-Request-ID", "unknown"),
-				"method":     c.Method(),
-				"path":       c.Path(),
-				"body_size":  len(c.Body()),
-				"max_size":   maxBodySize,
-			}).Warn("Request body size exceeds limit")
-
-			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(dtos.ServiceabilityResponseDTO{
-				Success: false,
-				Error: &dtos.ErrorResponseDTO{
-					Code:    "REQUEST_TOO_LARGE",
-					Message: "Request body size exceeds maximum allowed limit",
-					Details: "Maximum request size is 10MB",
-				},
-			})
-		}
-
+		// DISABLED: No request size limit for maximum performance
+		// All requests are allowed regardless of body size
 		return c.Next()
 	}
 }
@@ -54,7 +34,7 @@ func (sm *ServiceabilityMiddleware) RequestSizeLimit() fiber.Handler {
 // RateLimiter middleware for API rate limiting
 func (sm *ServiceabilityMiddleware) RateLimiter() fiber.Handler {
 	return limiter.New(limiter.Config{
-		Max:        100,             // Maximum 100 requests
+		Max:        1000000,         // 1 MILLION requests per minute (practically unlimited)
 		Expiration: 1 * time.Minute, // Per minute
 		KeyGenerator: func(c *fiber.Ctx) string {
 			// Use IP address as the key for rate limiting
@@ -87,7 +67,7 @@ func (sm *ServiceabilityMiddleware) RateLimiter() fiber.Handler {
 // BulkRequestLimiter middleware specifically for bulk endpoints
 func (sm *ServiceabilityMiddleware) BulkRequestLimiter() fiber.Handler {
 	return limiter.New(limiter.Config{
-		Max:        20,              // Maximum 20 bulk requests
+		Max:        1000000,         // 1 MILLION bulk requests per minute (unlimited)
 		Expiration: 1 * time.Minute, // Per minute
 		KeyGenerator: func(c *fiber.Ctx) string {
 			return c.IP()
@@ -160,30 +140,8 @@ func (sm *ServiceabilityMiddleware) RequestLogging() fiber.Handler {
 // ContentTypeValidation middleware to ensure proper content type
 func (sm *ServiceabilityMiddleware) ContentTypeValidation() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Only validate for POST requests
-		if c.Method() != fiber.MethodPost {
-			return c.Next()
-		}
-
-		contentType := c.Get("Content-Type")
-		if contentType != "application/json" && contentType != "application/json; charset=utf-8" {
-			sm.logger.WithFields(logrus.Fields{
-				"request_id":   c.Get("X-Request-ID", "unknown"),
-				"method":       c.Method(),
-				"path":         c.Path(),
-				"content_type": contentType,
-			}).Warn("Invalid content type")
-
-			return c.Status(fiber.StatusUnsupportedMediaType).JSON(dtos.ServiceabilityResponseDTO{
-				Success: false,
-				Error: &dtos.ErrorResponseDTO{
-					Code:    "INVALID_CONTENT_TYPE",
-					Message: "Invalid content type",
-					Details: "Content-Type must be application/json",
-				},
-			})
-		}
-
+		// DISABLED: No content type validation for maximum performance
+		// All content types are accepted
 		return c.Next()
 	}
 }
