@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -97,15 +98,47 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 	// Request ID middleware
 	app.Use(requestid.New())
 
-	// Enhanced CORS middleware with comprehensive configuration
+	// CORS middleware using Fiber's built-in cors.Config - optimized for Flutter Web
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*", // Allow all origins for development - consider restricting in production
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Request-ID,X-Requested-With,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods",
-		AllowCredentials: false, // Set to true if you need credentials
-		ExposeHeaders:    "Content-Length,Access-Control-Allow-Origin,Access-Control-Allow-Headers",
-		MaxAge:           86400, // 24 hours preflight cache
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH",
+		AllowHeaders: strings.Join([]string{
+			"Origin",
+			"Content-Type",
+			"Accept",
+			"Authorization",
+			"X-Request-ID",
+			"X-Requested-With",
+			"X-Tenant-ID", // Your API requires this
+			"tenantid",    // Your API requires this (lowercase variant)
+			"User-Agent",
+			"Referer",
+			"sec-ch-ua", // Chrome security headers
+			"sec-ch-ua-mobile",
+			"sec-ch-ua-platform",
+		}, ","),
+		AllowCredentials: false,
+		ExposeHeaders: strings.Join([]string{
+			"Content-Length",
+			"X-API-Version",
+			"X-Service-Name",
+			"X-Request-ID",
+		}, ","),
+		MaxAge: 86400, // 24 hours preflight cache
 	}))
+
+	// CORS debugging middleware (remove in production)
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Method() == "OPTIONS" {
+			logger.WithFields(logrus.Fields{
+				"method":  c.Method(),
+				"path":    c.Path(),
+				"origin":  c.Get("Origin"),
+				"headers": c.Get("Access-Control-Request-Headers"),
+			}).Debug("CORS preflight request received")
+		}
+		return c.Next()
+	})
 
 	// Logger middleware
 	app.Use(fiberLogger.New(fiberLogger.Config{
@@ -118,26 +151,6 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 	app.Use(recover.New(recover.Config{
 		EnableStackTrace: true,
 	}))
-
-	// Additional CORS headers middleware to ensure compatibility
-	app.Use(func(c *fiber.Ctx) error {
-		// Always set CORS headers for maximum compatibility
-		c.Set("Access-Control-Allow-Origin", "*")
-		c.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH")
-		c.Set("Access-Control-Allow-Headers", "Origin,Content-Type,Accept,Authorization,X-Request-ID,X-Requested-With,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods")
-		c.Set("Access-Control-Expose-Headers", "Content-Length,Access-Control-Allow-Origin,Access-Control-Allow-Headers")
-		c.Set("Access-Control-Max-Age", "86400")
-
-		// Handle preflight OPTIONS requests
-		if c.Method() == "OPTIONS" {
-			c.Set("Access-Control-Allow-Origin", "*")
-			c.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH")
-			c.Set("Access-Control-Allow-Headers", "Origin,Content-Type,Accept,Authorization,X-Request-ID,X-Requested-With,Access-Control-Allow-Origin,Access-Control-Allow-Headers,Access-Control-Allow-Methods")
-			return c.SendStatus(fiber.StatusNoContent)
-		}
-
-		return c.Next()
-	})
 
 	// Add version and service headers to all responses
 	app.Use(func(c *fiber.Ctx) error {
