@@ -15,7 +15,7 @@ import (
 type GeoLocationService interface {
 	// Only 5 methods for the 5 requested APIs
 	GetAll(ctx context.Context, pagination *dtos.PaginationRequest, filters *dtos.GeoLocationFilters) (*dtos.GeoLocationListResponse, error)
-	GetByCountryCode(ctx context.Context, countryCode string, pagination *dtos.PaginationRequest) (*dtos.GeoLocationsByCountryResponse, error)
+	GetByPostalCode(ctx context.Context, postalCode string) (*dtos.GeoLocationSingleResponse, error)
 	Create(ctx context.Context, req *dtos.CreateGeoLocationRequest) (*dtos.GeoLocationSingleResponse, error)
 	Update(ctx context.Context, postalCode string, req *dtos.UpdateGeoLocationRequest) (*dtos.GeoLocationSingleResponse, error)
 	Delete(ctx context.Context, postalCode string) (*dtos.StandardResponse, error)
@@ -62,33 +62,17 @@ func (s *geoLocationService) GetAll(ctx context.Context, pagination *dtos.Pagina
 	}, nil
 }
 
-// GetByCountryCode retrieves geo locations by country code
-func (s *geoLocationService) GetByCountryCode(ctx context.Context, countryCode string, pagination *dtos.PaginationRequest) (*dtos.GeoLocationsByCountryResponse, error) {
-	geoLocations, total, err := s.repo.GetByCountryCode(ctx, countryCode, pagination.Offset, pagination.Limit)
+// GetByPostalCode retrieves a single geo location by postal code
+func (s *geoLocationService) GetByPostalCode(ctx context.Context, postalCode string) (*dtos.GeoLocationSingleResponse, error) {
+	geoLocation, err := s.repo.GetByID(ctx, postalCode)
 	if err != nil {
 		return nil, err
 	}
 
-	responses := make([]dtos.GeoLocationResponse, len(geoLocations))
-	for i, location := range geoLocations {
-		responses[i] = *GeoLocationToResponseDTO(&location)
-	}
-
-	paginationResponse := dtos.PaginationResponse{
-		Offset:      pagination.Offset,
-		Limit:       pagination.Limit,
-		Total:       total,
-		HasNext:     int64(pagination.Offset+pagination.Limit) < total,
-		HasPrevious: pagination.Offset > 0,
-	}
-
-	return &dtos.GeoLocationsByCountryResponse{
-		Success:     true,
-		Message:     "Geo locations by country retrieved successfully",
-		CountryCode: countryCode,
-		Count:       total,
-		Data:        responses,
-		Pagination:  paginationResponse,
+	return &dtos.GeoLocationSingleResponse{
+		Success: true,
+		Message: "Geo location retrieved successfully",
+		Data:    *GeoLocationToResponseDTO(geoLocation),
 	}, nil
 }
 

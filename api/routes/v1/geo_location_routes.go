@@ -11,9 +11,9 @@ func RegisterGeoLocationRoutes(router fiber.Router, handler *handlers.GeoLocatio
 	geoLocations := router.Group("/geo-locations")
 
 	// Basic CRUD operations - Only 5 APIs as requested
-	geoLocations.Post("/", handler.CreateGeoLocation)                               // 1. Create API
-	geoLocations.Get("/", handler.GetAllGeoLocations)                               // 2. Get list API with filters
-	geoLocations.Get("/country/:countryCode", handler.GetGeoLocationsByCountryCode) // 3. Get by Country code API
-	geoLocations.Put("/:postal_code", handler.UpdateGeoLocation)                    // 4. Update API
-	geoLocations.Delete("/:postal_code", handler.DeleteGeoLocation)                 // 5. Delete API
+	geoLocations.Post("/", handler.CreateGeoLocation)                                // 1. Create API
+	geoLocations.Get("/", handler.GetAllGeoLocations)                                // 2. Get list API with filters
+	geoLocations.Get("/postal-code/:postalCode", handler.GetGeoLocationByPostalCode) // 3. Get by Postal code API
+	geoLocations.Put("/:postal_code", handler.UpdateGeoLocation)                     // 4. Update API
+	geoLocations.Delete("/:postal_code", handler.DeleteGeoLocation)                  // 5. Delete API
 }

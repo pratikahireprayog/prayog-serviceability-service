@@ -118,17 +118,6 @@ type GeoLocationSearchResponse struct {
 	Pagination PaginationResponse    `json:"pagination"`
 }
 
-// GeoLocationsByCountryResponse represents geo locations grouped by country
-type GeoLocationsByCountryResponse struct {
-	Success     bool                  `json:"success"`
-	Message     string                `json:"message,omitempty"`
-	CountryCode string                `json:"country_code"`
-	Count       int64                 `json:"count"`
-	Data        []GeoLocationResponse `json:"data"`
-	Pagination  PaginationResponse    `json:"pagination"`
-	Error       *ErrorInfo            `json:"error,omitempty"`
-}
-
 // GeoLocationStatsResponse represents statistics for geo locations
 type GeoLocationStatsResponse struct {
 	TotalCount        int64                    `json:"total_count"`

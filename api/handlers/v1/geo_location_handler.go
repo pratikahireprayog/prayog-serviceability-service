@@ -117,17 +117,15 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(result)
 }
 
-// 3. Get by Country code API
-func (h *GeoLocationHandler) GetGeoLocationsByCountryCode(c *fiber.Ctx) error {
-	countryCode := c.Params("countryCode")
-	if strings.TrimSpace(countryCode) == "" {
-		errorResponse := dtos.NewValidationErrorResponse("Country code is required", nil)
+// 3. Get by Postal code API
+func (h *GeoLocationHandler) GetGeoLocationByPostalCode(c *fiber.Ctx) error {
+	postalCode := c.Params("postalCode")
+	if strings.TrimSpace(postalCode) == "" {
+		errorResponse := dtos.NewValidationErrorResponse("Postal code is required", nil)
 		return c.Status(fiber.StatusBadRequest).JSON(errorResponse)
 	}
 
-	pagination := h.parsePagination(c)
-
-	result, err := h.geoLocationService.GetByCountryCode(c.Context(), countryCode, pagination)
+	result, err := h.geoLocationService.GetByPostalCode(c.Context(), postalCode)
 	if err != nil {
 		return h.handleError(c, err)
 	}
