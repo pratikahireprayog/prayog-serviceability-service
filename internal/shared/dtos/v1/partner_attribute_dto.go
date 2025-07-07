@@ -38,33 +38,30 @@ type AttributeCategoryListResponse = StandardListResponse[AttributeCategoryRespo
 
 // CreateAttributeRequest represents request to create a new attribute
 type CreateAttributeRequest struct {
-	CategoryID    uuid.UUID `json:"category_id" validate:"required,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Code          string    `json:"code" validate:"required,min=2,max=50,snake_case" example:"ecom"`
-	AttributeCode *string   `json:"attribute_code,omitempty" validate:"omitempty,min=2,max=50,snake_case" example:"ecom"`
-	Name          string    `json:"name" validate:"required,min=2,max=100" example:"E-commerce"`
-	IsActive      *bool     `json:"is_active,omitempty" example:"true"`
+	CategoryID uuid.UUID `json:"category_id" validate:"required,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Code       string    `json:"code" validate:"required,min=2,max=50,snake_case" example:"ecom"`
+	Name       string    `json:"name" validate:"required,min=2,max=100" example:"E-commerce"`
+	IsActive   *bool     `json:"is_active,omitempty" example:"true"`
 }
 
 // UpdateAttributeRequest represents request to update an attribute
 type UpdateAttributeRequest struct {
-	CategoryID    *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Code          *string    `json:"code,omitempty" validate:"omitempty,min=2,max=50,snake_case" example:"ecom"`
-	AttributeCode *string    `json:"attribute_code,omitempty" validate:"omitempty,min=2,max=50,snake_case" example:"ecom"`
-	Name          *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100" example:"E-commerce"`
-	IsActive      *bool      `json:"is_active,omitempty" example:"true"`
+	CategoryID *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Code       *string    `json:"code,omitempty" validate:"omitempty,min=2,max=50,snake_case" example:"ecom"`
+	Name       *string    `json:"name,omitempty" validate:"omitempty,min=2,max=100" example:"E-commerce"`
+	IsActive   *bool      `json:"is_active,omitempty" example:"true"`
 }
 
 // AttributeResponse represents attribute response
 type AttributeResponse struct {
-	ID            uuid.UUID                  `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	CategoryID    uuid.UUID                  `json:"category_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Code          string                     `json:"code" example:"ecom"`
-	AttributeCode string                     `json:"attribute_code" example:"ecom"`
-	Name          string                     `json:"name" example:"E-commerce"`
-	IsActive      bool                       `json:"is_active" example:"true"`
-	CreatedAt     time.Time                  `json:"created_at" example:"2023-01-01T00:00:00Z"`
-	UpdatedAt     time.Time                  `json:"updated_at" example:"2023-01-01T00:00:00Z"`
-	Category      *AttributeCategoryResponse `json:"category,omitempty"`
+	ID         uuid.UUID                  `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	CategoryID uuid.UUID                  `json:"category_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Code       string                     `json:"code" example:"ecom"`
+	Name       string                     `json:"name" example:"E-commerce"`
+	IsActive   bool                       `json:"is_active" example:"true"`
+	CreatedAt  time.Time                  `json:"created_at" example:"2023-01-01T00:00:00Z"`
+	UpdatedAt  time.Time                  `json:"updated_at" example:"2023-01-01T00:00:00Z"`
+	Category   *AttributeCategoryResponse `json:"category,omitempty"`
 }
 
 // AttributeListResponse represents list of attributes with pagination
@@ -94,7 +91,7 @@ type PartnerAttributeMapResponse struct {
 	PartnerID     *uuid.UUID         `json:"partner_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
 	PartnerCode   string             `json:"partner_code" example:"partner_xyz"`
 	AttributeID   uuid.UUID          `json:"attribute_id" example:"550e8400-e29b-41d4-a716-446655440000"`
-	AttributeCode string             `json:"attribute_code" example:"ecom"`
+	AttributeCode string             `json:"attribute_code" example:"ecomm"`
 	IsActive      bool               `json:"is_active" example:"true"`
 	CreatedAt     time.Time          `json:"created_at" example:"2023-01-01T00:00:00Z"`
 	UpdatedAt     time.Time          `json:"updated_at" example:"2023-01-01T00:00:00Z"`
@@ -108,21 +105,19 @@ type PartnerAttributeMapListResponse = StandardListResponse[PartnerAttributeMapR
 
 // PartnerAttributeMapFilterRequest represents filtering options for partner attribute mappings
 type PartnerAttributeMapFilterRequest struct {
-	PartnerID     *uuid.UUID `json:"partner_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	PartnerCode   *string    `json:"partner_code,omitempty" validate:"omitempty,min=1,max=50" example:"partner_xyz"`
-	AttributeCode *string    `json:"attribute_code,omitempty" validate:"omitempty,min=2,max=50" example:"ecom"`
-	AttributeID   *uuid.UUID `json:"attribute_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	CategoryID    *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
-	IsActive      *bool      `json:"is_active,omitempty" example:"true"`
-	Limit         *int       `json:"limit,omitempty" validate:"omitempty,min=1,max=100" example:"10"`
-	Offset        *int       `json:"offset,omitempty" validate:"omitempty,min=0" example:"0"`
+	PartnerID   *uuid.UUID `json:"partner_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	PartnerCode *string    `json:"partner_code,omitempty" validate:"omitempty,min=1,max=50" example:"partner_xyz"`
+	AttributeID *uuid.UUID `json:"attribute_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	CategoryID  *uuid.UUID `json:"category_id,omitempty" validate:"omitempty,uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	IsActive    *bool      `json:"is_active,omitempty" example:"true"`
+	Limit       *int       `json:"limit,omitempty" validate:"omitempty,min=1,max=100" example:"10"`
+	Offset      *int       `json:"offset,omitempty" validate:"omitempty,min=0" example:"0"`
 }
 
 // Partner Codes by Attribute Response
 
 // PartnerCodesByAttributeResponse represents partners mapped to a specific attribute
 type PartnerCodesByAttributeResponse struct {
-	AttributeCode    string    `json:"attribute_code" example:"ecom"`
 	AttributeID      uuid.UUID `json:"attribute_id" example:"550e8400-e29b-41d4-a716-446655440000"`
 	AttributeName    string    `json:"attribute_name" example:"E-commerce"`
 	PartnerCodes     []string  `json:"partner_codes" example:"[\"partner_xyz\",\"partner_abc\"]"`

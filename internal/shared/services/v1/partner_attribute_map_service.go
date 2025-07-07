@@ -340,10 +340,7 @@ func (s *partnerAttributeMapService) GetWithFilters(ctx context.Context, filters
 		partnerCode := strings.TrimSpace(*filters.PartnerCode)
 		repoFilters.PartnerCode = &partnerCode
 	}
-	if filters.AttributeCode != nil && strings.TrimSpace(*filters.AttributeCode) != "" {
-		attributeCode := strings.ToLower(strings.TrimSpace(*filters.AttributeCode))
-		repoFilters.AttributeCode = &attributeCode
-	}
+
 	if filters.AttributeID != nil {
 		repoFilters.AttributeID = filters.AttributeID
 	}
@@ -429,7 +426,6 @@ func (s *partnerAttributeMapService) GetPartnerCodesByAttribute(ctx context.Cont
 	}
 
 	return &dtos.PartnerCodesByAttributeResponse{
-		AttributeCode:    attributeCode,
 		AttributeID:      attribute.ID,
 		AttributeName:    attribute.Name,
 		PartnerCodes:     partnerCodes,

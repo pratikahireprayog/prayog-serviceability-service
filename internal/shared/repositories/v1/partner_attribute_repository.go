@@ -79,14 +79,14 @@ type PartnerAttributeMapRepository interface {
 
 // PartnerAttributeMapFilters represents filtering options for partner attribute mappings
 type PartnerAttributeMapFilters struct {
-	PartnerID     *uuid.UUID `json:"partner_id,omitempty"`
-	PartnerCode   *string    `json:"partner_code,omitempty"`
-	AttributeCode *string    `json:"attribute_code,omitempty"`
-	AttributeID   *uuid.UUID `json:"attribute_id,omitempty"`
-	CategoryID    *uuid.UUID `json:"category_id,omitempty"`
-	IsActive      *bool      `json:"is_active,omitempty"`
-	Limit         int        `json:"limit"`
-	Offset        int        `json:"offset"`
+	PartnerID   *uuid.UUID `json:"partner_id,omitempty"`
+	PartnerCode *string    `json:"partner_code,omitempty"`
+
+	AttributeID *uuid.UUID `json:"attribute_id,omitempty"`
+	CategoryID  *uuid.UUID `json:"category_id,omitempty"`
+	IsActive    *bool      `json:"is_active,omitempty"`
+	Limit       int        `json:"limit"`
+	Offset      int        `json:"offset"`
 }
 
 // Statistics structs for analytics

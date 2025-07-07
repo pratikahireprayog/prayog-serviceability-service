@@ -42,6 +42,11 @@ func (dm *DatabaseManager) RunMigrations() error {
 		return fmt.Errorf("failed to create performance indexes: %w", err)
 	}
 
+	// Fix database schema issues
+	if err := dm.fixSchemaIssues(); err != nil {
+		return fmt.Errorf("failed to fix schema issues: %w", err)
+	}
+
 	dm.logger.Info("Database migrations completed successfully")
 	return nil
 }
@@ -395,7 +400,7 @@ func (dm *DatabaseManager) createPerformanceIndexes() error {
 		{"attribute", []string{"category_id", "code"}, "idx_attribute_category_code"},
 		{"attribute", []string{"code"}, "idx_attribute_code"},
 		{"partner_attribute_map", []string{"partner_code", "attribute_id"}, "idx_partner_attr_map"},
-		{"partner_attribute_map", []string{"attribute_code"}, "idx_partner_attr_code"},
+
 		{"partner_attribute_map", []string{"partner_code"}, "idx_partner_attr_partner"},
 	}
 
@@ -534,6 +539,92 @@ func (dm *DatabaseManager) seedLocationTypes() error {
 // func (dm *DatabaseManager) DropAllTables() error {
 //     return fmt.Errorf("DropAllTables method has been disabled for safety - use database admin tools instead")
 // }
+
+// fixSchemaIssues fixes any database schema inconsistencies
+func (dm *DatabaseManager) fixSchemaIssues() error {
+	dm.logger.Info("Fixing database schema issues...")
+
+	// Ensure attribute_code column exists in partner_attribute_map table
+	if err := dm.ensureAttributeCodeColumn(); err != nil {
+		return fmt.Errorf("failed to ensure attribute_code column: %w", err)
+	}
+
+	dm.logger.Info("Database schema issues fixed successfully")
+	return nil
+}
+
+// ensureAttributeCodeColumn ensures the attribute_code column exists in partner_attribute_map table
+func (dm *DatabaseManager) ensureAttributeCodeColumn() error {
+	dm.logger.Info("Checking for attribute_code column in partner_attribute_map table...")
+
+	// Check if column exists
+	var columnExists bool
+	checkQuery := `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'partner_attribute_map' AND column_name = 'attribute_code'
+		)
+	`
+	if err := dm.db.Raw(checkQuery).Scan(&columnExists).Error; err != nil {
+		return fmt.Errorf("failed to check for attribute_code column: %w", err)
+	}
+
+	if !columnExists {
+		dm.logger.Info("attribute_code column missing, adding it...")
+
+		// Add the column
+		addQuery := "ALTER TABLE partner_attribute_map ADD COLUMN IF NOT EXISTS attribute_code VARCHAR(50) NOT NULL DEFAULT ''"
+		if err := dm.db.Exec(addQuery).Error; err != nil {
+			return fmt.Errorf("failed to add attribute_code column: %w", err)
+		}
+
+		// Create index for the new column
+		indexQuery := "CREATE INDEX IF NOT EXISTS idx_partner_attr_code ON partner_attribute_map (attribute_code)"
+		if err := dm.db.Exec(indexQuery).Error; err != nil {
+			dm.logger.Warnf("Failed to create index for attribute_code: %v", err)
+		}
+
+		dm.logger.Info("Successfully added attribute_code column")
+	} else {
+		dm.logger.Info("attribute_code column already exists")
+	}
+
+	// Populate attribute_code for existing records where it's empty
+	if err := dm.populateAttributeCodeForExistingRecords(); err != nil {
+		return fmt.Errorf("failed to populate attribute_code for existing records: %w", err)
+	}
+
+	// Note: attribute_category_code column has been dropped manually via SQL
+
+	return nil
+}
+
+// populateAttributeCodeForExistingRecords populates the attribute_code field for records where it's empty
+func (dm *DatabaseManager) populateAttributeCodeForExistingRecords() error {
+	dm.logger.Info("Populating attribute_code for existing partner_attribute_map records...")
+
+	// Update records where attribute_code is empty by joining with the attribute table
+	updateQuery := `
+		UPDATE partner_attribute_map 
+		SET attribute_code = attribute.code 
+		FROM attribute 
+		WHERE partner_attribute_map.attribute_id = attribute.id 
+		AND (partner_attribute_map.attribute_code = '' OR partner_attribute_map.attribute_code IS NULL)
+	`
+
+	result := dm.db.Exec(updateQuery)
+	if result.Error != nil {
+		return fmt.Errorf("failed to populate attribute_code: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		dm.logger.Infof("Successfully populated attribute_code for %d records", result.RowsAffected)
+	} else {
+		dm.logger.Info("No records needed attribute_code population")
+	}
+
+	return nil
+}
 
 // Helper function to create string pointers
 func stringPtr(s string) *string {

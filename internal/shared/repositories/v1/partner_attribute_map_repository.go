@@ -154,10 +154,9 @@ func (r *partnerAttributeMapRepository) GetByAttributeIDWithDeleted(ctx context.
 func (r *partnerAttributeMapRepository) GetByAttributeCode(ctx context.Context, attributeCode string) ([]models.PartnerAttributeMap, error) {
 	var mappings []models.PartnerAttributeMap
 	err := r.db.WithContext(ctx).
-		Joins("JOIN attribute ON partner_attribute_map.attribute_id = attribute.id").
-		Where("attribute.code = ? AND partner_attribute_map.is_active = ? AND attribute.is_active = ?", attributeCode, true, true).
+		Where("attribute_code = ? AND is_active = ? AND is_deleted = ?", attributeCode, true, false).
 		Preload("Attribute").Preload("Attribute.Category").
-		Order("partner_attribute_map.created_at DESC").Find(&mappings).Error
+		Order("created_at DESC").Find(&mappings).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get partner attribute mappings by attribute code: %w", err)
 	}
@@ -289,13 +288,6 @@ func (r *partnerAttributeMapRepository) GetWithFilters(ctx context.Context, filt
 	if filters.PartnerCode != nil {
 		query = query.Where("partner_code = ?", *filters.PartnerCode)
 		countQuery = countQuery.Where("partner_code = ?", *filters.PartnerCode)
-	}
-
-	if filters.AttributeCode != nil {
-		query = query.Joins("JOIN attribute ON partner_attribute_map.attribute_id = attribute.id").
-			Where("attribute.code = ?", *filters.AttributeCode)
-		countQuery = countQuery.Joins("JOIN attribute ON partner_attribute_map.attribute_id = attribute.id").
-			Where("attribute.code = ?", *filters.AttributeCode)
 	}
 
 	if filters.AttributeID != nil {
