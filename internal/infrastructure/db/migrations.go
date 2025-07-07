@@ -28,6 +28,10 @@ func (dm *DatabaseManager) RunMigrations() error {
 		return fmt.Errorf("failed to migrate location management models: %w", err)
 	}
 
+	if err := dm.migratePartnerAttributeModels(); err != nil {
+		return fmt.Errorf("failed to migrate partner attribute models: %w", err)
+	}
+
 	// Add soft delete columns to all tables
 	if err := dm.addSoftDeleteColumns(); err != nil {
 		return fmt.Errorf("failed to add soft delete columns: %w", err)
@@ -122,6 +126,27 @@ func (dm *DatabaseManager) migrateLocationManagementModels() error {
 	return nil
 }
 
+// migratePartnerAttributeModels migrates partner attribute entities
+func (dm *DatabaseManager) migratePartnerAttributeModels() error {
+	dm.logger.Info("Migrating partner attribute models...")
+
+	models := []interface{}{
+		&models.AttributeCategory{},
+		&models.Attribute{},
+		&models.PartnerAttributeMap{},
+	}
+
+	for _, model := range models {
+		if err := dm.db.AutoMigrate(model); err != nil {
+			return fmt.Errorf("failed to migrate model %T: %w", model, err)
+		}
+		dm.logger.Infof("Successfully migrated model: %T", model)
+	}
+
+	dm.logger.Info("Partner attribute models migrated successfully")
+	return nil
+}
+
 // addSoftDeleteColumns adds soft delete columns to all existing tables
 func (dm *DatabaseManager) addSoftDeleteColumns() error {
 	dm.logger.Info("Adding soft delete columns to all tables...")
@@ -141,6 +166,9 @@ func (dm *DatabaseManager) addSoftDeleteColumns() error {
 		"location_type",
 		"location_alias",
 		"partner_location_coverage",
+		"attribute_category",
+		"attribute",
+		"partner_attribute_map",
 	}
 
 	for _, table := range tables {
@@ -361,6 +389,14 @@ func (dm *DatabaseManager) createPerformanceIndexes() error {
 		// Location management indexes
 		{"location_alias", []string{"entity_type_code", "entity_id"}, "idx_alias_entity"},
 		{"partner_location_coverage", []string{"partner_code", "location_scope"}, "idx_partner_coverage"},
+
+		// Partner attribute indexes
+		{"attribute_category", []string{"code"}, "idx_attribute_category_code"},
+		{"attribute", []string{"category_id", "code"}, "idx_attribute_category_code"},
+		{"attribute", []string{"code"}, "idx_attribute_code"},
+		{"partner_attribute_map", []string{"partner_code", "attribute_id"}, "idx_partner_attr_map"},
+		{"partner_attribute_map", []string{"attribute_code"}, "idx_partner_attr_code"},
+		{"partner_attribute_map", []string{"partner_code"}, "idx_partner_attr_partner"},
 	}
 
 	for _, idx := range indexes {
@@ -492,39 +528,12 @@ func (dm *DatabaseManager) seedLocationTypes() error {
 	return nil
 }
 
-// DropAllTables drops all tables in the correct order to handle foreign key constraints
-func (dm *DatabaseManager) DropAllTables() error {
-	dm.logger.Warn("Dropping all tables...")
-
-	// Drop tables in reverse dependency order
-	tables := []string{
-		"partner_location_coverage",
-		"location_alias",
-		"location_type",
-		"hub_specification",
-		"hub_location_coverage",
-		"hub",
-		"postal_code",
-		"area",
-		"city",
-		"district",
-		"region",
-		"region_type",
-		"country",
-	}
-
-	for _, table := range tables {
-		if err := dm.db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE").Error; err != nil {
-			dm.logger.Errorf("Failed to drop table %s: %v", table, err)
-			// Continue with other tables
-		} else {
-			dm.logger.Infof("Dropped table: %s", table)
-		}
-	}
-
-	dm.logger.Info("All tables dropped successfully")
-	return nil
-}
+// DropAllTables method has been removed for safety reasons
+// This method was previously used to drop all tables but caused accidental data loss
+// If you need to reset the database, do it manually through database admin tools
+// func (dm *DatabaseManager) DropAllTables() error {
+//     return fmt.Errorf("DropAllTables method has been disabled for safety - use database admin tools instead")
+// }
 
 // Helper function to create string pointers
 func stringPtr(s string) *string {

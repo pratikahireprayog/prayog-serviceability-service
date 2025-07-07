@@ -20,7 +20,6 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 
 	// Create validation middleware with properly configured validator
 	validationMiddleware := middleware.NewValidationMiddleware(validator, logger)
-	paramValidators := middleware.GetCommonParamValidators()
 
 	// Country routes
 	countries := router.Group("/countries")
@@ -29,19 +28,12 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 		countries.Post("/",
 			validationMiddleware.ValidateBody(&dtos.CreateCountryRequest{}),
 			handler.CreateCountry)
-		countries.Get("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
-			handler.GetCountryByID)
+		countries.Get("/:id", handler.GetCountryByID)
 		countries.Put("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
 			validationMiddleware.ValidateBody(&dtos.UpdateCountryRequest{}),
 			handler.UpdateCountry)
-		countries.Delete("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
-			handler.DeleteCountry)
-		countries.Get("/code/:code",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
-			handler.GetCountryByCode)
+		countries.Delete("/:id", handler.DeleteCountry)
+		countries.Get("/code/:code", handler.GetCountryByCode)
 	}
 
 	// Region Type routes
@@ -109,16 +101,11 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 		postalCodes.Post("/",
 			validationMiddleware.ValidateBody(&dtos.CreatePostalCodeRequest{}),
 			handler.CreatePostalCode)
-		postalCodes.Get("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
-			handler.GetPostalCodeByID)
+		postalCodes.Get("/:id", handler.GetPostalCodeByID)
 		postalCodes.Put("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
 			validationMiddleware.ValidateBody(&dtos.UpdatePostalCodeRequest{}),
 			handler.UpdatePostalCode)
-		postalCodes.Delete("/:id",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"id": paramValidators["id"]}),
-			handler.DeletePostalCode)
+		postalCodes.Delete("/:id", handler.DeletePostalCode)
 		postalCodes.Get("/location", handler.GetPostalCodesByLocation)
 	}
 
@@ -129,16 +116,11 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 		locationTypes.Post("/",
 			validationMiddleware.ValidateBody(&dtos.CreateLocationTypeRequest{}),
 			handler.CreateLocationType)
-		locationTypes.Get("/:code",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
-			handler.GetLocationTypeByCode)
+		locationTypes.Get("/:code", handler.GetLocationTypeByCode)
 		locationTypes.Put("/:code",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
 			validationMiddleware.ValidateBody(&dtos.UpdateLocationTypeRequest{}),
 			handler.UpdateLocationType)
-		locationTypes.Delete("/:code",
-			validationMiddleware.ValidateParams(map[string]func(string) error{"code": paramValidators["code"]}),
-			handler.DeleteLocationType)
+		locationTypes.Delete("/:code", handler.DeleteLocationType)
 	}
 
 	logger.Info("📍 Location routes registered successfully")

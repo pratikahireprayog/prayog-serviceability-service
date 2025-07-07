@@ -109,8 +109,8 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 			"Authorization",
 			"X-Request-ID",
 			"X-Requested-With",
-			"X-Tenant-ID", // Your API requires this
-			"tenantid",    // Your API requires this (lowercase variant)
+			"X-Tenant-ID", // COMMENTED FOR TESTING - Your API requires this
+			"tenantid",    // COMMENTED FOR TESTING - Your API requires this (lowercase variant)
 			"User-Agent",
 			"Referer",
 			"sec-ch-ua", // Chrome security headers
@@ -254,6 +254,48 @@ func (s *Server) setupRoutes() error {
 		routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
 	}
 
+	// Try to create partner attribute handler and register routes if database is available
+	partnerAttributeHandler, err := s.createPartnerAttributeHandler()
+	if err != nil {
+		s.logger.WithError(err).Warn("Partner attribute features are disabled")
+		// Create placeholder routes that return service unavailable
+		v1.All("/attribute-categories/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/attributes/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/partner-attribute-maps/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/partners/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register partner attribute routes under /serviceability/v1/
+		routes.RegisterPartnerAttributeRoutes(v1, partnerAttributeHandler, s.logger)
+	}
+
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
 	return nil
 }
@@ -349,6 +391,51 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	)
 
 	return locationHandler, nil
+}
+
+// createPartnerAttributeHandler creates a partner attribute handler with all dependencies
+func (s *Server) createPartnerAttributeHandler() (*handlers.PartnerAttributeHandler, error) {
+	// Check if database manager is available
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database manager is required for partner attribute handler")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection is not available")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Get repositories and create services
+	attributeCategoryRepo := repoFactory.GetAttributeCategoryRepository()
+	attributeRepo := repoFactory.GetAttributeRepository()
+	partnerAttributeMapRepo := repoFactory.GetPartnerAttributeMapRepository()
+
+	// Create services
+	attributeCategoryService := sharedServices.NewAttributeCategoryService(attributeCategoryRepo)
+	attributeService := sharedServices.NewAttributeService(attributeRepo)
+	partnerAttributeMapService := sharedServices.NewPartnerAttributeMapService(
+		partnerAttributeMapRepo,
+		attributeRepo,
+		attributeCategoryRepo,
+	)
+
+	// Create partner attribute handler with all services
+	partnerAttributeHandler := handlers.NewPartnerAttributeHandler(
+		attributeCategoryService,
+		attributeService,
+		partnerAttributeMapService,
+		validator,
+		s.logger,
+	)
+
+	return partnerAttributeHandler, nil
 }
 
 // createPartnerLocationCoverageHandler creates a partner location coverage handler with all dependencies
