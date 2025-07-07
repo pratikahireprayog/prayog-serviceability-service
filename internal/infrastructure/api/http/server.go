@@ -24,6 +24,10 @@ import (
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
 	"prayog-serviceability-service/internal/shared/utils/v1"
+
+	// Add imports for geo location routes and handlers
+	v1handlers "prayog-serviceability-service/api/handlers/v1"
+	v1routes "prayog-serviceability-service/api/routes/v1"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -254,6 +258,24 @@ func (s *Server) setupRoutes() error {
 		routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
 	}
 
+	// Try to create geo location handler and register routes if database is available
+	geoLocationHandler, err := s.createGeoLocationHandler()
+	if err != nil {
+		s.logger.WithError(err).Warn("Geo location features are disabled")
+		// Create a placeholder route that returns service unavailable
+		v1.All("/geo-locations/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Geo location features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register geo location routes under /serviceability/v1/
+		v1routes.RegisterGeoLocationRoutes(v1, geoLocationHandler)
+	}
+
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
 	return nil
 }
@@ -409,6 +431,36 @@ func (s *Server) createPartnerLocationCoverageHandler() (*handlers.PartnerLocati
 	)
 
 	return partnerLocationCoverageHandler, nil
+}
+
+// createGeoLocationHandler creates a geo location handler with all dependencies
+func (s *Server) createGeoLocationHandler() (*v1handlers.GeoLocationHandler, error) {
+	// Check if database manager is available
+	if s.dbManager == nil {
+		s.logger.Warn("Database manager is not available - geo location features will be disabled")
+		return nil, fmt.Errorf("geo location features require database connection - currently unavailable")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		s.logger.Warn("Database connection is not available - geo location features will be disabled")
+		return nil, fmt.Errorf("geo location features require database connection - currently unavailable")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Create geo location service from repository factory
+	geoLocationService := sharedServices.NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator)
+
+	// Create geo location handler
+	geoLocationHandler := v1handlers.NewGeoLocationHandler(geoLocationService)
+
+	return geoLocationHandler, nil
 }
 
 // customErrorHandler creates a custom error handler for Fiber
