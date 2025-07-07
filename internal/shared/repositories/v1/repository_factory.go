@@ -18,6 +18,7 @@ type RepositoryFactory struct {
 	locationTypeRepository            LocationTypeRepository
 	locationAliasRepository           LocationAliasRepository
 	partnerLocationCoverageRepository PartnerLocationCoverageRepository
+	geoLocationRepository             GeoLocationRepository
 	locationRepository                LocationRepository
 	locationSearchRepository          LocationSearchRepository
 }
@@ -40,6 +41,7 @@ func NewRepositoryFactory(db *gorm.DB) *RepositoryFactory {
 	factory.locationTypeRepository = NewLocationTypeRepository(db)
 	factory.locationAliasRepository = NewLocationAliasRepository(db)
 	factory.partnerLocationCoverageRepository = NewPartnerLocationCoverageRepository(db)
+	factory.geoLocationRepository = NewGeoLocationRepository(db)
 	factory.locationRepository = NewLocationRepository(factory)
 	factory.locationSearchRepository = NewLocationSearchRepository(db)
 
@@ -99,6 +101,11 @@ func (f *RepositoryFactory) GetLocationAliasRepository() LocationAliasRepository
 // GetPartnerLocationCoverageRepository returns the partner location coverage repository
 func (f *RepositoryFactory) GetPartnerLocationCoverageRepository() PartnerLocationCoverageRepository {
 	return f.partnerLocationCoverageRepository
+}
+
+// GetGeoLocationRepository returns the geo location repository
+func (f *RepositoryFactory) GetGeoLocationRepository() GeoLocationRepository {
+	return f.geoLocationRepository
 }
 
 // GetLocationRepository returns the unified location repository
