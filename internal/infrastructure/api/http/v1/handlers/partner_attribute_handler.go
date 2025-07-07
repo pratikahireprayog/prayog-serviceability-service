@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -28,14 +29,31 @@ func NewPartnerAttributeHandler(
 	partnerAttributeMapService services.PartnerAttributeMapService,
 	validator *validator.Validate,
 	logger *logrus.Logger,
-) *PartnerAttributeHandler {
+) (*PartnerAttributeHandler, error) {
+	// Validate all required dependencies are not nil
+	if attributeCategoryService == nil {
+		return nil, fmt.Errorf("attributeCategoryService cannot be nil")
+	}
+	if attributeService == nil {
+		return nil, fmt.Errorf("attributeService cannot be nil")
+	}
+	if partnerAttributeMapService == nil {
+		return nil, fmt.Errorf("partnerAttributeMapService cannot be nil")
+	}
+	if validator == nil {
+		return nil, fmt.Errorf("validator cannot be nil")
+	}
+	if logger == nil {
+		return nil, fmt.Errorf("logger cannot be nil")
+	}
+
 	return &PartnerAttributeHandler{
 		attributeCategoryService:   attributeCategoryService,
 		attributeService:           attributeService,
 		partnerAttributeMapService: partnerAttributeMapService,
 		validator:                  validator,
 		logger:                     logger,
-	}
+	}, nil
 }
 
 // Helper function to parse pagination parameters
@@ -43,8 +61,14 @@ func (h *PartnerAttributeHandler) parsePagination(c *fiber.Ctx) *dtos.Pagination
 	offsetStr := c.Query("offset", "0")
 	limitStr := c.Query("limit", "10")
 
-	offset, _ := strconv.Atoi(offsetStr)
-	limit, _ := strconv.Atoi(limitStr)
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		offset = 0
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = 10
+	}
 
 	// Validate and set defaults
 	if offset < 0 {
@@ -667,6 +691,29 @@ func (h *PartnerAttributeHandler) GetPartnerAttributeMapsByPartner(c *fiber.Ctx)
 	mappings, err := h.partnerAttributeMapService.GetByPartnerCode(c.Context(), partnerCode)
 	if err != nil {
 		return h.handleError(c, err, "GetPartnerAttributeMapsByPartner")
+	}
+
+	return c.JSON(mappings)
+}
+
+// GetPartnerAttributeMapsByPartnerID retrieves all mappings for a partner ID
+// GET /partners/id/{partner_id}/attributes
+func (h *PartnerAttributeHandler) GetPartnerAttributeMapsByPartnerID(c *fiber.Ctx) error {
+	partnerID := c.Params("partner_id")
+	if strings.TrimSpace(partnerID) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(dtos.StandardErrorResponse{
+			Success: false,
+			Message: "Invalid request",
+			Error: dtos.ErrorInfo{
+				Code:    "INVALID_REQUEST",
+				Message: "Partner ID is required",
+			},
+		})
+	}
+
+	mappings, err := h.partnerAttributeMapService.GetByPartnerID(c.Context(), partnerID)
+	if err != nil {
+		return h.handleError(c, err, "GetPartnerAttributeMapsByPartnerID")
 	}
 
 	return c.JSON(mappings)

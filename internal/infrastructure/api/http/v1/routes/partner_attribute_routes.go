@@ -144,6 +144,9 @@ func RegisterPartnerAttributeRoutes(router fiber.Router, handler *handlers.Partn
 		// GET /partners/{partner_code}/attributes - Get all attributes mapped to a partner
 		partners.Get("/:partner_code/attributes", handler.GetPartnerAttributeMapsByPartner)
 
+		// GET /partners/id/{partner_id}/attributes - Get all attributes mapped to a partner by ID
+		partners.Get("/id/:partner_id/attributes", handler.GetPartnerAttributeMapsByPartnerID)
+
 		// GET /partners/{partner_code}/attributes/details - Get detailed attributes for a partner
 		partners.Get("/:partner_code/attributes/details", handler.GetAttributesByPartner)
 

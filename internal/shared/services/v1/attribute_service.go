@@ -35,13 +35,14 @@ func AttributeToResponse(attribute *models.Attribute) *dtos.AttributeResponse {
 	}
 
 	response := &dtos.AttributeResponse{
-		ID:         attribute.ID,
-		CategoryID: attribute.CategoryID,
-		Code:       attribute.Code,
-		Name:       attribute.Name,
-		IsActive:   attribute.IsActive,
-		CreatedAt:  attribute.CreatedAt,
-		UpdatedAt:  attribute.UpdatedAt,
+		ID:            attribute.ID,
+		CategoryID:    attribute.CategoryID,
+		Code:          attribute.Code,
+		AttributeCode: attribute.AttributeCode,
+		Name:          attribute.Name,
+		IsActive:      attribute.IsActive,
+		CreatedAt:     attribute.CreatedAt,
+		UpdatedAt:     attribute.UpdatedAt,
 	}
 
 	// Convert category if loaded
@@ -298,10 +299,20 @@ func (s *attributeService) Create(ctx context.Context, req *dtos.CreateAttribute
 
 	// Create new attribute model
 	attribute := &models.Attribute{
-		CategoryID: req.CategoryID,
-		Code:       code,
-		Name:       strings.TrimSpace(req.Name),
-		IsActive:   true, // Default to active
+		CategoryID:    req.CategoryID,
+		Code:          code,
+		AttributeCode: code, // Default to same as code
+		Name:          strings.TrimSpace(req.Name),
+		IsActive:      true, // Default to active
+	}
+
+	// Override attributeCode if provided
+	if req.AttributeCode != nil && strings.TrimSpace(*req.AttributeCode) != "" {
+		attributeCode := strings.ToLower(strings.TrimSpace(*req.AttributeCode))
+		if !isValidAttributeSnakeCase(attributeCode) {
+			return nil, fmt.Errorf("attribute code must be in snake_case format")
+		}
+		attribute.AttributeCode = attributeCode
 	}
 
 	// Override isActive if provided
@@ -345,13 +356,14 @@ func (s *attributeService) Update(ctx context.Context, id string, req *dtos.Upda
 
 	// Create updated attribute from existing
 	updated := &models.Attribute{
-		ID:         existing.ID,
-		CategoryID: existing.CategoryID,
-		Code:       existing.Code,
-		Name:       existing.Name,
-		IsActive:   existing.IsActive,
-		CreatedAt:  existing.CreatedAt,
-		UpdatedAt:  existing.UpdatedAt,
+		ID:            existing.ID,
+		CategoryID:    existing.CategoryID,
+		Code:          existing.Code,
+		AttributeCode: existing.AttributeCode,
+		Name:          existing.Name,
+		IsActive:      existing.IsActive,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     existing.UpdatedAt,
 	}
 
 	// Apply updates
@@ -364,6 +376,13 @@ func (s *attributeService) Update(ctx context.Context, id string, req *dtos.Upda
 			return nil, fmt.Errorf("attribute code must be in snake_case format")
 		}
 		updated.Code = code
+	}
+	if req.AttributeCode != nil {
+		attributeCode := strings.ToLower(strings.TrimSpace(*req.AttributeCode))
+		if !isValidAttributeSnakeCase(attributeCode) {
+			return nil, fmt.Errorf("attribute code must be in snake_case format")
+		}
+		updated.AttributeCode = attributeCode
 	}
 	if req.Name != nil {
 		updated.Name = strings.TrimSpace(*req.Name)

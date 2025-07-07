@@ -427,13 +427,16 @@ func (s *Server) createPartnerAttributeHandler() (*handlers.PartnerAttributeHand
 	)
 
 	// Create partner attribute handler with all services
-	partnerAttributeHandler := handlers.NewPartnerAttributeHandler(
+	partnerAttributeHandler, err := handlers.NewPartnerAttributeHandler(
 		attributeCategoryService,
 		attributeService,
 		partnerAttributeMapService,
 		validator,
 		s.logger,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create partner attribute handler: %w", err)
+	}
 
 	return partnerAttributeHandler, nil
 }

@@ -122,6 +122,7 @@ func (r *attributeRepository) GetByCategoryIDWithDeleted(ctx context.Context, ca
 func (r *attributeRepository) GetByCategoryCode(ctx context.Context, categoryCode string) ([]models.Attribute, error) {
 	var attributes []models.Attribute
 	err := r.db.WithContext(ctx).
+		Table("attribute").
 		Joins("JOIN attribute_category ON attribute.category_id = attribute_category.id").
 		Where("attribute_category.code = ? AND attribute.is_active = ? AND attribute_category.is_active = ?", categoryCode, true, true).
 		Preload("Category").Order("attribute.created_at DESC").Find(&attributes).Error

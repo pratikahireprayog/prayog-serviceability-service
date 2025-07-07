@@ -80,15 +80,16 @@ func (ac *AttributeCategory) CanBeDeleted(db *gorm.DB) (bool, error) {
 
 // Attribute represents individual attributes that can be assigned (e.g., 'E-commerce', 'Express')
 type Attribute struct {
-	ID         uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
-	CategoryID uuid.UUID  `json:"category_id" gorm:"type:uuid;not null;index" validate:"required"`
-	Code       string     `json:"code" gorm:"not null;size:50;index" validate:"required,min=2,max=50"`
-	Name       string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
-	IsActive   bool       `json:"is_active" gorm:"default:true"`
-	CreatedAt  time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt  time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
-	DeletedAt  *time.Time `json:"deleted_at,omitempty" gorm:"index"`
-	IsDeleted  bool       `json:"is_deleted" gorm:"default:false;index"`
+	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	CategoryID    uuid.UUID  `json:"category_id" gorm:"type:uuid;not null;index" validate:"required"`
+	Code          string     `json:"code" gorm:"not null;size:50;index" validate:"required,min=2,max=50"`
+	AttributeCode string     `json:"attribute_code" gorm:"not null;size:50;index" validate:"required,min=2,max=50"`
+	Name          string     `json:"name" gorm:"not null;size:100" validate:"required,min=2,max=100"`
+	IsActive      bool       `json:"is_active" gorm:"default:true"`
+	CreatedAt     time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt     time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	IsDeleted     bool       `json:"is_deleted" gorm:"default:false;index"`
 
 	// Relationships
 	Category             *AttributeCategory    `json:"category,omitempty" gorm:"foreignKey:CategoryID;references:ID;constraint:OnDelete:CASCADE"`
@@ -181,9 +182,18 @@ func (a *Attribute) CanBeDeleted(db *gorm.DB) (bool, error) {
 	return count == 0, nil
 }
 
+// BeforeSave ensures attribute_code is populated from the code field
+func (a *Attribute) BeforeSave(tx *gorm.DB) error {
+	if a.AttributeCode == "" && a.Code != "" {
+		a.AttributeCode = a.Code
+	}
+	return nil
+}
+
 // PartnerAttributeMap represents the mapping between partners and attributes
 type PartnerAttributeMap struct {
 	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	PartnerID     *uuid.UUID `json:"partner_id,omitempty" gorm:"type:uuid;index"`
 	PartnerCode   string     `json:"partner_code" gorm:"not null;size:50;index" validate:"required,min=1,max=50"`
 	AttributeID   uuid.UUID  `json:"attribute_id" gorm:"type:uuid;not null;index" validate:"required"`
 	AttributeCode string     `json:"attribute_code" gorm:"not null;size:50;index" validate:"required,min=2,max=50"`

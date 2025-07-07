@@ -58,6 +58,40 @@ func (r *partnerAttributeMapRepository) GetByIDWithDeleted(ctx context.Context, 
 	return &mapping, nil
 }
 
+// GetByPartnerID retrieves all mappings for a partner ID (excludes soft-deleted records)
+func (r *partnerAttributeMapRepository) GetByPartnerID(ctx context.Context, partnerID string) ([]models.PartnerAttributeMap, error) {
+	var mappings []models.PartnerAttributeMap
+	partnerUUID, err := uuid.Parse(partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid partner ID format: %w", err)
+	}
+
+	err = r.db.WithContext(ctx).Where("partner_id = ? AND is_active = ?", partnerUUID, true).
+		Preload("Attribute").Preload("Attribute.Category").
+		Order("created_at DESC").Find(&mappings).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partner attribute mappings by partner ID: %w", err)
+	}
+	return mappings, nil
+}
+
+// GetByPartnerIDWithDeleted retrieves all mappings for a partner ID (includes soft-deleted records)
+func (r *partnerAttributeMapRepository) GetByPartnerIDWithDeleted(ctx context.Context, partnerID string) ([]models.PartnerAttributeMap, error) {
+	var mappings []models.PartnerAttributeMap
+	partnerUUID, err := uuid.Parse(partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid partner ID format: %w", err)
+	}
+
+	err = r.db.WithContext(ctx).Unscoped().Where("partner_id = ?", partnerUUID).
+		Preload("Attribute").Preload("Attribute.Category").
+		Order("created_at DESC").Find(&mappings).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partner attribute mappings by partner ID: %w", err)
+	}
+	return mappings, nil
+}
+
 // GetByPartnerCode retrieves all mappings for a partner (excludes soft-deleted records)
 func (r *partnerAttributeMapRepository) GetByPartnerCode(ctx context.Context, partnerCode string) ([]models.PartnerAttributeMap, error) {
 	var mappings []models.PartnerAttributeMap
@@ -247,6 +281,11 @@ func (r *partnerAttributeMapRepository) GetWithFilters(ctx context.Context, filt
 	countQuery := r.db.WithContext(ctx).Model(&models.PartnerAttributeMap{})
 
 	// Apply filters
+	if filters.PartnerID != nil {
+		query = query.Where("partner_id = ?", *filters.PartnerID)
+		countQuery = countQuery.Where("partner_id = ?", *filters.PartnerID)
+	}
+
 	if filters.PartnerCode != nil {
 		query = query.Where("partner_code = ?", *filters.PartnerCode)
 		countQuery = countQuery.Where("partner_code = ?", *filters.PartnerCode)

@@ -50,6 +50,8 @@ type AttributeRepository interface {
 type PartnerAttributeMapRepository interface {
 	GetByID(ctx context.Context, id string) (*models.PartnerAttributeMap, error)
 	GetByIDWithDeleted(ctx context.Context, id string) (*models.PartnerAttributeMap, error)
+	GetByPartnerID(ctx context.Context, partnerID string) ([]models.PartnerAttributeMap, error)
+	GetByPartnerIDWithDeleted(ctx context.Context, partnerID string) ([]models.PartnerAttributeMap, error)
 	GetByPartnerCode(ctx context.Context, partnerCode string) ([]models.PartnerAttributeMap, error)
 	GetByPartnerCodeWithDeleted(ctx context.Context, partnerCode string) ([]models.PartnerAttributeMap, error)
 	GetByAttributeID(ctx context.Context, attributeID string) ([]models.PartnerAttributeMap, error)
@@ -77,6 +79,7 @@ type PartnerAttributeMapRepository interface {
 
 // PartnerAttributeMapFilters represents filtering options for partner attribute mappings
 type PartnerAttributeMapFilters struct {
+	PartnerID     *uuid.UUID `json:"partner_id,omitempty"`
 	PartnerCode   *string    `json:"partner_code,omitempty"`
 	AttributeCode *string    `json:"attribute_code,omitempty"`
 	AttributeID   *uuid.UUID `json:"attribute_id,omitempty"`

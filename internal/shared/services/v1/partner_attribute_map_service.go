@@ -16,6 +16,7 @@ import (
 // PartnerAttributeMapService defines the business logic interface for partner attribute mapping operations
 type PartnerAttributeMapService interface {
 	GetByID(ctx context.Context, id string) (*dtos.PartnerAttributeMapResponse, error)
+	GetByPartnerID(ctx context.Context, partnerID string) (*dtos.PartnerAttributeMapListResponse, error)
 	GetByPartnerCode(ctx context.Context, partnerCode string) (*dtos.PartnerAttributeMapListResponse, error)
 	GetByAttributeCode(ctx context.Context, attributeCode string) (*dtos.PartnerAttributeMapListResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.PartnerAttributeMapListResponse, error)
@@ -41,6 +42,7 @@ func PartnerAttributeMapToResponse(mapping *models.PartnerAttributeMap) *dtos.Pa
 
 	response := &dtos.PartnerAttributeMapResponse{
 		ID:            mapping.ID,
+		PartnerID:     mapping.PartnerID,
 		PartnerCode:   mapping.PartnerCode,
 		AttributeID:   mapping.AttributeID,
 		AttributeCode: mapping.AttributeCode,
@@ -98,6 +100,44 @@ func (s *partnerAttributeMapService) GetByID(ctx context.Context, id string) (*d
 	}
 
 	return PartnerAttributeMapToResponse(mapping), nil
+}
+
+// GetByPartnerID retrieves all mappings for a partner ID
+func (s *partnerAttributeMapService) GetByPartnerID(ctx context.Context, partnerID string) (*dtos.PartnerAttributeMapListResponse, error) {
+	if strings.TrimSpace(partnerID) == "" {
+		return nil, fmt.Errorf("partner ID cannot be empty")
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(partnerID); err != nil {
+		return nil, fmt.Errorf("invalid partner ID format: %w", err)
+	}
+
+	mappings, err := s.repo.GetByPartnerID(ctx, partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partner attribute mappings by partner ID: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.PartnerAttributeMapResponse, len(mappings))
+	for i, mapping := range mappings {
+		if response := PartnerAttributeMapToResponse(&mapping); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.PartnerAttributeMapListResponse{
+		Success: true,
+		Message: "Partner attribute mappings retrieved successfully",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
 }
 
 // GetByPartnerCode retrieves all mappings for a partner code
@@ -292,6 +332,10 @@ func (s *partnerAttributeMapService) GetWithFilters(ctx context.Context, filters
 		Offset: offset,
 	}
 
+	if filters.PartnerID != nil {
+		repoFilters.PartnerID = filters.PartnerID
+	}
+
 	if filters.PartnerCode != nil && strings.TrimSpace(*filters.PartnerCode) != "" {
 		partnerCode := strings.TrimSpace(*filters.PartnerCode)
 		repoFilters.PartnerCode = &partnerCode
@@ -456,12 +500,16 @@ func (s *partnerAttributeMapService) Create(ctx context.Context, req *dtos.Creat
 
 	// Check if mapping already exists
 	existing, err := s.repo.GetByPartnerAndAttribute(ctx, partnerCode, req.AttributeID.String())
-	if err == nil && existing != nil {
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return nil, fmt.Errorf("failed to check existing mapping: %w", err)
+	}
+	if existing != nil {
 		return nil, fmt.Errorf("partner attribute mapping already exists for partner '%s' and attribute '%s'", partnerCode, attribute.Code)
 	}
 
 	// Create new mapping model
 	mapping := &models.PartnerAttributeMap{
+		PartnerID:     req.PartnerID,
 		PartnerCode:   partnerCode,
 		AttributeID:   req.AttributeID,
 		AttributeCode: attribute.Code,
@@ -510,6 +558,7 @@ func (s *partnerAttributeMapService) Update(ctx context.Context, id string, req 
 	// Create updated mapping from existing
 	updated := &models.PartnerAttributeMap{
 		ID:            existing.ID,
+		PartnerID:     existing.PartnerID,
 		PartnerCode:   existing.PartnerCode,
 		AttributeID:   existing.AttributeID,
 		AttributeCode: existing.AttributeCode,
@@ -519,6 +568,10 @@ func (s *partnerAttributeMapService) Update(ctx context.Context, id string, req 
 	}
 
 	// Apply updates
+	if req.PartnerID != nil {
+		updated.PartnerID = req.PartnerID
+	}
+
 	if req.PartnerCode != nil {
 		partnerCode := strings.TrimSpace(*req.PartnerCode)
 		if partnerCode == "" {
