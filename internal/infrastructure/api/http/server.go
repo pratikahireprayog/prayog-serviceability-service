@@ -14,8 +14,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/sirupsen/logrus"
 
-	"prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
-	"prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
+	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
+	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
 	servicesv1 "prayog-serviceability-service/internal/services/v1"
@@ -33,6 +33,7 @@ type Server struct {
 	dbManager          *db.DatabaseManager
 	integrationFactory *services.IntegrationFactory
 	orchestrator       interfaces.ServiceabilityOrchestrator
+	v2Orchestrator     services.ServiceabilityV2Orchestrator
 	logger             *logrus.Logger
 }
 
@@ -42,6 +43,7 @@ type ServerDependencies struct {
 	DBManager          *db.DatabaseManager
 	IntegrationFactory *services.IntegrationFactory
 	Orchestrator       interfaces.ServiceabilityOrchestrator
+	V2Orchestrator     services.ServiceabilityV2Orchestrator
 	Logger             *logrus.Logger
 }
 
@@ -82,6 +84,7 @@ func NewServer(deps *ServerDependencies) (*Server, error) {
 		dbManager:          deps.DBManager,
 		integrationFactory: deps.IntegrationFactory,
 		orchestrator:       deps.Orchestrator,
+		v2Orchestrator:     deps.V2Orchestrator,
 		logger:             deps.Logger,
 	}
 
@@ -187,6 +190,71 @@ func (s *Server) setupRoutes() error {
 
 	// Register serviceability routes directly under /serviceability/v1/
 	routes.RegisterServiceabilityRoutes(v1, serviceabilityHandler, s.logger)
+
+	// Create API v2 group under serviceability
+	v2 := serviceabilityGroup.Group("/v2")
+
+	// Create V2 serviceability handler if v2Orchestrator is available
+	if s.v2Orchestrator != nil {
+		v2ServiceabilityHandler, err := s.createServiceabilityV2Handler()
+		if err != nil {
+			s.logger.WithError(err).Warn("V2 serviceability features are disabled")
+			// Create placeholder routes that return service unavailable
+			v2.All("/*", func(c *fiber.Ctx) error {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+					"error": fiber.Map{
+						"code":    "SERVICE_UNAVAILABLE",
+						"message": "V2 serviceability features are temporarily unavailable",
+					},
+				})
+			})
+		} else {
+			// Register V2 serviceability routes under /serviceability/v2/
+			routes.RegisterServiceabilityV2Routes(v2, v2ServiceabilityHandler)
+		}
+
+		// Add a status route for the V2 serviceability service
+		v2.Get("/status", func(c *fiber.Ctx) error {
+			status := fiber.Map{
+				"service": "serviceability-v2",
+				"version": "2.0.0",
+				"status":  "available",
+				"message": "Serviceability V2 API is ready",
+			}
+
+			// Add partner adapter status information
+			if s.v2Orchestrator != nil {
+				status["partner_adapters"] = "available"
+				status["features"] = fiber.Map{
+					"multi_partner_orchestration": "available",
+					"concurrent_partner_calls":    "available",
+					"partner_filtering":           "available",
+					"attribute_based_selection":   "available",
+				}
+			} else {
+				status["partner_adapters"] = "unavailable"
+				status["features"] = fiber.Map{
+					"multi_partner_orchestration": "unavailable",
+					"concurrent_partner_calls":    "unavailable",
+					"partner_filtering":           "unavailable",
+					"attribute_based_selection":   "unavailable",
+				}
+			}
+
+			return c.JSON(status)
+		})
+	} else {
+		s.logger.Warn("V2 orchestrator is not available - V2 serviceability features will be disabled")
+		// Create placeholder routes that return service unavailable
+		v2.All("/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "V2 serviceability features are not enabled",
+				},
+			})
+		})
+	}
 
 	// Add a status route for the serviceability service
 	v1.Get("/status", func(c *fiber.Ctx) error {
@@ -357,6 +425,27 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 	)
 
 	return serviceabilityHandler, nil
+}
+
+// createServiceabilityV2Handler creates a V2 serviceability handler with all dependencies
+func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Handler, error) {
+	// Check if V2 orchestrator is available
+	if s.v2Orchestrator == nil {
+		return nil, fmt.Errorf("V2 orchestrator is required")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create V2 serviceability handler
+	v2ServiceabilityHandler := handlers.NewServiceabilityV2Handler(
+		s.v2Orchestrator,
+		validator,
+		s.logger,
+	)
+
+	return v2ServiceabilityHandler, nil
 }
 
 // createLocationHandler creates a location handler with all dependencies

@@ -2,19 +2,23 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
+	"prayog-serviceability-service/internal/shared/repositories/v1"
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
 )
@@ -49,9 +53,16 @@ func main() {
 		logger.WithError(err).Fatal("Failed to initialize orchestrator")
 	}
 
+	// Initialize V2 orchestrator
+	v2Orchestrator, err := initV2Orchestrator(appConfig, dbManager, integrationFactory, logger)
+	if err != nil {
+		logger.WithError(err).Warn("⚠️ Failed to initialize V2 orchestrator - V2 features will be disabled")
+		v2Orchestrator = nil
+	}
+
 	// Create HTTP server with all dependencies
 	// NOTE: Only HTTP server is initialized - gRPC server setup is commented out
-	server, err := initHTTPServer(appConfig, dbManager, integrationFactory, orchestrator, logger)
+	server, err := initHTTPServer(appConfig, dbManager, integrationFactory, orchestrator, v2Orchestrator, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize HTTP server")
 	}
@@ -192,12 +203,77 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 	return orchestrator, nil
 }
 
+// initV2Orchestrator initializes the V2 serviceability orchestrator with partner adapters
+func initV2Orchestrator(
+	appConfig *config.AppConfig,
+	dbManager *db.DatabaseManager,
+	integrationFactory *services.IntegrationFactory,
+	logger *logrus.Logger,
+) (services.ServiceabilityV2Orchestrator, error) {
+	logger.Info("⚙️ Initializing V2 serviceability orchestrator with partner adapters...")
+
+	// Create a proper config manager for integration config
+	configManager, err := config.NewConfigManager()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config manager for V2 orchestrator: %w", err)
+	}
+
+	// Create HTTP client for partner adapters
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Get database connections
+	var gormDB *gorm.DB
+	var sqlDB *sql.DB
+	if dbManager != nil {
+		gormDB = dbManager.GetDB()
+		if gormDB != nil {
+			// Get underlying *sql.DB from GORM
+			var err error
+			sqlDB, err = gormDB.DB()
+			if err != nil {
+				logger.WithError(err).Warn("⚠️ Failed to get underlying SQL DB from GORM")
+				sqlDB = nil
+			}
+		}
+	}
+
+	// Create partner adapter factory
+	partnerAdapterFactory := services.NewPartnerAdapterFactory(
+		configManager.Integration.PartnerAdapters,
+		httpClient,
+		sqlDB,
+	)
+
+	// Get partner attribute mapping repository for filtering
+	var partnerAttributeRepo repositories.PartnerAttributeMapRepository
+	if gormDB != nil {
+		// Create repository factory to get partner attribute mapping repo
+		repoFactory := repositories.NewRepositoryFactory(gormDB)
+		partnerAttributeRepo = repoFactory.GetPartnerAttributeMapRepository()
+	} else {
+		// For now, we'll pass nil and the orchestrator should handle it gracefully
+		partnerAttributeRepo = nil
+	}
+
+	// Create V2 orchestrator
+	v2Orchestrator := services.NewServiceabilityV2Orchestrator(
+		partnerAdapterFactory,
+		partnerAttributeRepo,
+	)
+
+	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")
+	return v2Orchestrator, nil
+}
+
 // initHTTPServer initializes the HTTP server with dependency injection
 func initHTTPServer(
 	appConfig *config.AppConfig,
 	dbManager *db.DatabaseManager,
 	integrationFactory *services.IntegrationFactory,
 	orchestrator interfaces.ServiceabilityOrchestrator,
+	v2Orchestrator services.ServiceabilityV2Orchestrator,
 	logger *logrus.Logger,
 ) (*httpServer.Server, error) {
 	logger.Info("🌐 Initializing HTTP server...")
@@ -219,6 +295,7 @@ func initHTTPServer(
 		DBManager:          dbManager,
 		IntegrationFactory: integrationFactory,
 		Orchestrator:       orchestrator,
+		V2Orchestrator:     v2Orchestrator,
 		Logger:             logger,
 	}
 

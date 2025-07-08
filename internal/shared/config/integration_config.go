@@ -10,8 +10,51 @@ import (
 
 // IntegrationConfig holds configuration for all service integrations
 type IntegrationConfig struct {
-	Partner       PartnerServiceConfig       `yaml:"partner" json:"partner"`
-	Specification SpecificationServiceConfig `yaml:"specification" json:"specification"`
+	Partner         PartnerServiceConfig       `yaml:"partner" json:"partner"`
+	Specification   SpecificationServiceConfig `yaml:"specification" json:"specification"`
+	PartnerAdapters PartnerAdaptersConfig      `yaml:"partner_adapters" json:"partner_adapters"`
+}
+
+// PartnerAdaptersConfig holds configuration for all partner adapters
+type PartnerAdaptersConfig struct {
+	Shipyaari    ShipyaariConfig    `yaml:"shipyaari" json:"shipyaari"`
+	SmileCourier SmileCourierConfig `yaml:"smile_courier" json:"smile_courier"`
+	SmileEcom    SmileEcomConfig    `yaml:"smile_ecom" json:"smile_ecom"`
+}
+
+// ShipyaariConfig configuration for Shipyaari partner adapter
+type ShipyaariConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	Email             string        `yaml:"email" json:"email"`
+	Password          string        `yaml:"password" json:"password"`
+	TokenURL          string        `yaml:"token_url" json:"token_url"`
+	CheckServiceURL   string        `yaml:"check_service_url" json:"check_service_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	TokenExpiryBuffer time.Duration `yaml:"token_expiry_buffer" json:"token_expiry_buffer"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
+}
+
+// SmileCourierConfig configuration for Smile Courier partner adapter
+type SmileCourierConfig struct {
+	BaseURL         string        `yaml:"base_url" json:"base_url"`
+	CheckServiceURL string        `yaml:"check_service_url" json:"check_service_url"`
+	Timeout         time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries      int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay      time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Rating          float64       `yaml:"rating" json:"rating"`
+}
+
+// SmileEcomConfig configuration for Smile Ecom partner adapter (database-based)
+type SmileEcomConfig struct {
+	TableName    string        `yaml:"table_name" json:"table_name"`
+	Enabled      bool          `yaml:"enabled" json:"enabled"`
+	Rating       float64       `yaml:"rating" json:"rating"`
+	CacheEnabled bool          `yaml:"cache_enabled" json:"cache_enabled"`
+	CacheTTL     time.Duration `yaml:"cache_ttl" json:"cache_ttl"`
 }
 
 // PartnerServiceConfig holds configuration for Partner Service integration
@@ -165,9 +208,43 @@ func LoadIntegrationConfig() IntegrationConfig {
 		},
 	}
 
+	// Partner Adapters Configuration
+	partnerAdaptersConfig := PartnerAdaptersConfig{
+		Shipyaari: ShipyaariConfig{
+			BaseURL:           getEnvOrDefault("SHIPYAARI_BASE_URL", "https://api-seller.shipyaari.com"),
+			Email:             getEnvOrDefault("SHIPYAARI_EMAIL", ""),
+			Password:          getEnvOrDefault("SHIPYAARI_PASSWORD", ""),
+			TokenURL:          "/api/v1/oauth",
+			CheckServiceURL:   "/api/v1/external/courier/serviceabilityNew",
+			Timeout:           getEnvAsDurationOrDefault("SHIPYAARI_TIMEOUT", 30*time.Second),
+			TokenExpiryBuffer: getEnvAsDurationOrDefault("SHIPYAARI_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
+			MaxRetries:        getEnvAsIntOrDefault("SHIPYAARI_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("SHIPYAARI_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("SHIPYAARI_ENABLED", true),
+			Rating:            4.5,
+		},
+		SmileCourier: SmileCourierConfig{
+			BaseURL:         getEnvOrDefault("SMILE_COURIER_BASE_URL", "https://apis.delcaper.com"),
+			CheckServiceURL: "/api/v1/serviceability/check",
+			Timeout:         getEnvAsDurationOrDefault("SMILE_COURIER_TIMEOUT", 30*time.Second),
+			MaxRetries:      getEnvAsIntOrDefault("SMILE_COURIER_MAX_RETRIES", 3),
+			RetryDelay:      getEnvAsDurationOrDefault("SMILE_COURIER_RETRY_DELAY", 1*time.Second),
+			Enabled:         getEnvAsBoolOrDefault("SMILE_COURIER_ENABLED", true),
+			Rating:          4.2,
+		},
+		SmileEcom: SmileEcomConfig{
+			TableName:    getEnvOrDefault("SMILE_ECOM_TABLE_NAME", "smile_ecom_serviceability"),
+			Enabled:      getEnvAsBoolOrDefault("SMILE_ECOM_ENABLED", false), // Disabled until implemented
+			Rating:       4.0,
+			CacheEnabled: getEnvAsBoolOrDefault("SMILE_ECOM_CACHE_ENABLED", true),
+			CacheTTL:     getEnvAsDurationOrDefault("SMILE_ECOM_CACHE_TTL", 15*time.Minute),
+		},
+	}
+
 	return IntegrationConfig{
-		Partner:       partnerConfig,
-		Specification: specConfig,
+		Partner:         partnerConfig,
+		Specification:   specConfig,
+		PartnerAdapters: partnerAdaptersConfig,
 	}
 }
 
