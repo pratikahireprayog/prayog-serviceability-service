@@ -19,6 +19,7 @@ import (
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
 	servicesv1 "prayog-serviceability-service/internal/services/v1"
+	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
@@ -33,7 +34,7 @@ type Server struct {
 	dbManager          *db.DatabaseManager
 	integrationFactory *services.IntegrationFactory
 	orchestrator       interfaces.ServiceabilityOrchestrator
-	v2Orchestrator     services.ServiceabilityV2Orchestrator
+	v2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	logger             *logrus.Logger
 }
 
@@ -43,7 +44,7 @@ type ServerDependencies struct {
 	DBManager          *db.DatabaseManager
 	IntegrationFactory *services.IntegrationFactory
 	Orchestrator       interfaces.ServiceabilityOrchestrator
-	V2Orchestrator     services.ServiceabilityV2Orchestrator
+	V2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	Logger             *logrus.Logger
 }
 

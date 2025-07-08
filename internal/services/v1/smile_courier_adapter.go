@@ -150,15 +150,20 @@ func (s *smileCourierAdapter) GetAdapterType() interfaces.AdapterType {
 
 // buildSmileCourierRequest converts V2 request to Smile Courier format
 func (s *smileCourierAdapter) buildSmileCourierRequest(req *models.ServiceabilityV2Request) SmileCourierServiceabilityRequest {
-	smileReq := SmileCourierServiceabilityRequest{
-		CountryCode: req.CountryCode,
+	smileReq := SmileCourierServiceabilityRequest{}
+
+	// Set country code with default if not provided
+	if req.CountryCode != nil {
+		smileReq.CountryCode = *req.CountryCode
+	} else {
+		smileReq.CountryCode = "IN" // default to India
 	}
 
-	if req.PickupPostalCode != nil {
-		smileReq.FromPincode = *req.PickupPostalCode
+	if req.SourcePostalCode != nil {
+		smileReq.FromPincode = *req.SourcePostalCode
 	}
-	if req.DeliveryPostalCode != nil {
-		smileReq.ToPincode = *req.DeliveryPostalCode
+	if req.DestinationPostalCode != nil {
+		smileReq.ToPincode = *req.DestinationPostalCode
 	}
 
 	// Single postal code check - use as destination

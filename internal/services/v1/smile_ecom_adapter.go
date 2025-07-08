@@ -124,7 +124,7 @@ func (s *smileEcomAdapter) shouldReturnPlaceholderService(req *models.Serviceabi
 	// TODO: Remove this when implementing actual database logic
 
 	// Return placeholder service for Indian postal codes only
-	if req.CountryCode != "IN" {
+	if req.CountryCode == nil || *req.CountryCode != "IN" {
 		return false
 	}
 
@@ -133,7 +133,7 @@ func (s *smileEcomAdapter) shouldReturnPlaceholderService(req *models.Serviceabi
 		return true
 	}
 
-	if req.DeliveryPostalCode != nil && len(*req.DeliveryPostalCode) >= 6 {
+	if req.DestinationPostalCode != nil && len(*req.DestinationPostalCode) >= 6 {
 		return true
 	}
 
@@ -188,14 +188,19 @@ func (s *smileEcomAdapter) buildCacheKey(req *models.ServiceabilityV2Request) st
 	// TODO: Implement cache key generation
 	// Example: "smile_ecom:serviceability:IN:110001:400001"
 
-	key := fmt.Sprintf("smile_ecom:serviceability:%s", req.CountryCode)
-
-	if req.PickupPostalCode != nil {
-		key += ":" + *req.PickupPostalCode
+	countryCode := "IN" // default
+	if req.CountryCode != nil {
+		countryCode = *req.CountryCode
 	}
 
-	if req.DeliveryPostalCode != nil {
-		key += ":" + *req.DeliveryPostalCode
+	key := fmt.Sprintf("smile_ecom:serviceability:%s", countryCode)
+
+	if req.SourcePostalCode != nil {
+		key += ":" + *req.SourcePostalCode
+	}
+
+	if req.DestinationPostalCode != nil {
+		key += ":" + *req.DestinationPostalCode
 	} else if req.PostalCode != nil {
 		key += ":" + *req.PostalCode
 	}

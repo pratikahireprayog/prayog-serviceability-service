@@ -16,6 +16,8 @@ import (
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/services/v1"
+	"prayog-serviceability-service/internal/services/v2/orchestrators"
+	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -209,7 +211,7 @@ func initV2Orchestrator(
 	dbManager *db.DatabaseManager,
 	integrationFactory *services.IntegrationFactory,
 	logger *logrus.Logger,
-) (services.ServiceabilityV2Orchestrator, error) {
+) (orchestrators.ServiceabilityOrchestrator, error) {
 	logger.Info("⚙️ Initializing V2 serviceability orchestrator with partner adapters...")
 
 	// Create a proper config manager for integration config
@@ -239,8 +241,8 @@ func initV2Orchestrator(
 		}
 	}
 
-	// Create partner adapter factory
-	partnerAdapterFactory := services.NewPartnerAdapterFactory(
+	// Create partner adapter factory using v2 factory
+	partnerAdapterFactory := factory.NewPartnerAdapterFactory(
 		configManager.Integration.PartnerAdapters,
 		httpClient,
 		sqlDB,
@@ -257,8 +259,8 @@ func initV2Orchestrator(
 		partnerAttributeRepo = nil
 	}
 
-	// Create V2 orchestrator
-	v2Orchestrator := services.NewServiceabilityV2Orchestrator(
+	// Create V2 orchestrator using v2 orchestrator
+	v2Orchestrator := orchestrators.NewServiceabilityOrchestrator(
 		partnerAdapterFactory,
 		partnerAttributeRepo,
 	)
@@ -273,7 +275,7 @@ func initHTTPServer(
 	dbManager *db.DatabaseManager,
 	integrationFactory *services.IntegrationFactory,
 	orchestrator interfaces.ServiceabilityOrchestrator,
-	v2Orchestrator services.ServiceabilityV2Orchestrator,
+	v2Orchestrator orchestrators.ServiceabilityOrchestrator,
 	logger *logrus.Logger,
 ) (*httpServer.Server, error) {
 	logger.Info("🌐 Initializing HTTP server...")
@@ -289,17 +291,15 @@ func initHTTPServer(
 		}
 	}
 
-	// Create server dependencies
-	deps := &httpServer.ServerDependencies{
+	// Create server with all dependencies
+	server, err := httpServer.NewServer(&httpServer.ServerDependencies{
 		Config:             configManager,
 		DBManager:          dbManager,
 		IntegrationFactory: integrationFactory,
 		Orchestrator:       orchestrator,
 		V2Orchestrator:     v2Orchestrator,
 		Logger:             logger,
-	}
-
-	server, err := httpServer.NewServer(deps)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}

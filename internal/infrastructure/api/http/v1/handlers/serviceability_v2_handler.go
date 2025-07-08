@@ -5,13 +5,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
-	"prayog-serviceability-service/internal/services/v1"
+	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
 )
 
 // ServiceabilityV2Handler handles V2 serviceability check requests
 type ServiceabilityV2Handler struct {
-	v2Orchestrator services.ServiceabilityV2Orchestrator
+	v2Orchestrator orchestrators.ServiceabilityOrchestrator
 	validator      *validator.Validate
 	logger         *logrus.Logger
 	errorHandler   *ErrorHandler
@@ -19,7 +19,7 @@ type ServiceabilityV2Handler struct {
 
 // NewServiceabilityV2Handler creates a new V2 serviceability handler
 func NewServiceabilityV2Handler(
-	v2Orchestrator services.ServiceabilityV2Orchestrator,
+	v2Orchestrator orchestrators.ServiceabilityOrchestrator,
 	validator *validator.Validate,
 	logger *logrus.Logger,
 ) *ServiceabilityV2Handler {
@@ -132,9 +132,9 @@ func (h *ServiceabilityV2Handler) GetHealthV2(c *fiber.Ctx) error {
 			TotalPartners:    1,
 			ServiceableCount: 1,
 			Filters: modelsv1.V2Filters{
-				CountryCode: "IN",
+				CountryCode: func() *string { s := "IN"; return &s }(),
 			},
-			EligiblePartners: []string{"system"},
+			// Remove EligiblePartners field - not needed
 		},
 	}
 
@@ -143,21 +143,21 @@ func (h *ServiceabilityV2Handler) GetHealthV2(c *fiber.Ctx) error {
 
 // validateV2Request validates V2 serviceability request data
 func (h *ServiceabilityV2Handler) validateV2Request(request *modelsv1.ServiceabilityV2Request) error {
-	// Validate pickup postal code format if provided
-	if request.PickupPostalCode != nil && *request.PickupPostalCode != "" {
+	// Validate source postal code format if provided
+	if request.SourcePostalCode != nil && *request.SourcePostalCode != "" {
 		// Basic validation - just check if it's not empty
 		// TODO: Add proper postal code format validation
 	}
 
-	// Validate delivery postal code format if provided
-	if request.DeliveryPostalCode != nil && *request.DeliveryPostalCode != "" {
+	// Validate destination postal code format if provided
+	if request.DestinationPostalCode != nil && *request.DestinationPostalCode != "" {
 		// Basic validation - just check if it's not empty
 		// TODO: Add proper postal code format validation
 	}
 
-	// Validate country code
-	if request.CountryCode == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "Country code is required")
+	// Validate country code if provided
+	if request.CountryCode != nil && len(*request.CountryCode) != 2 {
+		return fiber.NewError(fiber.StatusBadRequest, "Country code must be 2 characters")
 	}
 
 	// Validate parcel category if provided

@@ -142,15 +142,20 @@ func (s *shipyaariAdapter) GetAdapterType() interfaces.AdapterType {
 
 // buildShipyaariRequest converts V2 request to Shipyaari format
 func (s *shipyaariAdapter) buildShipyaariRequest(req *models.ServiceabilityV2Request) ShipyaariServiceabilityRequest {
-	shipyaariReq := ShipyaariServiceabilityRequest{
-		CountryCode: req.CountryCode,
+	shipyaariReq := ShipyaariServiceabilityRequest{}
+
+	// Set country code with default if not provided
+	if req.CountryCode != nil {
+		shipyaariReq.CountryCode = *req.CountryCode
+	} else {
+		shipyaariReq.CountryCode = "IN" // default to India
 	}
 
-	if req.PickupPostalCode != nil {
-		shipyaariReq.PickupPincode = *req.PickupPostalCode
+	if req.SourcePostalCode != nil {
+		shipyaariReq.PickupPincode = *req.SourcePostalCode
 	}
-	if req.DeliveryPostalCode != nil {
-		shipyaariReq.DeliveryPincode = *req.DeliveryPostalCode
+	if req.DestinationPostalCode != nil {
+		shipyaariReq.DeliveryPincode = *req.DestinationPostalCode
 	}
 
 	// Single postal code check
