@@ -77,10 +77,10 @@ type GeoLocationResponse struct {
 
 // GeoLocationFilters represents basic filters for geo location queries
 type GeoLocationFilters struct {
-	CountryCode *string `json:"country_code,omitempty" query:"country_code"`
-	PostalCode  *string `json:"postal_code,omitempty" query:"postal_code"`
-	Name        *string `json:"name,omitempty" query:"name"`
-	FeatureCode *string `json:"feature_code,omitempty" query:"feature_code"`
+	CountryCode *string  `json:"country_code,omitempty" query:"country_code"`
+	PostalCodes []string `json:"postal_codes,omitempty" query:"postal_code"`
+	Name        *string  `json:"name,omitempty" query:"name"`
+	FeatureCode *string  `json:"feature_code,omitempty" query:"feature_code"`
 }
 
 // GeoLocationListResponse represents list of geo locations with pagination
