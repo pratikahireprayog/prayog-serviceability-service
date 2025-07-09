@@ -63,19 +63,20 @@ type SmileEcomConfig struct {
 
 // DHLConfig configuration for DHL partner adapter (international shipping)
 type DHLConfig struct {
-	BaseURL     string        `yaml:"base_url" json:"base_url"`
-	Username    string        `yaml:"username" json:"username"`
-	Password    string        `yaml:"password" json:"password"`
-	APIKey      string        `yaml:"api_key" json:"api_key"`
-	AuthURL     string        `yaml:"auth_url" json:"auth_url"`
-	ServiceURL  string        `yaml:"service_url" json:"service_url"`
-	TrackingURL string        `yaml:"tracking_url" json:"tracking_url"`
-	Timeout     time.Duration `yaml:"timeout" json:"timeout"`
-	MaxRetries  int           `yaml:"max_retries" json:"max_retries"`
-	RetryDelay  time.Duration `yaml:"retry_delay" json:"retry_delay"`
-	Enabled     bool          `yaml:"enabled" json:"enabled"`
-	Rating      float64       `yaml:"rating" json:"rating"`
-	SandboxMode bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
+	BaseURL       string        `yaml:"base_url" json:"base_url"`
+	Username      string        `yaml:"username" json:"username"`
+	Password      string        `yaml:"password" json:"password"`
+	APIKey        string        `yaml:"api_key" json:"api_key"`
+	AccountNumber string        `yaml:"account_number" json:"account_number"`
+	AuthURL       string        `yaml:"auth_url" json:"auth_url"`
+	ServiceURL    string        `yaml:"service_url" json:"service_url"`
+	TrackingURL   string        `yaml:"tracking_url" json:"tracking_url"`
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay    time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	Rating        float64       `yaml:"rating" json:"rating"`
+	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
 }
 
 // SmileCargoConfig configuration for Smile Cargo partner adapter (cargo/freight)
@@ -278,19 +279,20 @@ func LoadIntegrationConfig() IntegrationConfig {
 			CacheTTL:     getEnvAsDurationOrDefault("SMILE_ECOM_CACHE_TTL", 15*time.Minute),
 		},
 		DHL: DHLConfig{
-			BaseURL:     getEnvOrDefault("DHL_BASE_URL", "https://api.dhl.com"),
-			Username:    getEnvOrDefault("DHL_USERNAME", ""),
-			Password:    getEnvOrDefault("DHL_PASSWORD", ""),
-			APIKey:      getEnvOrDefault("DHL_API_KEY", ""),
-			AuthURL:     getEnvOrDefault("DHL_AUTH_URL", "/v1/auth/login"),
-			ServiceURL:  getEnvOrDefault("DHL_SERVICE_URL", "/v1/serviceability"),
-			TrackingURL: getEnvOrDefault("DHL_TRACKING_URL", "/v1/tracking"),
-			Timeout:     getEnvAsDurationOrDefault("DHL_TIMEOUT", 30*time.Second),
-			MaxRetries:  getEnvAsIntOrDefault("DHL_MAX_RETRIES", 3),
-			RetryDelay:  getEnvAsDurationOrDefault("DHL_RETRY_DELAY", 2*time.Second),
-			Enabled:     getEnvAsBoolOrDefault("DHL_ENABLED", true), // Disabled by default
-			Rating:      4.7,
-			SandboxMode: getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
+			BaseURL:       getEnvOrDefault("DHL_BASE_URL", "https://api.dhl.com"),
+			Username:      getEnvOrDefault("DHL_USERNAME", ""),
+			Password:      getEnvOrDefault("DHL_PASSWORD", ""),
+			APIKey:        getEnvOrDefault("DHL_API_KEY", ""),
+			AccountNumber: getEnvOrDefault("DHL_ACCOUNT_NUMBER", ""),
+			AuthURL:       getEnvOrDefault("DHL_AUTH_URL", "/v1/auth/login"),
+			ServiceURL:    getEnvOrDefault("DHL_SERVICE_URL", "/v1/serviceability"),
+			TrackingURL:   getEnvOrDefault("DHL_TRACKING_URL", "/v1/tracking"),
+			Timeout:       getEnvAsDurationOrDefault("DHL_TIMEOUT", 30*time.Second),
+			MaxRetries:    getEnvAsIntOrDefault("DHL_MAX_RETRIES", 3),
+			RetryDelay:    getEnvAsDurationOrDefault("DHL_RETRY_DELAY", 2*time.Second),
+			Enabled:       getEnvAsBoolOrDefault("DHL_ENABLED", true), // Disabled by default
+			Rating:        4.7,
+			SandboxMode:   getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
 		},
 		SmileCargo: SmileCargoConfig{
 			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),

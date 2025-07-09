@@ -48,16 +48,13 @@ func (a *Adapter) IsEnabled() bool {
 
 // SupportsRequest checks if Smile Cargo supports the given request
 func (a *Adapter) SupportsRequest(ctx context.Context, request *models.ServiceabilityV2Request) bool {
-	// Smile Cargo handles cargo/freight shipments
-	if !a.IsCargoRequest(request) {
-		return false
-	}
-
 	// Check if we have required postal codes
 	if !a.hasValidPincodes(request) {
 		return false
 	}
 
+	// Partner attribute mapping in database determines supported parcel categories
+	// No hardcoded category filtering needed here
 	return true
 }
 
@@ -65,6 +62,7 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
 	if !a.SupportsRequest(ctx, request) {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			ResponseTime:  0,
@@ -81,6 +79,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	response, err := a.client.CheckServiceAvailability(ctx, smileCargoRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -118,6 +117,7 @@ func (a *Adapter) convertToServiceAvailabilityRequest(request *models.Serviceabi
 // convertServiceAvailabilityResponse converts Smile Cargo response to common format
 func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
+		PartnerCode:  a.GetPartnerCode(),
 		Services:     make([]models.ServiceV2, 0),
 		Capabilities: make(map[string]interface{}),
 		Metadata:     make(map[string]interface{}),
@@ -206,6 +206,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 }
 
 // IsCargoRequest determines if this is a cargo/freight request
+// TODO: This method is deprecated - parcel categories should be determined by partner attribute mapping
 func (a *Adapter) IsCargoRequest(request *models.ServiceabilityV2Request) bool {
 	if request.ParcelCategory == nil {
 		return false

@@ -3,10 +3,12 @@ package dhl
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"prayog-serviceability-service/internal/shared/config"
@@ -21,62 +23,16 @@ type DHLClient struct {
 
 // DHLAuthenticator interface for DHL authentication
 type DHLAuthenticator interface {
-	GetAuthToken(ctx context.Context) (string, error)
-	IsTokenValid() bool
-	RefreshToken(ctx context.Context) error
+	GetAuthHeaders() map[string]string
+	IsAuthenticated() bool
+	Authenticate(ctx context.Context) error
 }
 
-// DHLBasicAuth implements basic username/password authentication
+// DHLBasicAuth implements basic authentication for DHL API
 type DHLBasicAuth struct {
-	config config.DHLConfig
-	token  string
-	expiry time.Time
-	client *http.Client
-}
-
-// AuthRequest represents DHL authentication request
-type AuthRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	APIKey   string `json:"apiKey,omitempty"`
-}
-
-// AuthResponse represents DHL authentication response
-type AuthResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	TokenType string    `json:"tokenType"`
-}
-
-// QuoteRequest represents request for DHL quote
-type QuoteRequest struct {
-	OriginCountryCode      string       `json:"origin_country_code"`
-	OriginPostalCode       string       `json:"origin_postal_code"`
-	DestinationCountryCode string       `json:"destination_country_code"`
-	DestinationPostalCode  string       `json:"destination_postal_code"`
-	Packages               []DHLPackage `json:"packages"`
-	ServiceType            string       `json:"service_type"`
-	ShipmentDate           string       `json:"shipment_date,omitempty"`
-}
-
-// DHLPackage represents a package in DHL quote request
-type DHLPackage struct {
-	Weight        float64 `json:"weight"`         // in KG
-	Length        float64 `json:"length"`         // in CM
-	Width         float64 `json:"width"`          // in CM
-	Height        float64 `json:"height"`         // in CM
-	DeclaredValue float64 `json:"declared_value"` // in currency units
-	Currency      string  `json:"currency"`
-}
-
-// QuoteResponse represents DHL quote response
-type QuoteResponse struct {
-	QuoteID      string    `json:"quoteId"`
-	ServiceType  string    `json:"serviceType"`
-	TotalCost    float64   `json:"totalCost"`
-	Currency     string    `json:"currency"`
-	DeliveryTime string    `json:"deliveryTime"`
-	ValidUntil   time.Time `json:"validUntil"`
+	config   config.DHLConfig
+	username string
+	password string
 }
 
 // NewDHLClient creates a new DHL HTTP client
@@ -91,8 +47,9 @@ func NewDHLClient(config config.DHLConfig) *DHLClient {
 	}
 
 	auth := &DHLBasicAuth{
-		config: config,
-		client: httpClient,
+		config:   config,
+		username: getEnvWithPrefix("DHL_USERNAME", "DHL_USER_ID"),
+		password: getEnvWithPrefix("DHL_PASSWORD", "DHL_SECRET"),
 	}
 
 	return &DHLClient{
@@ -102,75 +59,45 @@ func NewDHLClient(config config.DHLConfig) *DHLClient {
 	}
 }
 
-// GetAuthToken gets authentication token for DHL API
-func (a *DHLBasicAuth) GetAuthToken(ctx context.Context) (string, error) {
-	if a.IsTokenValid() {
-		return a.token, nil
+// getEnvWithPrefix tries to get environment variable with DHL prefix
+func getEnvWithPrefix(keys ...string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
-
-	if err := a.RefreshToken(ctx); err != nil {
-		return "", err
-	}
-	return a.token, nil
+	return ""
 }
 
-// IsTokenValid checks if current token is valid
-func (a *DHLBasicAuth) IsTokenValid() bool {
-	return a.token != "" && time.Now().Before(a.expiry.Add(-5*time.Minute))
+// GetAuthHeaders returns basic auth headers
+func (a *DHLBasicAuth) GetAuthHeaders() map[string]string {
+	if a.username == "" || a.password == "" {
+		return make(map[string]string)
+	}
+
+	auth := base64.StdEncoding.EncodeToString([]byte(a.username + ":" + a.password))
+	return map[string]string{
+		"Authorization": "Basic " + auth,
+	}
 }
 
-// RefreshToken refreshes the authentication token
-func (a *DHLBasicAuth) RefreshToken(ctx context.Context) error {
-	authReq := AuthRequest{
-		Username: a.config.Username,
-		Password: a.config.Password,
-		APIKey:   a.config.APIKey,
+// IsAuthenticated checks if credentials are available
+func (a *DHLBasicAuth) IsAuthenticated() bool {
+	return a.username != "" && a.password != ""
+}
+
+// Authenticate is a no-op for basic auth
+func (a *DHLBasicAuth) Authenticate(ctx context.Context) error {
+	if !a.IsAuthenticated() {
+		return fmt.Errorf("DHL credentials not found in environment variables")
 	}
-
-	reqBody, err := json.Marshal(authReq)
-	if err != nil {
-		return fmt.Errorf("failed to marshal auth request: %w", err)
-	}
-
-	url := a.config.BaseURL + a.config.AuthURL
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return fmt.Errorf("failed to create auth request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if a.config.APIKey != "" {
-		req.Header.Set("X-API-Key", a.config.APIKey)
-	}
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("auth request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var authResp AuthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return fmt.Errorf("failed to decode auth response: %w", err)
-	}
-
-	a.token = authResp.Token
-	a.expiry = authResp.ExpiresAt
-
 	return nil
 }
 
-// CheckServiceability calls DHL serviceability API
-func (c *DHLClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest) (*ServiceabilityResponse, error) {
-	token, err := c.auth.GetAuthToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get auth token: %w", err)
+// CheckRates calls DHL rates API for serviceability and pricing
+func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*RatesResponse, error) {
+	if err := c.auth.Authenticate(ctx); err != nil {
+		return nil, fmt.Errorf("failed to authenticate: %w", err)
 	}
 
 	reqBody, err := json.Marshal(request)
@@ -178,17 +105,28 @@ func (c *DHLClient) CheckServiceability(ctx context.Context, request Serviceabil
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := c.config.BaseURL + c.config.ServiceURL
+	url := fmt.Sprintf("%s/mydhlapi/test/rates?strictValidation=false", c.config.BaseURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// Set required headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	if c.config.APIKey != "" {
-		req.Header.Set("X-API-Key", c.config.APIKey)
+	req.Header.Set("Message-Reference", fmt.Sprintf("serviceability-%d", time.Now().UnixNano()))
+	req.Header.Set("Message-Reference-Date", time.Now().Format(time.RFC1123))
+	req.Header.Set("Plugin-Name", "Prayog-Serviceability-Service")
+	req.Header.Set("Plugin-Version", "1.0.0")
+	req.Header.Set("Shipping-System-Platform-Name", "Prayog")
+	req.Header.Set("Shipping-System-Platform-Version", "1.0.0")
+	req.Header.Set("Webstore-Platform-Name", "Prayog")
+	req.Header.Set("Webstore-Platform-Version", "1.0.0")
+	req.Header.Set("x-version", "2.12.0")
+
+	// Add authentication headers
+	for key, value := range c.auth.GetAuthHeaders() {
+		req.Header.Set(key, value)
 	}
 
 	// Add retry logic
@@ -215,59 +153,287 @@ func (c *DHLClient) CheckServiceability(ctx context.Context, request Serviceabil
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var serviceResp ServiceabilityResponse
-	if err := json.NewDecoder(resp.Body).Decode(&serviceResp); err != nil {
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ratesResp RatesResponse
+	if err := json.Unmarshal(body, &ratesResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &serviceResp, nil
+	return &ratesResp, nil
 }
 
-// GetQuote calls DHL quote API for international shipping
+// Legacy method for backward compatibility
+func (c *DHLClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest) (*ServiceabilityResponse, error) {
+	// Convert legacy request to new rates request
+	ratesRequest := c.convertLegacyRequest(request)
+
+	// Call new rates API
+	ratesResponse, err := c.CheckRates(ctx, ratesRequest)
+	if err != nil {
+		return &ServiceabilityResponse{
+			Success: false,
+			Error: &DHLError{
+				Code:    "API_ERROR",
+				Message: err.Error(),
+			},
+		}, nil
+	}
+
+	// Convert response to legacy format
+	return c.convertToLegacyResponse(ratesResponse), nil
+}
+
+// convertLegacyRequest converts legacy serviceability request to rates request
+func (c *DHLClient) convertLegacyRequest(request ServiceabilityRequest) RatesRequest {
+	return RatesRequest{
+		CustomerDetails: CustomerDetails{
+			ShipperDetails: ShipperDetails{
+				PostalCode:  request.OriginPostalCode,
+				CityName:    "Origin City", // Default or could be looked up
+				CountryCode: request.OriginCountryCode,
+			},
+			ReceiverDetails: ReceiverDetails{
+				PostalCode:  request.DestinationPostalCode,
+				CityName:    "Destination City", // Default or could be looked up
+				CountryCode: request.DestinationCountryCode,
+			},
+		},
+		Accounts: []Account{
+			{
+				TypeCode: "shipper",
+				Number:   c.config.AccountNumber,
+			},
+		},
+		ProductsAndServices: []ProductAndService{
+			{
+				ProductCode:      request.ProductType,
+				LocalProductCode: request.ProductType,
+			},
+		},
+		PayerCountryCode:           request.OriginCountryCode,
+		PlannedShippingDateAndTime: c.getPlannedShippingDateTime(request.ShipmentDate),
+		UnitOfMeasurement:          "metric",
+		IsCustomsDeclarable:        true,
+		EstimatedDeliveryDate: EstimatedDeliveryDate{
+			IsRequested: true,
+			TypeCode:    "QDDC",
+		},
+		ReturnStandardProductsOnly: true,
+		Packages: []Package{
+			{
+				Weight: request.Weight,
+				Dimensions: Dimensions{
+					Length: 30, // Default dimensions
+					Width:  20,
+					Height: 15,
+				},
+			},
+		},
+	}
+}
+
+// convertToLegacyResponse converts rates response to legacy serviceability response
+func (c *DHLClient) convertToLegacyResponse(ratesResponse *RatesResponse) *ServiceabilityResponse {
+	if len(ratesResponse.Products) == 0 {
+		return &ServiceabilityResponse{
+			Success: false,
+			Error: &DHLError{
+				Code:    "NO_PRODUCTS",
+				Message: "No products available for the requested route",
+			},
+		}
+	}
+
+	// Convert products to services
+	var services []DHLService
+	for _, product := range ratesResponse.Products {
+		// Get pricing - use the first available currency
+		var pricing *DHLServicePricing
+		if len(product.TotalPrice) > 0 {
+			pricing = &DHLServicePricing{
+				BaseCost:          product.TotalPrice[0].Price,
+				Currency:          product.TotalPrice[0].PriceCurrency,
+				FuelSurcharge:     0, // Could be extracted from detailed breakdown
+				SecuritySurcharge: 0,
+				TotalCost:         product.TotalPrice[0].Price,
+			}
+		}
+
+		services = append(services, DHLService{
+			ProductCode:             product.ProductCode,
+			ProductName:             product.ProductName,
+			ServiceType:             product.NetworkTypeCode,
+			EstimatedDelivery:       product.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
+			TransitDays:             product.DeliveryCapabilities.TotalTransitDays,
+			IsDocumentsSupported:    true,
+			IsNonDocumentsSupported: true,
+			TrackingSupported:       true,
+			SignatureRequired:       false,
+			Pricing:                 pricing,
+		})
+	}
+
+	return &ServiceabilityResponse{
+		Success: true,
+		Data: &DHLServiceabilityData{
+			IsServiceable: len(services) > 0,
+			Services:      services,
+			ServiceCapabilities: map[string]bool{
+				"international": true,
+				"tracking":      true,
+				"express":       true,
+				"pickup":        true,
+				"delivery":      true,
+			},
+		},
+	}
+}
+
+// getPlannedShippingDateTime gets the planned shipping date and time
+func (c *DHLClient) getPlannedShippingDateTime(shipmentDate string) string {
+	if shipmentDate != "" {
+		return shipmentDate
+	}
+
+	// Default to next business day at 1 PM IST
+	now := time.Now()
+	// Add 1 day to get next business day (simplified)
+	nextDay := now.Add(24 * time.Hour)
+	return nextDay.Format("2006-01-02T15:04:05GMT+05:30")
+}
+
+// GetQuote calls DHL rates API for quote information (alias for CheckRates)
 func (c *DHLClient) GetQuote(ctx context.Context, request QuoteRequest) (*QuoteResponse, error) {
-	token, err := c.auth.GetAuthToken(ctx)
+	// Convert QuoteRequest to RatesRequest
+	ratesRequest := RatesRequest{
+		CustomerDetails: CustomerDetails{
+			ShipperDetails: ShipperDetails{
+				PostalCode:  request.OriginPostalCode,
+				CityName:    "Origin City",
+				CountryCode: request.OriginCountryCode,
+			},
+			ReceiverDetails: ReceiverDetails{
+				PostalCode:  request.DestinationPostalCode,
+				CityName:    "Destination City",
+				CountryCode: request.DestinationCountryCode,
+			},
+		},
+		Accounts: []Account{
+			{
+				TypeCode: "shipper",
+				Number:   c.config.AccountNumber,
+			},
+		},
+		ProductsAndServices: []ProductAndService{
+			{
+				ProductCode:      request.ServiceType,
+				LocalProductCode: request.ServiceType,
+			},
+		},
+		PayerCountryCode:           request.OriginCountryCode,
+		PlannedShippingDateAndTime: c.getPlannedShippingDateTime(request.ShipmentDate),
+		UnitOfMeasurement:          "metric",
+		IsCustomsDeclarable:        true,
+		EstimatedDeliveryDate: EstimatedDeliveryDate{
+			IsRequested: true,
+			TypeCode:    "QDDC",
+		},
+		ReturnStandardProductsOnly: true,
+		Packages:                   c.convertPackages(request.Packages),
+	}
+
+	ratesResponse, err := c.CheckRates(ctx, ratesRequest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get auth token: %w", err)
+		return nil, err
 	}
 
-	reqBody, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal quote request: %w", err)
+	// Convert to QuoteResponse
+	if len(ratesResponse.Products) == 0 {
+		return nil, fmt.Errorf("no products available for quote")
 	}
 
-	url := c.config.BaseURL + "/v1/quote"
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create quote request: %w", err)
+	product := ratesResponse.Products[0]
+	var totalCost float64
+	var currency string
+
+	if len(product.TotalPrice) > 0 {
+		totalCost = product.TotalPrice[0].Price
+		currency = product.TotalPrice[0].PriceCurrency
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	if c.config.APIKey != "" {
-		req.Header.Set("X-API-Key", c.config.APIKey)
-	}
+	return &QuoteResponse{
+		QuoteID:      fmt.Sprintf("DHL-%d", time.Now().UnixNano()),
+		ServiceType:  product.ProductName,
+		TotalCost:    totalCost,
+		Currency:     currency,
+		DeliveryTime: product.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
+		ValidUntil:   time.Now().Add(24 * time.Hour),
+	}, nil
+}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("quote request failed: %w", err)
+// convertPackages converts QuoteRequest packages to RatesRequest packages
+func (c *DHLClient) convertPackages(packages []DHLPackage) []Package {
+	var result []Package
+	for _, pkg := range packages {
+		result = append(result, Package{
+			Weight: pkg.Weight,
+			Dimensions: Dimensions{
+				Length: pkg.Length,
+				Width:  pkg.Width,
+				Height: pkg.Height,
+			},
+		})
 	}
-	defer resp.Body.Close()
+	return result
+}
 
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("quote API failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
+// Legacy models for backward compatibility
+type QuoteRequest struct {
+	OriginCountryCode      string       `json:"origin_country_code"`
+	OriginPostalCode       string       `json:"origin_postal_code"`
+	DestinationCountryCode string       `json:"destination_country_code"`
+	DestinationPostalCode  string       `json:"destination_postal_code"`
+	Packages               []DHLPackage `json:"packages"`
+	ServiceType            string       `json:"service_type"`
+	ShipmentDate           string       `json:"shipment_date,omitempty"`
+}
 
-	var quoteResp QuoteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&quoteResp); err != nil {
-		return nil, fmt.Errorf("failed to decode quote response: %w", err)
-	}
+type DHLPackage struct {
+	Weight        float64 `json:"weight"`
+	Length        float64 `json:"length"`
+	Width         float64 `json:"width"`
+	Height        float64 `json:"height"`
+	DeclaredValue float64 `json:"declared_value"`
+	Currency      string  `json:"currency"`
+}
 
-	return &quoteResp, nil
+type QuoteResponse struct {
+	QuoteID      string    `json:"quoteId"`
+	ServiceType  string    `json:"serviceType"`
+	TotalCost    float64   `json:"totalCost"`
+	Currency     string    `json:"currency"`
+	DeliveryTime string    `json:"deliveryTime"`
+	ValidUntil   time.Time `json:"validUntil"`
+}
+
+// Legacy authentication structures
+type AuthRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	APIKey   string `json:"apiKey,omitempty"`
+}
+
+type AuthResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	TokenType string    `json:"tokenType"`
 }

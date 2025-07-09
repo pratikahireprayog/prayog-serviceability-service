@@ -23,7 +23,7 @@ func NewSmileEcomAdapter(cfg config.SmileEcomConfig, db *sql.DB) common.PartnerA
 	// Create partner config
 	partnerConfig := common.GetPartnerConfigDefaults("smile_ecom", "Smile Ecom", common.AdapterTypeDatabase)
 	partnerConfig.Enabled = cfg.Enabled
-	partnerConfig.Rating = cfg.Rating
+	// Rating comes from database, not config
 
 	// Update auth config (database doesn't need authentication)
 	partnerConfig.Auth = common.AuthConfig{
@@ -73,7 +73,6 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerCode:   s.GetPartnerCode(),
-			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -86,7 +85,6 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerCode:   s.GetPartnerCode(),
-			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -156,6 +154,7 @@ func (s *SmileEcomAdapter) transformDatabaseResult(dbResult *ServiceabilityData)
 	// Current implementation is database-based - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
+		PartnerCode:   s.GetPartnerCode(),
 		IsServiceable: dbResult.IsServiceable,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),

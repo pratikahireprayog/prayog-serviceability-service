@@ -343,6 +343,21 @@ func (r *partnerAttributeMapRepository) GetPartnerCodesByAttribute(ctx context.C
 	return partnerCodes, nil
 }
 
+// GetPartnerInfoByAttribute retrieves partner information (including UUID) for partners that have a specific attribute
+func (r *partnerAttributeMapRepository) GetPartnerInfoByAttribute(ctx context.Context, attributeCode string) ([]models.PartnerAttributeMap, error) {
+	var mappings []models.PartnerAttributeMap
+	err := r.db.WithContext(ctx).Model(&models.PartnerAttributeMap{}).
+		Joins("JOIN attribute ON partner_attribute_map.attribute_id = attribute.id").
+		Where("attribute.code = ? AND partner_attribute_map.is_active = ? AND partner_attribute_map.is_deleted = ?", attributeCode, true, false).
+		Select("DISTINCT ON (partner_code) partner_attribute_map.*").
+		Order("partner_code, partner_attribute_map.created_at DESC").
+		Find(&mappings).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partner info by attribute: %w", err)
+	}
+	return mappings, nil
+}
+
 // GetAttributesByPartner retrieves all attributes mapped to a partner
 func (r *partnerAttributeMapRepository) GetAttributesByPartner(ctx context.Context, partnerCode string) ([]models.Attribute, error) {
 	var attributes []models.Attribute

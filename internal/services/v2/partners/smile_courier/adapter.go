@@ -22,7 +22,7 @@ func NewSmileCourierAdapter(cfg config.SmileCourierConfig) common.PartnerAdapter
 	partnerConfig := common.GetPartnerConfigDefaults("smile_courier", "Smile Courier", common.AdapterTypeHTTP)
 	partnerConfig.Timeout = cfg.Timeout
 	partnerConfig.Enabled = cfg.Enabled
-	partnerConfig.Rating = cfg.Rating
+	// Rating comes from database, not config
 
 	// Update endpoints
 	partnerConfig.Endpoints = map[string]string{
@@ -71,7 +71,6 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerCode:   s.GetPartnerCode(),
-			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -84,7 +83,6 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerCode:   s.GetPartnerCode(),
-			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -141,6 +139,7 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse) *c
 	// Current implementation is placeholder - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
+		PartnerCode:   s.GetPartnerCode(),
 		IsServiceable: false,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),

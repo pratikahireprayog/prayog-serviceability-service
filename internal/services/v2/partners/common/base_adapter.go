@@ -37,12 +37,14 @@ func NewBaseAdapter(config *PartnerConfig) *BaseAdapter {
 	}
 }
 
-// GetPartnerCode returns the partner code
+// GetPartnerCode returns the partner code (interface compatibility only)
+// TODO: This should be removed when all code uses database values
 func (b *BaseAdapter) GetPartnerCode() string {
 	return b.config.Code
 }
 
-// GetPartnerName returns the partner name
+// GetPartnerName returns the partner name (interface compatibility only)
+// TODO: This should be removed when all code uses database values
 func (b *BaseAdapter) GetPartnerName() string {
 	return b.config.Name
 }
@@ -150,7 +152,7 @@ func NewGenericAdapter(partnerCode, partnerName string) PartnerAdapter {
 		Name:    partnerName,
 		Type:    AdapterTypeHTTP,
 		Enabled: true,
-		Rating:  0.0,
+		// Rating comes from database, not hardcoded
 		Timeout: 30 * time.Second,
 	}
 
@@ -174,13 +176,12 @@ func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.Se
 
 	return &PartnerServiceabilityResult{
 		PartnerCode:   g.GetPartnerCode(),
-		PartnerName:   g.GetPartnerName(),
 		IsServiceable: false,
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
 		ErrorMessage:  &errorMsg,
 		ResponseTime:  time.Since(startTime),
-		Rating:        g.config.Rating,
+		// Rating comes from database, not hardcoded
 		Metadata: map[string]interface{}{
 			"adapter_type": "generic",
 			"status":       "pending_implementation",
@@ -318,8 +319,8 @@ func GetPartnerConfigDefaults(partnerCode, partnerName string, adapterType Adapt
 		Type:     adapterType,
 		Enabled:  true,
 		Priority: 100,
-		Rating:   0.0,
-		Timeout:  30 * time.Second,
+		// Rating comes from database, not hardcoded
+		Timeout: 30 * time.Second,
 		RetryPolicy: RetryPolicy{
 			MaxRetries:    3,
 			InitialDelay:  1 * time.Second,

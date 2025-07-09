@@ -64,6 +64,7 @@ type PartnerAttributeMapRepository interface {
 	GetOnlyDeleted(ctx context.Context, offset, limit int) ([]models.PartnerAttributeMap, int64, error)
 	GetWithFilters(ctx context.Context, filters *PartnerAttributeMapFilters) ([]models.PartnerAttributeMap, int64, error)
 	GetPartnerCodesByAttribute(ctx context.Context, attributeCode string) ([]string, error)
+	GetPartnerInfoByAttribute(ctx context.Context, attributeCode string) ([]models.PartnerAttributeMap, error)
 	GetAttributesByPartner(ctx context.Context, partnerCode string) ([]models.Attribute, error)
 	Create(ctx context.Context, mapping *models.PartnerAttributeMap) error
 	Update(ctx context.Context, id string, mapping *models.PartnerAttributeMap) error

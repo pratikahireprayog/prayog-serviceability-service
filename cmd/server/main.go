@@ -20,9 +20,10 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
-	"prayog-serviceability-service/internal/shared/repositories/v1"
+
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
+	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 )
 
 func main() {
@@ -263,6 +264,7 @@ func initV2Orchestrator(
 	v2Orchestrator := orchestrators.NewServiceabilityOrchestrator(
 		partnerAdapterFactory,
 		partnerAttributeRepo,
+		30*time.Second, // timeout for partner requests
 	)
 
 	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")

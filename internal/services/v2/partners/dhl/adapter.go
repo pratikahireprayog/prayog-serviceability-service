@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
@@ -24,12 +25,14 @@ func NewAdapter(config config.DHLConfig) *Adapter {
 	}
 }
 
-// GetPartnerCode returns the partner code
+// GetPartnerCode returns the partner code (interface compatibility only)
+// TODO: This should be removed when all code uses database values
 func (a *Adapter) GetPartnerCode() string {
 	return "dhl"
 }
 
-// GetPartnerName returns the partner name
+// GetPartnerName returns the partner name (interface compatibility only)
+// TODO: This should be removed when all code uses database values
 func (a *Adapter) GetPartnerName() string {
 	return "DHL"
 }
@@ -44,11 +47,6 @@ func (a *Adapter) IsEnabled() bool {
 	return a.config.Enabled
 }
 
-// GetRating returns the partner rating
-func (a *Adapter) GetRating() float64 {
-	return a.config.Rating
-}
-
 // SupportsRequest checks if DHL supports the given request
 func (a *Adapter) SupportsRequest(ctx context.Context, request *models.ServiceabilityV2Request) bool {
 	// DHL specializes in international shipping
@@ -61,46 +59,49 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 		return false
 	}
 
-	// DHL handles international parcels - check if it's a supported category
-	if request.ParcelCategory != nil {
-		category := strings.ToLower(*request.ParcelCategory)
-		if category != "international" && category != "ecomm" && category != "courier" {
-			return false
-		}
-	}
-
+	// Partner attribute mapping in database determines supported parcel categories
+	// No hardcoded category filtering needed here
 	return true
 }
 
 // CheckServiceability checks if DHL can service the given request
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+	startTime := time.Now()
+
 	if !a.SupportsRequest(ctx, request) {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
 			Metadata: map[string]interface{}{
 				"reason": "DHL does not support this request type",
 			},
 		}, nil
 	}
 
-	// Convert request to DHL format
-	dhlRequest := a.convertToServiceabilityRequest(request)
+	// Convert request to DHL rates format
+	dhlRequest := a.convertToRatesRequest(request)
 
-	// Make API call
-	response, err := a.client.CheckServiceability(ctx, dhlRequest)
+	// Make API call to DHL rates endpoint
+	response, err := a.client.CheckRates(ctx, dhlRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
 			Error:         err,
 			ErrorMessage:  &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
 		}, nil
 	}
 
-	// Convert response and return
+	// Convert response to the expected format
 	// The orchestrator will set PartnerCode and PartnerName from database
-	return a.convertServiceabilityResponse(response), nil
+	result := a.convertRatesResponse(response)
+	result.ResponseTime = time.Since(startTime)
+
+	return result, nil
 }
 
 // validateDHLRequirements validates DHL-specific requirements
@@ -134,56 +135,208 @@ func (a *Adapter) validateDHLRequirements(request *models.ServiceabilityV2Reques
 	return nil
 }
 
-// convertToServiceabilityRequest converts v2 request to DHL format
-func (a *Adapter) convertToServiceabilityRequest(request *models.ServiceabilityV2Request) ServiceabilityRequest {
-	dhlReq := ServiceabilityRequest{}
+// convertToRatesRequest converts v2 request to DHL rates format
+func (a *Adapter) convertToRatesRequest(request *models.ServiceabilityV2Request) RatesRequest {
+	// Extract postal codes
+	sourcePincode := a.getSourcePincode(request)
+	destinationPincode := a.getDestinationPincode(request)
 
-	// Set country codes
-	if request.CountryCode != nil {
-		dhlReq.DestinationCountryCode = *request.CountryCode
+	// Create rates request
+	dhlReq := RatesRequest{
+		CustomerDetails: CustomerDetails{
+			ShipperDetails: ShipperDetails{
+				PostalCode:  sourcePincode,
+				CityName:    "Origin City", // Could be enhanced with actual city lookup
+				CountryCode: "IN",          // Default origin country
+			},
+			ReceiverDetails: ReceiverDetails{
+				PostalCode:  destinationPincode,
+				CityName:    "Destination City", // Could be enhanced with actual city lookup
+				CountryCode: *request.CountryCode,
+			},
+		},
+		Accounts: []Account{
+			{
+				TypeCode: "shipper",
+				Number:   a.config.AccountNumber,
+			},
+		},
+		ProductsAndServices: []ProductAndService{
+			{
+				ProductCode:      "P", // Default to express worldwide
+				LocalProductCode: "P",
+			},
+		},
+		PayerCountryCode:           "IN",
+		PlannedShippingDateAndTime: a.getPlannedShippingDateTime(),
+		UnitOfMeasurement:          "metric",
+		IsCustomsDeclarable:        true,
+		EstimatedDeliveryDate: EstimatedDeliveryDate{
+			IsRequested: true,
+			TypeCode:    "QDDC",
+		},
+		ReturnStandardProductsOnly: true,
+		Packages:                   a.getPackages(request),
 	}
-	dhlReq.OriginCountryCode = "IN" // Default origin
-
-	// Add postal codes if available
-	if request.SourcePostalCode != nil {
-		dhlReq.OriginPostalCode = *request.SourcePostalCode
-	}
-	if request.DestinationPostalCode != nil {
-		dhlReq.DestinationPostalCode = *request.DestinationPostalCode
-	} else if request.PostalCode != nil {
-		dhlReq.DestinationPostalCode = *request.PostalCode
-	}
-
-	// Set product type based on parcel category
-	if request.ParcelCategory != nil {
-		switch strings.ToLower(*request.ParcelCategory) {
-		case "international":
-			dhlReq.ProductType = "EXPRESS"
-		case "ecomm":
-			dhlReq.ProductType = "ECONOMY"
-		case "courier":
-			dhlReq.ProductType = "EXPRESS"
-		default:
-			dhlReq.ProductType = "EXPRESS" // Default to express
-		}
-	} else {
-		dhlReq.ProductType = "EXPRESS"
-	}
-
-	// Set weight from package information if available, otherwise use default
-	if request.Package != nil && request.Package.Weight != nil {
-		dhlReq.Weight = a.convertWeightToKg(request.Package.Weight)
-	} else {
-		dhlReq.Weight = 1.0 // 1kg default
-	}
-
-	dhlReq.Currency = "INR"
 
 	return dhlReq
 }
 
-// convertWeightToKg converts weight from different units to kilograms
-func (a *Adapter) convertWeightToKg(weight *models.Weight) float64 {
+// convertRatesResponse converts DHL rates response to common format with capabilities
+func (a *Adapter) convertRatesResponse(response *RatesResponse) *common.PartnerServiceabilityResult {
+	result := &common.PartnerServiceabilityResult{
+		PartnerCode:   a.GetPartnerCode(),
+		IsServiceable: len(response.Products) > 0,
+		Services:      make([]models.ServiceV2, 0),
+		Capabilities:  make(map[string]interface{}),
+		Metadata:      make(map[string]interface{}),
+	}
+
+	if len(response.Products) == 0 {
+		result.Metadata["reason"] = "No DHL products available for the requested route"
+		return result
+	}
+
+	// Use the first product for capabilities (DHL typically returns one main product)
+	product := response.Products[0]
+
+	// Build capabilities structure as per the expected format
+	capabilities := map[string]interface{}{
+		"pickup_capabilities": map[string]interface{}{
+			"next_business_day":                          product.PickupCapabilities.NextBusinessDay,
+			"local_cutoff_date_and_time":                 product.PickupCapabilities.LocalCutoffDateAndTime,
+			"pickup_earliest":                            product.PickupCapabilities.PickupEarliest,
+			"pickup_latest":                              product.PickupCapabilities.PickupLatest,
+			"pickup_cutoff_same_day_outbound_processing": product.PickupCapabilities.PickupCutoffSameDayOutboundProcessing,
+			"origin_service_area_code":                   product.PickupCapabilities.OriginServiceAreaCode,
+			"origin_facility_area_code":                  product.PickupCapabilities.OriginFacilityAreaCode,
+			"pickup_additional_days":                     product.PickupCapabilities.PickupAdditionalDays,
+			"pickup_day_of_week":                         product.PickupCapabilities.PickupDayOfWeek,
+		},
+		"delivery_capabilities": map[string]interface{}{
+			"delivery_type_code":               product.DeliveryCapabilities.DeliveryTypeCode,
+			"estimated_delivery_date_and_time": product.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
+			"destination_service_area_code":    product.DeliveryCapabilities.DestinationServiceAreaCode,
+			"destination_facility_area_code":   product.DeliveryCapabilities.DestinationFacilityAreaCode,
+			"delivery_additional_days":         product.DeliveryCapabilities.DeliveryAdditionalDays,
+			"delivery_day_of_week":             product.DeliveryCapabilities.DeliveryDayOfWeek,
+			"total_transit_days":               product.DeliveryCapabilities.TotalTransitDays,
+		},
+	}
+
+	result.Capabilities = capabilities
+
+	// Add services for backward compatibility
+	for _, product := range response.Products {
+		serviceV2 := models.ServiceV2{
+			ServiceCode: product.ProductCode,
+			ServiceName: product.ProductName,
+			TATDays:     product.DeliveryCapabilities.TotalTransitDays,
+			IsCOD:       false, // DHL typically doesn't do COD internationally
+			Pickup:      true,
+			Delivery:    true,
+			Insurance:   true,
+			ProductTypes: map[string]bool{
+				"international": true,
+				"express":       strings.Contains(strings.ToLower(product.ProductName), "express"),
+				"economy":       strings.Contains(strings.ToLower(product.ProductName), "economy"),
+			},
+			DeliveryModes: map[string]bool{
+				"international": true,
+				"express":       strings.Contains(strings.ToLower(product.ProductName), "express"),
+			},
+		}
+
+		// Add pricing if available
+		if len(product.TotalPrice) > 0 {
+			serviceV2.Pricing = &models.ServicePricingV2{
+				BaseCost:      product.TotalPrice[0].Price,
+				Currency:      product.TotalPrice[0].PriceCurrency,
+				CODCharges:    0.0,
+				FuelSurcharge: a.extractFuelSurcharge(product.DetailedPriceBreakdown),
+			}
+		}
+
+		result.Services = append(result.Services, serviceV2)
+	}
+
+	// Set metadata
+	result.Metadata["reason"] = fmt.Sprintf("DHL offers %d services", len(result.Services))
+	result.Metadata["product_count"] = len(response.Products)
+	result.Metadata["exchange_rates"] = len(response.ExchangeRates)
+
+	return result
+}
+
+// extractFuelSurcharge extracts fuel surcharge from detailed price breakdown
+func (a *Adapter) extractFuelSurcharge(breakdowns []DetailedPriceBreakdown) float64 {
+	for _, breakdown := range breakdowns {
+		for _, item := range breakdown.Breakdown {
+			if strings.Contains(strings.ToLower(item.Name), "fuel") {
+				return item.Price
+			}
+		}
+	}
+	return 0.0
+}
+
+// getSourcePincode extracts source pincode from request
+func (a *Adapter) getSourcePincode(request *models.ServiceabilityV2Request) string {
+	if request.SourcePostalCode != nil {
+		return *request.SourcePostalCode
+	}
+	return "110001" // Default to Delhi if no source specified
+}
+
+// getDestinationPincode extracts destination pincode from request
+func (a *Adapter) getDestinationPincode(request *models.ServiceabilityV2Request) string {
+	if request.DestinationPostalCode != nil {
+		return *request.DestinationPostalCode
+	}
+	if request.PostalCode != nil {
+		return *request.PostalCode
+	}
+	return ""
+}
+
+// getPlannedShippingDateTime gets the planned shipping date and time
+func (a *Adapter) getPlannedShippingDateTime() string {
+	// Default to next business day at 1 PM IST
+	now := time.Now()
+	nextDay := now.Add(24 * time.Hour)
+	return nextDay.Format("2006-01-02T15:04:05GMT+05:30")
+}
+
+// getPackages creates packages from request
+func (a *Adapter) getPackages(request *models.ServiceabilityV2Request) []Package {
+	if request.Package != nil {
+		return []Package{
+			{
+				Weight:     a.getWeight(request.Package.Weight),
+				Dimensions: a.getDimensions(request.Package.Dimensions),
+			},
+		}
+	}
+
+	// Default package
+	return []Package{
+		{
+			Weight: 0.5, // Default 0.5 kg
+			Dimensions: Dimensions{
+				Length: 30,
+				Width:  20,
+				Height: 15,
+			},
+		},
+	}
+}
+
+// getWeight converts weight to kg
+func (a *Adapter) getWeight(weight *models.Weight) float64 {
+	if weight == nil {
+		return 0.5 // Default weight
+	}
+
 	switch strings.ToLower(weight.Unit) {
 	case "kg":
 		return weight.Value
@@ -194,13 +347,29 @@ func (a *Adapter) convertWeightToKg(weight *models.Weight) float64 {
 	case "oz":
 		return weight.Value * 0.0283495
 	default:
-		// Default to kg if unit is not recognized
-		return weight.Value
+		return weight.Value // Assume kg if unit unknown
 	}
 }
 
-// convertDimensionToCm converts dimension from different units to centimeters
-func (a *Adapter) convertDimensionToCm(value float64, unit string) float64 {
+// getDimensions converts dimensions to cm
+func (a *Adapter) getDimensions(dimensions *models.Dimensions) Dimensions {
+	if dimensions == nil {
+		return Dimensions{
+			Length: 30,
+			Width:  20,
+			Height: 15,
+		}
+	}
+
+	return Dimensions{
+		Length: a.convertToCm(dimensions.Length, dimensions.Unit),
+		Width:  a.convertToCm(dimensions.Width, dimensions.Unit),
+		Height: a.convertToCm(dimensions.Height, dimensions.Unit),
+	}
+}
+
+// convertToCm converts dimension to cm
+func (a *Adapter) convertToCm(value float64, unit string) float64 {
 	switch strings.ToLower(unit) {
 	case "cm":
 		return value
@@ -211,113 +380,8 @@ func (a *Adapter) convertDimensionToCm(value float64, unit string) float64 {
 	case "ft":
 		return value * 30.48
 	default:
-		// Default to cm if unit is not recognized
-		return value
+		return value // Assume cm if unit unknown
 	}
-}
-
-// convertServiceabilityResponse converts DHL response to common format
-func (a *Adapter) convertServiceabilityResponse(response *ServiceabilityResponse) *common.PartnerServiceabilityResult {
-	// TODO: Implement new DHL capabilities structure as per final payload format:
-	// capabilities: {
-	//   "pickup_capabilities": {
-	//     "next_business_day": false,
-	//     "local_cutoff_date_and_time": "2025-05-05T12:30:00",
-	//     "pickup_earliest": "10:00:00",
-	//     "pickup_latest": "20:30:00",
-	//     "pickup_cutoff_same_day_outbound_processing": "14:30:00",
-	//     "origin_service_area_code": "BLR",
-	//     "origin_facility_area_code": "YPU",
-	//     "pickup_additional_days": 0,
-	//     "pickup_day_of_week": 1
-	//   },
-	//   "delivery_capabilities": {
-	//     "delivery_type_code": "QDDC",
-	//     "estimated_delivery_date_and_time": "2025-05-12T23:59:00",
-	//     "destination_service_area_code": "TAO",
-	//     "destination_facility_area_code": "QDN",
-	//     "delivery_additional_days": 0,
-	//     "delivery_day_of_week": 1,
-	//     "total_transit_days": 7
-	//   }
-	// }
-
-	result := &common.PartnerServiceabilityResult{
-		Services:     make([]models.ServiceV2, 0),
-		Capabilities: make(map[string]interface{}),
-		Metadata:     make(map[string]interface{}),
-	}
-
-	if !response.Success || response.Data == nil {
-		result.IsServiceable = false
-		reason := "Unknown error"
-		if response.Error != nil {
-			reason = response.Error.Message
-		}
-		result.Metadata["reason"] = reason
-		return result
-	}
-
-	data := response.Data
-	result.IsServiceable = data.IsServiceable
-
-	if !data.IsServiceable {
-		reason := "Not serviceable by DHL"
-		if len(data.Restrictions) > 0 {
-			reason = strings.Join(data.Restrictions, "; ")
-		}
-		result.Metadata["reason"] = reason
-		return result
-	}
-
-	// Convert services
-	for _, service := range data.Services {
-		serviceV2 := models.ServiceV2{
-			ServiceCode: service.ProductCode,
-			ServiceName: service.ProductName,
-			TATDays:     service.TransitDays,
-			IsCOD:       false, // DHL typically doesn't do COD internationally
-			Pickup:      true,
-			Delivery:    true,
-			Insurance:   true,
-			ProductTypes: map[string]bool{
-				"international": true,
-				"express":       strings.Contains(strings.ToLower(service.ServiceType), "express"),
-				"economy":       strings.Contains(strings.ToLower(service.ServiceType), "economy"),
-			},
-			DeliveryModes: map[string]bool{
-				"international": true,
-				"express":       strings.Contains(strings.ToLower(service.ServiceType), "express"),
-			},
-		}
-
-		// Add pricing if available
-		if service.Pricing != nil {
-			serviceV2.Pricing = &models.ServicePricingV2{
-				BaseCost:      service.Pricing.BaseCost,
-				Currency:      service.Pricing.Currency,
-				CODCharges:    0.0,
-				FuelSurcharge: service.Pricing.FuelSurcharge,
-			}
-		}
-
-		result.Services = append(result.Services, serviceV2)
-	}
-
-	// Set capabilities
-	result.Capabilities["international"] = true
-	result.Capabilities["tracking"] = true
-	result.Capabilities["express_delivery"] = true
-	result.Capabilities["customs_clearance"] = true
-
-	// Set reason for successful response
-	if len(result.Services) > 0 {
-		result.Metadata["reason"] = fmt.Sprintf("DHL offers %d services", len(result.Services))
-	} else {
-		result.Metadata["reason"] = "No DHL services available"
-	}
-
-	return result
 }
 
 // IsInternationalRequest checks if the request is for international shipping
@@ -335,11 +399,9 @@ func (a *Adapter) IsInternationalRequest(request *models.ServiceabilityV2Request
 
 // Initialize implements PartnerAdapter interface
 func (a *Adapter) Initialize(ctx context.Context) error {
-	// Test authentication if credentials are provided
-	if a.config.Username != "" && a.config.Password != "" {
-		if _, err := a.client.auth.GetAuthToken(ctx); err != nil {
-			return fmt.Errorf("DHL authentication failed: %w", err)
-		}
+	// Test authentication
+	if err := a.client.auth.Authenticate(ctx); err != nil {
+		return fmt.Errorf("DHL authentication failed: %w", err)
 	}
 	return nil
 }
@@ -350,8 +412,8 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 		return false
 	}
 
-	// TODO: Add actual health check by calling DHL API
-	return true
+	// Check if credentials are available
+	return a.client.auth.IsAuthenticated()
 }
 
 // GetMetrics implements PartnerAdapter interface
@@ -379,55 +441,42 @@ func (a *Adapter) GetQuote(ctx context.Context, request *models.ServiceabilityV2
 		return nil, fmt.Errorf("quote request not supported by DHL")
 	}
 
+	// Convert to quote request format
 	quoteRequest := QuoteRequest{
 		DestinationCountryCode: *request.CountryCode,
 		OriginCountryCode:      "IN",
-		ServiceType:            "EXPRESS",
+		ServiceType:            "P", // Express
+		DestinationPostalCode:  a.getDestinationPincode(request),
+		OriginPostalCode:       a.getSourcePincode(request),
+		Packages:               a.convertToQuotePackages(request),
 	}
-
-	if request.DestinationPostalCode != nil {
-		quoteRequest.DestinationPostalCode = *request.DestinationPostalCode
-	} else if request.PostalCode != nil {
-		quoteRequest.DestinationPostalCode = *request.PostalCode
-	}
-
-	if request.SourcePostalCode != nil {
-		quoteRequest.OriginPostalCode = *request.SourcePostalCode
-	}
-
-	// Add package information for quote
-	pkg := DHLPackage{
-		DeclaredValue: 100.0, // default value
-		Currency:      "INR",
-	}
-
-	// Use package information from request if available
-	if request.Package != nil {
-		if request.Package.Weight != nil {
-			pkg.Weight = a.convertWeightToKg(request.Package.Weight)
-		} else {
-			pkg.Weight = 1.0 // default 1kg
-		}
-
-		if request.Package.Dimensions != nil {
-			pkg.Length = a.convertDimensionToCm(request.Package.Dimensions.Length, request.Package.Dimensions.Unit)
-			pkg.Width = a.convertDimensionToCm(request.Package.Dimensions.Width, request.Package.Dimensions.Unit)
-			pkg.Height = a.convertDimensionToCm(request.Package.Dimensions.Height, request.Package.Dimensions.Unit)
-		} else {
-			// Use default dimensions
-			pkg.Length = 30 // default 30cm
-			pkg.Width = 20  // default 20cm
-			pkg.Height = 15 // default 15cm
-		}
-	} else {
-		// Use all default values
-		pkg.Weight = 1.0 // default 1kg
-		pkg.Length = 30  // default 30cm
-		pkg.Width = 20   // default 20cm
-		pkg.Height = 15  // default 15cm
-	}
-
-	quoteRequest.Packages = []DHLPackage{pkg}
 
 	return a.client.GetQuote(ctx, quoteRequest)
+}
+
+// convertToQuotePackages converts request packages to quote format
+func (a *Adapter) convertToQuotePackages(request *models.ServiceabilityV2Request) []DHLPackage {
+	if request.Package == nil {
+		return []DHLPackage{
+			{
+				Weight:        0.5,
+				Length:        30,
+				Width:         20,
+				Height:        15,
+				DeclaredValue: 100.0,
+				Currency:      "INR",
+			},
+		}
+	}
+
+	return []DHLPackage{
+		{
+			Weight:        a.getWeight(request.Package.Weight),
+			Length:        a.convertToCm(request.Package.Dimensions.Length, request.Package.Dimensions.Unit),
+			Width:         a.convertToCm(request.Package.Dimensions.Width, request.Package.Dimensions.Unit),
+			Height:        a.convertToCm(request.Package.Dimensions.Height, request.Package.Dimensions.Unit),
+			DeclaredValue: 100.0, // Default value
+			Currency:      "INR",
+		},
+	}
 }

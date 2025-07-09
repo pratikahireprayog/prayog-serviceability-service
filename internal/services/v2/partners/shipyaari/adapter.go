@@ -22,7 +22,7 @@ func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
 	partnerConfig := common.GetPartnerConfigDefaults("shipyaari", "Shipyaari", common.AdapterTypeHTTP)
 	partnerConfig.Timeout = cfg.Timeout
 	partnerConfig.Enabled = cfg.Enabled
-	partnerConfig.Rating = 4.2 // Example rating
+	// Rating comes from database, not hardcoded
 
 	// Update endpoints
 	partnerConfig.Endpoints = map[string]string{
@@ -66,6 +66,8 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	// Basic validation
 	if err := s.validateShipyaariRequirements(request); err != nil {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   s.GetPartnerCode(),
+			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -80,6 +82,7 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	shipyaariRequest, err := s.transformRequest(request)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   s.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -91,6 +94,7 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	response, err := s.client.CheckServiceability(ctx, shipyaariRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
+			PartnerCode:   s.GetPartnerCode(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -209,6 +213,7 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse) *comm
 	// ]
 
 	result := &common.PartnerServiceabilityResult{
+		PartnerCode:   s.GetPartnerCode(),
 		IsServiceable: resp.IsServiceable,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),
