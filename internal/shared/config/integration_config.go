@@ -66,6 +66,7 @@ type DHLConfig struct {
 	BaseURL       string        `yaml:"base_url" json:"base_url"`
 	Username      string        `yaml:"username" json:"username"`
 	Password      string        `yaml:"password" json:"password"`
+	BasicAuth     string        `yaml:"basic_auth" json:"basic_auth"`
 	APIKey        string        `yaml:"api_key" json:"api_key"`
 	AccountNumber string        `yaml:"account_number" json:"account_number"`
 	AuthURL       string        `yaml:"auth_url" json:"auth_url"`
@@ -279,9 +280,10 @@ func LoadIntegrationConfig() IntegrationConfig {
 			CacheTTL:     getEnvAsDurationOrDefault("SMILE_ECOM_CACHE_TTL", 15*time.Minute),
 		},
 		DHL: DHLConfig{
-			BaseURL:       getEnvOrDefault("DHL_BASE_URL", "https://api.dhl.com"),
+			BaseURL:       getEnvOrDefault("DHL_BASE_URL", ""),
 			Username:      getEnvOrDefault("DHL_USERNAME", ""),
 			Password:      getEnvOrDefault("DHL_PASSWORD", ""),
+			BasicAuth:     getEnvOrDefault("DHL_BASIC_AUTH", ""),
 			APIKey:        getEnvOrDefault("DHL_API_KEY", ""),
 			AccountNumber: getEnvOrDefault("DHL_ACCOUNT_NUMBER", ""),
 			AuthURL:       getEnvOrDefault("DHL_AUTH_URL", "/v1/auth/login"),

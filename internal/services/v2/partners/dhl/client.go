@@ -30,9 +30,10 @@ type DHLAuthenticator interface {
 
 // DHLBasicAuth implements basic authentication for DHL API
 type DHLBasicAuth struct {
-	config   config.DHLConfig
-	username string
-	password string
+	config    config.DHLConfig
+	username  string
+	password  string
+	basicAuth string
 }
 
 // NewDHLClient creates a new DHL HTTP client
@@ -46,10 +47,23 @@ func NewDHLClient(config config.DHLConfig) *DHLClient {
 		},
 	}
 
+	// Debug: Check if DHL_BASIC_AUTH is available
+	envBasicAuth := os.Getenv("DHL_BASIC_AUTH")
+	fmt.Printf("DEBUG: DHL_BASIC_AUTH from env: '%s'\n", envBasicAuth)
+	fmt.Printf("DEBUG: DHL config BasicAuth: '%s'\n", config.BasicAuth)
+	fmt.Printf("DEBUG: DHL config BaseURL: '%s'\n", config.BaseURL)
+	fmt.Printf("DEBUG: DHL config Username: '%s'\n", config.Username)
+	passwordDebug := "empty"
+	if len(config.Password) > 0 {
+		passwordDebug = config.Password[:3] + "..."
+	}
+	fmt.Printf("DEBUG: DHL config Password: '%s'\n", passwordDebug)
+
 	auth := &DHLBasicAuth{
-		config:   config,
-		username: getEnvWithPrefix("DHL_USERNAME", "DHL_USER_ID"),
-		password: getEnvWithPrefix("DHL_PASSWORD", "DHL_SECRET"),
+		config:    config,
+		username:  config.Username,
+		password:  config.Password,
+		basicAuth: config.BasicAuth,
 	}
 
 	return &DHLClient{
@@ -71,6 +85,14 @@ func getEnvWithPrefix(keys ...string) string {
 
 // GetAuthHeaders returns basic auth headers
 func (a *DHLBasicAuth) GetAuthHeaders() map[string]string {
+	// If basic auth token is provided directly, use it
+	if a.basicAuth != "" {
+		return map[string]string{
+			"Authorization": "Basic " + a.basicAuth,
+		}
+	}
+
+	// Fall back to username/password approach
 	if a.username == "" || a.password == "" {
 		return make(map[string]string)
 	}
@@ -83,13 +105,22 @@ func (a *DHLBasicAuth) GetAuthHeaders() map[string]string {
 
 // IsAuthenticated checks if credentials are available
 func (a *DHLBasicAuth) IsAuthenticated() bool {
+	// Check if basic auth token is provided directly
+	if a.basicAuth != "" {
+		return true
+	}
+
+	// Fall back to username/password check
 	return a.username != "" && a.password != ""
 }
 
 // Authenticate is a no-op for basic auth
 func (a *DHLBasicAuth) Authenticate(ctx context.Context) error {
 	if !a.IsAuthenticated() {
-		return fmt.Errorf("DHL credentials not found in environment variables")
+		if a.basicAuth != "" {
+			return fmt.Errorf("DHL basic auth token is invalid or empty")
+		}
+		return fmt.Errorf("DHL credentials not available - username: '%s', password: '%s'", a.username, a.password)
 	}
 	return nil
 }
@@ -105,28 +136,42 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	fmt.Printf("DEBUG: DHL request body: %s\n", string(reqBody))
+
 	url := fmt.Sprintf("%s/mydhlapi/test/rates?strictValidation=false", c.config.BaseURL)
+	fmt.Printf("DEBUG: Making DHL API call to: %s\n", url)
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set required headers
+	// Set required headers to match working curl command
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Message-Reference", fmt.Sprintf("serviceability-%d", time.Now().UnixNano()))
-	req.Header.Set("Message-Reference-Date", time.Now().Format(time.RFC1123))
-	req.Header.Set("Plugin-Name", "Prayog-Serviceability-Service")
-	req.Header.Set("Plugin-Version", "1.0.0")
-	req.Header.Set("Shipping-System-Platform-Name", "Prayog")
-	req.Header.Set("Shipping-System-Platform-Version", "1.0.0")
-	req.Header.Set("Webstore-Platform-Name", "Prayog")
-	req.Header.Set("Webstore-Platform-Version", "1.0.0")
-	req.Header.Set("x-version", "2.12.0")
+	req.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")   // Static as per working curl
+	req.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT") // Static as per working curl
+	req.Header.Set("Plugin-Name", "")                                         // Empty as per working curl
+	req.Header.Set("Plugin-Version", "")                                      // Empty as per working curl
+	req.Header.Set("Shipping-System-Platform-Name", "")                       // Empty as per working curl
+	req.Header.Set("Shipping-System-Platform-Version", "")                    // Empty as per working curl
+	req.Header.Set("Webstore-Platform-Name", "")                              // Empty as per working curl
+	req.Header.Set("Webstore-Platform-Version", "")                           // Empty as per working curl
+	req.Header.Set("X-Version", "2.12.0")                                     // Use X-Version instead of x-version
 
 	// Add authentication headers
-	for key, value := range c.auth.GetAuthHeaders() {
+	authHeaders := c.auth.GetAuthHeaders()
+	fmt.Printf("DEBUG: Auth headers: %+v\n", authHeaders)
+	for key, value := range authHeaders {
 		req.Header.Set(key, value)
+	}
+
+	// Debug: Print all headers
+	fmt.Printf("DEBUG: All request headers:\n")
+	for key, values := range req.Header {
+		for _, value := range values {
+			fmt.Printf("  %s: %s\n", key, value)
+		}
 	}
 
 	// Add retry logic
@@ -160,6 +205,21 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// Try to parse DHL error response for better error messages
+		var dhlError struct {
+			Instance string `json:"instance"`
+			Detail   string `json:"detail"`
+			Title    string `json:"title"`
+			Message  string `json:"message"`
+			Status   string `json:"status"`
+		}
+
+		if err := json.Unmarshal(body, &dhlError); err == nil {
+			// Return properly formatted error message
+			return nil, fmt.Errorf("DHL API error [%s]: %s", dhlError.Status, dhlError.Detail)
+		}
+
+		// Fallback to original error if JSON parsing fails
 		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

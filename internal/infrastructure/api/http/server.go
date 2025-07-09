@@ -365,6 +365,24 @@ func (s *Server) setupRoutes() error {
 		routes.RegisterPartnerAttributeRoutes(v1, partnerAttributeHandler, s.logger)
 	}
 
+	// Try to create geolocation handler and register routes if database is available
+	geolocationHandler, err := s.createGeolocationHandler()
+	if err != nil {
+		s.logger.WithError(err).Warn("Geolocation features are disabled")
+		// Create placeholder routes that return service unavailable
+		v1.All("/geo-locations/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Geolocation features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register geolocation routes under /serviceability/v1/
+		routes.RegisterGeolocationRoutes(v1, geolocationHandler, s.logger)
+	}
+
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
 	return nil
 }
@@ -439,9 +457,29 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 	validatorSetup := utils.NewValidatorSetup()
 	validator := validatorSetup.GetValidator()
 
+	// Create geolocation service for country code resolution
+	var geolocationService sharedServices.GeolocationService
+	if s.dbManager != nil {
+		// Create repository factory from database connection
+		db := s.dbManager.GetDB()
+		if db != nil {
+			repoFactory := repositories.NewRepositoryFactory(db)
+			postalCodeRepo := repoFactory.GetPostalCodeRepository()
+			geolocationService = sharedServices.NewGeolocationService(postalCodeRepo)
+		}
+	}
+
+	// If geolocation service is not available, log a warning
+	if geolocationService == nil {
+		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
+		// Create a dummy geolocation service for graceful degradation
+		geolocationService = sharedServices.NewGeolocationService(nil)
+	}
+
 	// Create V2 serviceability handler
 	v2ServiceabilityHandler := handlers.NewServiceabilityV2Handler(
 		s.v2Orchestrator,
+		geolocationService,
 		validator,
 		s.logger,
 	)
