@@ -37,12 +37,18 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration `mapstructure:"SERVER_IDLE_TIMEOUT"`
 }
 
+// ServiceabilityConfig contains serviceability-specific configuration
+type ServiceabilityConfig struct {
+	ReturnOnlyServiceablePartners bool `mapstructure:"RETURN_ONLY_SERVICEABLE_PARTNERS"`
+}
+
 // AppConfig holds all application configuration
 type AppConfig struct {
-	DB          DBConfig
-	Log         LogConfig
-	Server      ServerConfig
-	Integration IntegrationConfig
+	DB             DBConfig
+	Log            LogConfig
+	Server         ServerConfig
+	Serviceability ServiceabilityConfig
+	Integration    IntegrationConfig
 }
 
 // DSN returns the PostgreSQL connection string
@@ -118,6 +124,9 @@ func LoadAppConfig() (*AppConfig, error) {
 			ReadTimeout:  getEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
+		},
+		Serviceability: ServiceabilityConfig{
+			ReturnOnlyServiceablePartners: getEnvAsBoolOrDefault("RETURN_ONLY_SERVICEABLE_PARTNERS", false),
 		},
 		Integration: LoadIntegrationConfig(),
 	}

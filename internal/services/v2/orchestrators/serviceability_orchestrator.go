@@ -25,6 +25,7 @@ type serviceabilityOrchestrator struct {
 	partnerFactory          factory.PartnerAdapterFactory
 	partnerAttributeMapRepo repositories.PartnerAttributeMapRepository
 	timeout                 time.Duration
+	returnOnlyServiceable   bool
 }
 
 // NewServiceabilityOrchestrator creates a new V2 serviceability orchestrator
@@ -32,11 +33,13 @@ func NewServiceabilityOrchestrator(
 	partnerFactory factory.PartnerAdapterFactory,
 	partnerAttributeMapRepo repositories.PartnerAttributeMapRepository,
 	timeout time.Duration,
+	returnOnlyServiceable bool,
 ) ServiceabilityOrchestrator {
 	return &serviceabilityOrchestrator{
 		partnerFactory:          partnerFactory,
 		partnerAttributeMapRepo: partnerAttributeMapRepo,
 		timeout:                 timeout,
+		returnOnlyServiceable:   returnOnlyServiceable,
 	}
 }
 
@@ -212,17 +215,20 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				partnerID = result.PartnerInfo.PartnerID.String()
 			}
 
-			partners = append(partners, models.PartnerV2Response{
-				PartnerID:     partnerID,
-				PartnerCode:   result.PartnerCode,
-				PartnerName:   "",  // No partner name in database
-				Rating:        0.0, // No rating in database
-				IsServiceable: false,
-				Services:      []models.ServiceV2{},
-				Capabilities:  make(map[string]interface{}),
-				Error:         &errorMsg,
-				ResponseTime:  0,
-			})
+			// Filter out error partners if configuration is enabled
+			if !s.returnOnlyServiceable {
+				partners = append(partners, models.PartnerV2Response{
+					PartnerID:     partnerID,
+					PartnerCode:   result.PartnerCode,
+					PartnerName:   "",  // No partner name in database
+					Rating:        0.0, // No rating in database
+					IsServiceable: false,
+					Services:      []models.ServiceV2{},
+					Capabilities:  make(map[string]interface{}),
+					Error:         &errorMsg,
+					ResponseTime:  0,
+				})
+			}
 		} else if result.Result != nil {
 			// Convert partner result to V2 response using database info
 			partnerID := result.Result.PartnerCode // Default to partner code
@@ -246,7 +252,10 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				partnerResponse.Error = result.Result.ErrorMessage
 			}
 
-			partners = append(partners, partnerResponse)
+			// Filter out non-serviceable partners if configuration is enabled
+			if !s.returnOnlyServiceable || result.Result.IsServiceable {
+				partners = append(partners, partnerResponse)
+			}
 
 			if result.Result.IsServiceable {
 				serviceableCount++

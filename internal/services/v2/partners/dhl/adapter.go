@@ -80,6 +80,21 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
+	// Validate DHL-specific requirements
+	if err := a.validateDHLRequirements(request); err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+			ErrorMessage:  &[]string{fmt.Sprintf("DHL validation failed: %v", err)}[0],
+			Metadata: map[string]interface{}{
+				"reason": "DHL validation failed",
+			},
+		}, nil
+	}
+
 	// Convert request to DHL rates format
 	dhlRequest := a.convertToRatesRequest(request)
 
@@ -412,8 +427,9 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 		return false
 	}
 
-	// Check if credentials are available
-	return a.client.auth.IsAuthenticated()
+	// For basic health check, we only require that the adapter is enabled
+	// Authentication will be checked during actual API calls
+	return true
 }
 
 // GetMetrics implements PartnerAdapter interface

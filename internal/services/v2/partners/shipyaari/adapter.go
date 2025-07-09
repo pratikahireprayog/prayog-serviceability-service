@@ -130,12 +130,8 @@ func (s *ShipyaariAdapter) IsHealthy(ctx context.Context) bool {
 		return false
 	}
 
-	// Check authentication status
-	if !s.GetAuthenticator().IsAuthenticated() {
-		return false
-	}
-
-	// Could add additional health checks here (e.g., ping Shipyaari API)
+	// For basic health check, we only require that the adapter is enabled
+	// Authentication will be checked during actual API calls
 	return true
 }
 

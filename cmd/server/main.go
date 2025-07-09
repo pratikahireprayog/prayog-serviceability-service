@@ -265,6 +265,7 @@ func initV2Orchestrator(
 		partnerAdapterFactory,
 		partnerAttributeRepo,
 		30*time.Second, // timeout for partner requests
+		configManager.App.Serviceability.ReturnOnlyServiceablePartners,
 	)
 
 	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")
