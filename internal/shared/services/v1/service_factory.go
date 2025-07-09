@@ -3,8 +3,35 @@ package services
 import (
 	"prayog-serviceability-service/internal/shared/repositories/v1"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/sirupsen/logrus"
 )
+
+// ServiceFactory provides access to all services
+type ServiceFactory struct {
+	locationService    LocationService
+	geoLocationService GeoLocationService
+}
+
+// NewServiceFactory creates a new service factory with all services
+func NewServiceFactory(repoFactory *repositories.RepositoryFactory, logger *logrus.Logger, validator *validator.Validate) *ServiceFactory {
+	locationRepo := repositories.NewLocationRepository(repoFactory)
+
+	return &ServiceFactory{
+		locationService:    NewLocationService(locationRepo, logger),
+		geoLocationService: NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator),
+	}
+}
+
+// GetLocationService returns the location service
+func (f *ServiceFactory) GetLocationService() LocationService {
+	return f.locationService
+}
+
+// GetGeoLocationService returns the geo location service
+func (f *ServiceFactory) GetGeoLocationService() GeoLocationService {
+	return f.geoLocationService
+}
 
 // locationService implements the LocationService interface
 type locationService struct {
