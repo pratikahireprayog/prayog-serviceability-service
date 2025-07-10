@@ -24,6 +24,7 @@ import (
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
+	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
 )
 
 func main() {
@@ -242,11 +243,24 @@ func initV2Orchestrator(
 		}
 	}
 
+	// Create geolocation service for partner adapters
+	var geolocationService sharedServices.GeolocationService
+	if gormDB != nil {
+		// Create repository factory from database connection
+		repoFactory := repositories.NewRepositoryFactory(gormDB)
+		postalCodeRepo := repoFactory.GetPostalCodeRepository()
+		geolocationService = sharedServices.NewGeolocationService(postalCodeRepo)
+	} else {
+		// Create a dummy geolocation service for graceful degradation
+		geolocationService = sharedServices.NewGeolocationService(nil)
+	}
+
 	// Create partner adapter factory using v2 factory
 	partnerAdapterFactory := factory.NewPartnerAdapterFactory(
 		configManager.Integration.PartnerAdapters,
 		httpClient,
 		sqlDB,
+		geolocationService,
 	)
 
 	// Get partner attribute mapping repository for filtering

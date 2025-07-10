@@ -9,16 +9,18 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
+	"prayog-serviceability-service/internal/shared/services/v1"
 )
 
 // Adapter implements the PartnerAdapter interface for DHL international shipping
 type Adapter struct {
-	client *DHLClient
-	config config.DHLConfig
+	client             *DHLClient
+	config             config.DHLConfig
+	geolocationService services.GeolocationService
 }
 
 // NewAdapter creates a new DHL adapter instance
-func NewAdapter(config config.DHLConfig) *Adapter {
+func NewAdapter(config config.DHLConfig, geolocationService services.GeolocationService) *Adapter {
 	// Debug: Log the configuration values
 	fmt.Printf("DEBUG: Creating DHL adapter with config:\n")
 	fmt.Printf("  BaseURL: %s\n", config.BaseURL)
@@ -27,8 +29,9 @@ func NewAdapter(config config.DHLConfig) *Adapter {
 	fmt.Printf("  Enabled: %v\n", config.Enabled)
 
 	return &Adapter{
-		client: NewDHLClient(config),
-		config: config,
+		client:             NewDHLClient(config),
+		config:             config,
+		geolocationService: geolocationService,
 	}
 }
 
@@ -105,7 +108,20 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 // checkServiceabilityWithFallback attempts multiple product codes
 func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time) (*common.PartnerServiceabilityResult, error) {
 	// Determine product codes to try based on ACTUAL route geography, not just parcel_category
-	destinationCountry := a.getDestinationCountryCode(request, a.getDestinationPincode(request))
+	destinationCountry, err := a.getDestinationCountryCode(ctx, request, a.getDestinationPincode(request))
+	if err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerCode:   a.GetPartnerCode(),
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+			ErrorMessage:  &[]string{fmt.Sprintf("Failed to determine destination country: %v", err)}[0],
+			Metadata: map[string]interface{}{
+				"reason": "Failed to determine destination country",
+			},
+		}, nil
+	}
 	sourceCountry := "IN" // Source is always India
 
 	// Use actual route geography for product code selection
@@ -219,8 +235,12 @@ func (a *Adapter) convertToRatesRequest(request *models.ServiceabilityV2Request)
 	destinationPincode := a.getDestinationPincode(request)
 
 	// For international requests, we need to determine the destination country
-	// For now, let's use a hardcoded mapping based on postal codes for testing
-	destinationCountry := a.getDestinationCountryCode(request, destinationPincode)
+	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
+	if err != nil {
+		// Log error and use default country
+		fmt.Printf("DEBUG: Failed to get destination country code: %v, using default 'CN'\n", err)
+		destinationCountry = "CN"
+	}
 
 	// Create rates request with static values
 	dhlReq := RatesRequest{
@@ -276,7 +296,12 @@ func (a *Adapter) convertToRatesRequestWithProductCode(request *models.Serviceab
 	destinationPincode := a.getDestinationPincode(request)
 
 	// For international requests, we need to determine the destination country
-	destinationCountry := a.getDestinationCountryCode(request, destinationPincode)
+	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
+	if err != nil {
+		// Log error and use default country
+		fmt.Printf("DEBUG: Failed to get destination country code: %v, using default 'CN'\n", err)
+		destinationCountry = "CN"
+	}
 
 	// Create rates request with static values and specific product code
 	dhlReq := RatesRequest{
@@ -428,6 +453,7 @@ func (a *Adapter) getSourcePincode(request *models.ServiceabilityV2Request) stri
 	if request.SourcePostalCode != nil {
 		return *request.SourcePostalCode
 	}
+	// TODO: Remove this once we have a proper source pincode
 	return "110001" // Default to Delhi if no source specified
 }
 
@@ -447,13 +473,19 @@ func (a *Adapter) getCountryCode(request *models.ServiceabilityV2Request) string
 	if request.CountryCode != nil {
 		return *request.CountryCode
 	}
+	// TODO: Remove this once we have a proper country code
 	return "IN" // Default to India if no country code specified
 }
 
 // getPlannedShippingDateTime gets the planned shipping date and time
 func (a *Adapter) getPlannedShippingDateTime() string {
-	// Use a fixed future date that matches the working curl command format
-	return "2025-07-10T13:00:00GMT+05:30"
+	// Use current time + 2 days, formatted as "YYYY-MM-DDTHH:MM:SSGMT+05:30"
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		loc = time.FixedZone("GMT+05:30", 5*60*60+30*60)
+	}
+	plannedTime := time.Now().In(loc).Add(48 * time.Hour)
+	return plannedTime.Format("2006-01-02T15:04:05") + "GMT+05:30"
 }
 
 // getPackages creates packages from request
@@ -544,7 +576,7 @@ func (a *Adapter) IsInternationalRequest(request *models.ServiceabilityV2Request
 	if request.CountryCode == nil {
 		return false
 	}
-
+	// TODO: Remove this once we have a proper country code
 	originCountry := "IN" // Default origin
 	destCountry := strings.ToUpper(*request.CountryCode)
 
@@ -600,11 +632,12 @@ func (a *Adapter) GetQuote(ctx context.Context, request *models.ServiceabilityV2
 	// Convert to quote request format
 	quoteRequest := QuoteRequest{
 		DestinationCountryCode: *request.CountryCode,
-		OriginCountryCode:      "IN",
-		ServiceType:            "P", // Express
-		DestinationPostalCode:  a.getDestinationPincode(request),
-		OriginPostalCode:       a.getSourcePincode(request),
-		Packages:               a.convertToQuotePackages(request),
+		// TODO: Remove this once we have a proper country code
+		OriginCountryCode:     "IN",
+		ServiceType:           "P", // Express
+		DestinationPostalCode: a.getDestinationPincode(request),
+		OriginPostalCode:      a.getSourcePincode(request),
+		Packages:              a.convertToQuotePackages(request),
 	}
 
 	return a.client.GetQuote(ctx, quoteRequest)
@@ -620,7 +653,8 @@ func (a *Adapter) convertToQuotePackages(request *models.ServiceabilityV2Request
 				Width:         20,
 				Height:        15,
 				DeclaredValue: 100.0,
-				Currency:      "INR",
+				// TODO: Remove this once we have a proper currency
+				Currency: "INR",
 			},
 		}
 	}
@@ -632,27 +666,38 @@ func (a *Adapter) convertToQuotePackages(request *models.ServiceabilityV2Request
 			Width:         a.convertToCm(request.Package.Dimensions.Width, request.Package.Dimensions.Unit),
 			Height:        a.convertToCm(request.Package.Dimensions.Height, request.Package.Dimensions.Unit),
 			DeclaredValue: 100.0, // Default value
-			Currency:      "INR",
+			// TODO: Remove this once we have a proper currency
+			Currency: "INR",
 		},
 	}
 }
 
-// getDestinationCountryCode determines the destination country code for international requests
-func (a *Adapter) getDestinationCountryCode(request *models.ServiceabilityV2Request, destinationPincode string) string {
+// getDestinationCountryCode determines the destination country code using geolocation service
+func (a *Adapter) getDestinationCountryCode(ctx context.Context, request *models.ServiceabilityV2Request, destinationPincode string) (string, error) {
 	// If country code is explicitly provided, use it
 	if request.CountryCode != nil {
-		return *request.CountryCode
+		return *request.CountryCode, nil
 	}
 
-	// For testing, let's use a hardcoded mapping based on postal codes
-	// This matches the working curl command examples
-	switch {
-	case destinationPincode == "266001":
-		return "CN" // China - as per working curl
-	case destinationPincode == "385515":
-		return "IN" // India - for testing domestic vs international
-	default:
-		// Default to China for international testing
-		return "CN"
+	// If no destination pincode, return error
+	if destinationPincode == "" {
+		return "", fmt.Errorf("destination postal code is required to determine country code")
 	}
+
+	// Check if geolocation service is available
+	if a.geolocationService == nil {
+		return "", fmt.Errorf("geolocation service is not available")
+	}
+
+	// Get country code from geolocation service
+	countryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, destinationPincode)
+	if err != nil {
+		return "", fmt.Errorf("country code not found for postal code %s: %w", destinationPincode, err)
+	}
+
+	if countryCode == nil {
+		return "", fmt.Errorf("country code not found for postal code %s", destinationPincode)
+	}
+
+	return *countryCode, nil
 }

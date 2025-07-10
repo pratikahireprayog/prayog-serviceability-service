@@ -14,6 +14,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/shared/config"
+	"prayog-serviceability-service/internal/shared/services/v1"
 )
 
 // PartnerAdapterFactory defines the interface for creating partner adapters in v2
@@ -76,19 +77,21 @@ func getPartnerDisplayName(code string) string {
 
 // partnerAdapterFactory implements PartnerAdapterFactory interface
 type partnerAdapterFactory struct {
-	config          config.PartnerAdaptersConfig
-	httpClient      *http.Client
-	db              *sql.DB
-	implementations map[string]common.PartnerAdapter // Implementation code -> adapter instance
+	config             config.PartnerAdaptersConfig
+	httpClient         *http.Client
+	db                 *sql.DB
+	geolocationService services.GeolocationService
+	implementations    map[string]common.PartnerAdapter // Implementation code -> adapter instance
 }
 
 // NewPartnerAdapterFactory creates a new partner adapter factory
-func NewPartnerAdapterFactory(cfg config.PartnerAdaptersConfig, httpClient *http.Client, db *sql.DB) PartnerAdapterFactory {
+func NewPartnerAdapterFactory(cfg config.PartnerAdaptersConfig, httpClient *http.Client, db *sql.DB, geolocationService services.GeolocationService) PartnerAdapterFactory {
 	factory := &partnerAdapterFactory{
-		config:          cfg,
-		httpClient:      httpClient,
-		db:              db,
-		implementations: make(map[string]common.PartnerAdapter),
+		config:             cfg,
+		httpClient:         httpClient,
+		db:                 db,
+		geolocationService: geolocationService,
+		implementations:    make(map[string]common.PartnerAdapter),
 	}
 
 	// Initialize all available adapter implementations
@@ -235,9 +238,9 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 		f.implementations["smile_ecom"] = smile_ecom.NewSmileEcomAdapter(f.config.SmileEcom, f.db)
 	}
 
-	// Initialize DHL adapter with real implementation
+	// Initialize DHL adapter with real implementation and geolocation service
 	if f.config.DHL.Enabled {
-		f.implementations["dhl"] = dhl.NewAdapter(f.config.DHL)
+		f.implementations["dhl"] = dhl.NewAdapter(f.config.DHL, f.geolocationService)
 	}
 
 	// Enable Smile Cargo adapter when configuration is available
