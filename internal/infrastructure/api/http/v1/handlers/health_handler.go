@@ -8,14 +8,14 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"prayog-serviceability-service/internal/infrastructure/db"
-	"prayog-serviceability-service/internal/services/v1"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/shared/config"
 )
 
 // HealthHandler handles health check requests
 type HealthHandler struct {
 	dbManager          *db.DatabaseManager
-	integrationFactory *services.IntegrationFactory
+	integrationFactory *integrationServices.IntegrationFactory
 	configManager      *config.ConfigManager
 	logger             *logrus.Logger
 }
@@ -23,7 +23,7 @@ type HealthHandler struct {
 // NewHealthHandler creates a new health check handler
 func NewHealthHandler(
 	dbManager *db.DatabaseManager,
-	integrationFactory *services.IntegrationFactory,
+	integrationFactory *integrationServices.IntegrationFactory,
 	configManager *config.ConfigManager,
 	logger *logrus.Logger,
 ) *HealthHandler {

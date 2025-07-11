@@ -15,7 +15,8 @@ import (
 
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
-	"prayog-serviceability-service/internal/services/v1"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
+	businessServices "prayog-serviceability-service/internal/services/v1/business"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/config"
@@ -24,7 +25,7 @@ import (
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
-	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
+	dataServices "prayog-serviceability-service/internal/services/v1/data"
 )
 
 func main() {
@@ -162,10 +163,10 @@ func initDatabase(appConfig *config.AppConfig, logger *logrus.Logger) (*db.Datab
 }
 
 // initIntegrationFactory initializes the integration factory for external services
-func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (*services.IntegrationFactory, error) {
+func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (*integrationServices.IntegrationFactory, error) {
 	logger.Info("🔌 Initializing integration factory...")
 
-	factory, err := services.NewIntegrationFactory(appConfig, logger)
+	factory, err := integrationServices.NewIntegrationFactory(appConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create integration factory: %w", err)
 	}
@@ -175,7 +176,7 @@ func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) 
 }
 
 // initOrchestrator initializes the serviceability orchestrator with all dependencies
-func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
+func initOrchestrator(integrationFactory *integrationServices.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
 	logger.Info("⚙️ Initializing serviceability orchestrator with real service integrations...")
 
 	// Create external service clients
@@ -190,13 +191,13 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 	}
 
 	// Create core services with real implementations
-	locationResolver := services.NewLocationResolver(partnerService)
+	locationResolver := businessServices.NewLocationResolver(partnerService)
 
 	// Create serviceability calculator
-	serviceabilityCalculator := services.NewServiceabilityCalculator()
+	serviceabilityCalculator := businessServices.NewServiceabilityCalculator()
 
 	// Create and return the real orchestrator
-	orchestrator := services.NewOptimizedServiceabilityOrchestrator(
+	orchestrator := businessServices.NewOptimizedServiceabilityOrchestrator(
 		locationResolver,
 		partnerService,
 		specService,
@@ -211,7 +212,7 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 func initV2Orchestrator(
 	appConfig *config.AppConfig,
 	dbManager *db.DatabaseManager,
-	integrationFactory *services.IntegrationFactory,
+	integrationFactory *integrationServices.IntegrationFactory,
 	logger *logrus.Logger,
 ) (orchestrators.ServiceabilityOrchestrator, error) {
 	logger.Info("⚙️ Initializing V2 serviceability orchestrator with partner adapters...")
@@ -244,15 +245,15 @@ func initV2Orchestrator(
 	}
 
 	// Create geolocation service for partner adapters
-	var geolocationService sharedServices.GeolocationService
+	var geolocationService dataServices.GeolocationService
 	if gormDB != nil {
 		// Create repository factory from database connection
 		repoFactory := repositories.NewRepositoryFactory(gormDB)
 		postalCodeRepo := repoFactory.GetPostalCodeRepository()
-		geolocationService = sharedServices.NewGeolocationService(postalCodeRepo)
+		geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
 	} else {
 		// Create a dummy geolocation service for graceful degradation
-		geolocationService = sharedServices.NewGeolocationService(nil)
+		geolocationService = dataServices.NewGeolocationService(nil)
 	}
 
 	// Create partner adapter factory using v2 factory
@@ -290,7 +291,7 @@ func initV2Orchestrator(
 func initHTTPServer(
 	appConfig *config.AppConfig,
 	dbManager *db.DatabaseManager,
-	integrationFactory *services.IntegrationFactory,
+	integrationFactory *integrationServices.IntegrationFactory,
 	orchestrator interfaces.ServiceabilityOrchestrator,
 	v2Orchestrator orchestrators.ServiceabilityOrchestrator,
 	logger *logrus.Logger,

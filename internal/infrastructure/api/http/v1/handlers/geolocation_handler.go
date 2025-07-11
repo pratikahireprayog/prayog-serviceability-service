@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
-	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // GeolocationHandler handles geo-location related HTTP requests

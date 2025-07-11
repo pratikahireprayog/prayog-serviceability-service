@@ -17,13 +17,12 @@ import (
 	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
 	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
-	"prayog-serviceability-service/internal/services/v1"
-	servicesv1 "prayog-serviceability-service/internal/services/v1"
+	dataServices "prayog-serviceability-service/internal/services/v1/data"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
-	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
 	"prayog-serviceability-service/internal/shared/utils/v1"
 
 	// Add imports for geo location routes and handlers
@@ -36,7 +35,7 @@ type Server struct {
 	app                *fiber.App
 	config             *config.ConfigManager
 	dbManager          *db.DatabaseManager
-	integrationFactory *services.IntegrationFactory
+	integrationFactory *integrationServices.IntegrationFactory
 	orchestrator       interfaces.ServiceabilityOrchestrator
 	v2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	logger             *logrus.Logger
@@ -46,7 +45,7 @@ type Server struct {
 type ServerDependencies struct {
 	Config             *config.ConfigManager
 	DBManager          *db.DatabaseManager
-	IntegrationFactory *services.IntegrationFactory
+	IntegrationFactory *integrationServices.IntegrationFactory
 	Orchestrator       interfaces.ServiceabilityOrchestrator
 	V2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	Logger             *logrus.Logger
@@ -435,7 +434,7 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 	partnerLocationCoverageRepo := repoFactory.GetPartnerLocationCoverageRepository()
 
 	// Create postal code serviceability service
-	postalCodeServiceabilityService := sharedServices.NewPostalCodeServiceabilityService(
+	postalCodeServiceabilityService := dataServices.NewPostalCodeServiceabilityService(
 		partnerLocationCoverageRepo,
 	)
 
@@ -462,14 +461,14 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 	validator := validatorSetup.GetValidator()
 
 	// Create geolocation service for country code resolution
-	var geolocationService sharedServices.GeolocationService
+	var geolocationService dataServices.GeolocationService
 	if s.dbManager != nil {
 		// Create repository factory from database connection
 		db := s.dbManager.GetDB()
 		if db != nil {
 			repoFactory := repositories.NewRepositoryFactory(db)
 			postalCodeRepo := repoFactory.GetPostalCodeRepository()
-			geolocationService = sharedServices.NewGeolocationService(postalCodeRepo)
+			geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
 		}
 	}
 
@@ -477,7 +476,7 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 	if geolocationService == nil {
 		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
 		// Create a dummy geolocation service for graceful degradation
-		geolocationService = sharedServices.NewGeolocationService(nil)
+		geolocationService = dataServices.NewGeolocationService(nil)
 	}
 
 	// Create V2 serviceability handler
@@ -513,7 +512,7 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	repoFactory := repositories.NewRepositoryFactory(db)
 
 	// Create location service from repository factory
-	locationService := sharedServices.NewLocationService(repoFactory.GetLocationRepository(), s.logger)
+	locationService := dataServices.NewLocationService(repoFactory.GetLocationRepository(), s.logger)
 
 	// Create location handler
 	locationHandler := handlers.NewLocationHandler(
@@ -550,9 +549,9 @@ func (s *Server) createPartnerAttributeHandler() (*handlers.PartnerAttributeHand
 	partnerAttributeMapRepo := repoFactory.GetPartnerAttributeMapRepository()
 
 	// Create services
-	attributeCategoryService := sharedServices.NewAttributeCategoryService(attributeCategoryRepo)
-	attributeService := sharedServices.NewAttributeService(attributeRepo)
-	partnerAttributeMapService := sharedServices.NewPartnerAttributeMapService(
+	attributeCategoryService := dataServices.NewAttributeCategoryService(attributeCategoryRepo)
+	attributeService := dataServices.NewAttributeService(attributeRepo)
+	partnerAttributeMapService := dataServices.NewPartnerAttributeMapService(
 		partnerAttributeMapRepo,
 		attributeRepo,
 		attributeCategoryRepo,
@@ -604,20 +603,20 @@ func (s *Server) createPartnerLocationCoverageHandler() (*handlers.PartnerLocati
 	locationRepo := repoFactory.GetLocationRepository()
 
 	// Create partner validation service
-	partnerValidationConfig := servicesv1.LoadPartnerValidationConfig()
+	partnerValidationConfig := integrationServices.LoadPartnerValidationConfig()
 
 	// Create standard log.Logger for partner services
 	stdLogger := log.New(s.logger.WithField("component", "partner").WriterLevel(logrus.InfoLevel), "[partner] ", log.LstdFlags)
 
-	partnerHTTPClient := servicesv1.NewPartnerHTTPClient(partnerValidationConfig, stdLogger)
-	partnerValidationService := servicesv1.NewPartnerValidationService(
+	partnerHTTPClient := integrationServices.NewPartnerHTTPClient(partnerValidationConfig, stdLogger)
+	partnerValidationService := integrationServices.NewPartnerValidationService(
 		partnerValidationConfig,
 		partnerHTTPClient,
 		stdLogger,
 	)
 
 	// Create partner location coverage service
-	partnerLocationCoverageService := sharedServices.NewPartnerLocationCoverageService(
+	partnerLocationCoverageService := dataServices.NewPartnerLocationCoverageService(
 		partnerLocationCoverageRepo,
 		locationRepo,
 		partnerValidationService,
@@ -655,7 +654,7 @@ func (s *Server) createGeoLocationHandler() (*v1handlers.GeoLocationHandler, err
 	repoFactory := repositories.NewRepositoryFactory(db)
 
 	// Create geo location service from repository factory
-	geoLocationService := sharedServices.NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator)
+	geoLocationService := dataServices.NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator)
 
 	// Create geo location handler
 	geoLocationHandler := v1handlers.NewGeoLocationHandler(geoLocationService)

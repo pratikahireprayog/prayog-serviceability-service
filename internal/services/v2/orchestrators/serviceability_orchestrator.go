@@ -12,6 +12,7 @@ import (
 	"prayog-serviceability-service/internal/shared/repositories/v1"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // ServiceabilityOrchestrator defines the interface for V2 serviceability orchestration
@@ -26,6 +27,7 @@ type serviceabilityOrchestrator struct {
 	partnerAttributeMapRepo repositories.PartnerAttributeMapRepository
 	timeout                 time.Duration
 	returnOnlyServiceable   bool
+	logger                  *logrus.Logger
 }
 
 // NewServiceabilityOrchestrator creates a new V2 serviceability orchestrator
@@ -35,11 +37,16 @@ func NewServiceabilityOrchestrator(
 	timeout time.Duration,
 	returnOnlyServiceable bool,
 ) ServiceabilityOrchestrator {
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
 	return &serviceabilityOrchestrator{
 		partnerFactory:          partnerFactory,
 		partnerAttributeMapRepo: partnerAttributeMapRepo,
 		timeout:                 timeout,
 		returnOnlyServiceable:   returnOnlyServiceable,
+		logger:                  logger,
 	}
 }
 
@@ -325,7 +332,12 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 
 	// If partner attribute mapping repository is not available, return all supported partners
 	if s.partnerAttributeMapRepo == nil {
-		fmt.Printf("Warning: Partner attribute mapping repository not available, returning all supported partners\n")
+		s.logger.WithFields(logrus.Fields{
+			"component":       "serviceability_orchestrator",
+			"total_partners":  len(allSupportedPartners),
+			"parcel_category": *req.ParcelCategory,
+		}).Warn("Partner attribute mapping repository not available, returning all supported partners")
+
 		partnerInfos := make([]DatabasePartnerInfo, 0, len(allSupportedPartners))
 		for _, partnerCode := range allSupportedPartners {
 			partnerInfos = append(partnerInfos, DatabasePartnerInfo{
@@ -341,7 +353,13 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	if err != nil {
 		// If error getting partners by attribute, log but continue with all partners
 		// This ensures backward compatibility
-		fmt.Printf("Warning: Failed to get partners by parcel category '%s': %v\n", *req.ParcelCategory, err)
+		s.logger.WithFields(logrus.Fields{
+			"component":       "serviceability_orchestrator",
+			"parcel_category": *req.ParcelCategory,
+			"error":           err.Error(),
+			"total_partners":  len(allSupportedPartners),
+		}).Warn("Failed to get partners by parcel category, returning all supported partners")
+
 		partnerInfos := make([]DatabasePartnerInfo, 0, len(allSupportedPartners))
 		for _, partnerCode := range allSupportedPartners {
 			partnerInfos = append(partnerInfos, DatabasePartnerInfo{

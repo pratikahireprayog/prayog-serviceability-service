@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
-	servicesv1 "prayog-serviceability-service/internal/services/v1"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/shared/dtos/v1"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -42,14 +42,14 @@ type PartnerLocationCoverageService interface {
 type partnerLocationCoverageService struct {
 	repo                 repositories.PartnerLocationCoverageRepository
 	locationRepo         repositories.LocationRepository
-	partnerValidationSvc servicesv1.PartnerValidationService
+	partnerValidationSvc integrationServices.PartnerValidationService
 }
 
 // NewPartnerLocationCoverageService creates a new partner location coverage service instance
 func NewPartnerLocationCoverageService(
 	repo repositories.PartnerLocationCoverageRepository,
 	locationRepo repositories.LocationRepository,
-	partnerValidationSvc servicesv1.PartnerValidationService,
+	partnerValidationSvc integrationServices.PartnerValidationService,
 ) PartnerLocationCoverageService {
 	return &partnerLocationCoverageService{
 		repo:                 repo,

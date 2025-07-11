@@ -14,7 +14,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/shared/config"
-	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // PartnerAdapterFactory defines the interface for creating partner adapters in v2

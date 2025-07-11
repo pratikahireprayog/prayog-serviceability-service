@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"prayog-serviceability-service/internal/shared/dtos/v1"
-	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/services/v1/data"
 
 	"github.com/gofiber/fiber/v2"
 )

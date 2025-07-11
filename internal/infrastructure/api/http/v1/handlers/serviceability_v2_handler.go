@@ -10,7 +10,7 @@ import (
 
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
-	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // ServiceabilityV2Handler handles V2 serviceability check requests

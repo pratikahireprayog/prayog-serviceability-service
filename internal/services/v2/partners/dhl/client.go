@@ -9,9 +9,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"prayog-serviceability-service/internal/shared/config"
+
+	"github.com/sirupsen/logrus"
 )
 
 // DHLClient handles HTTP communication with DHL API
@@ -19,6 +22,7 @@ type DHLClient struct {
 	httpClient *http.Client
 	config     config.DHLConfig
 	auth       DHLAuthenticator
+	logger     *logrus.Logger
 }
 
 // DHLAuthenticator interface for DHL authentication
@@ -38,6 +42,10 @@ type DHLBasicAuth struct {
 
 // NewDHLClient creates a new DHL HTTP client
 func NewDHLClient(config config.DHLConfig) *DHLClient {
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
 	httpClient := &http.Client{
 		Timeout: config.Timeout,
 		Transport: &http.Transport{
@@ -47,17 +55,16 @@ func NewDHLClient(config config.DHLConfig) *DHLClient {
 		},
 	}
 
-	// Debug: Check if DHL_BASIC_AUTH is available
-	envBasicAuth := os.Getenv("DHL_BASIC_AUTH")
-	fmt.Printf("DEBUG: DHL_BASIC_AUTH from env: '%s'\n", envBasicAuth)
-	fmt.Printf("DEBUG: DHL config BasicAuth: '%s'\n", config.BasicAuth)
-	fmt.Printf("DEBUG: DHL config BaseURL: '%s'\n", config.BaseURL)
-	fmt.Printf("DEBUG: DHL config Username: '%s'\n", config.Username)
-	passwordDebug := "empty"
-	if len(config.Password) > 0 {
-		passwordDebug = config.Password[:3] + "..."
-	}
-	fmt.Printf("DEBUG: DHL config Password: '%s'\n", passwordDebug)
+	// Log configuration with redacted sensitive fields
+	logger.WithFields(logrus.Fields{
+		"partner":        "DHL",
+		"base_url":       config.BaseURL,
+		"username":       redactCredentialField(config.Username),
+		"timeout":        config.Timeout,
+		"max_retries":    config.MaxRetries,
+		"has_basic_auth": config.BasicAuth != "",
+		"has_env_auth":   os.Getenv("DHL_BASIC_AUTH") != "",
+	}).Info("Creating DHL client")
 
 	auth := &DHLBasicAuth{
 		config:    config,
@@ -70,7 +77,32 @@ func NewDHLClient(config config.DHLConfig) *DHLClient {
 		httpClient: httpClient,
 		config:     config,
 		auth:       auth,
+		logger:     logger,
 	}
+}
+
+// redactCredentialField safely redacts sensitive credential fields for logging
+func redactCredentialField(field string) string {
+	if field == "" {
+		return "[EMPTY]"
+	}
+	if len(field) <= 3 {
+		return "[REDACTED]"
+	}
+	return field[:3] + "***"
+}
+
+// redactHeaderValue redacts sensitive header values for logging
+func redactHeaderValue(key, value string) string {
+	sensitiveHeaders := []string{"authorization", "basic", "token", "api-key", "x-api-key"}
+	keyLower := strings.ToLower(key)
+
+	for _, sensitive := range sensitiveHeaders {
+		if strings.Contains(keyLower, sensitive) {
+			return "[REDACTED]"
+		}
+	}
+	return value
 }
 
 // getEnvWithPrefix tries to get environment variable with DHL prefix
@@ -120,7 +152,8 @@ func (a *DHLBasicAuth) Authenticate(ctx context.Context) error {
 		if a.basicAuth != "" {
 			return fmt.Errorf("DHL basic auth token is invalid or empty")
 		}
-		return fmt.Errorf("DHL credentials not available - username: '%s', password: '%s'", a.username, a.password)
+		return fmt.Errorf("DHL credentials not available - username: '%s', password: '%s'",
+			redactCredentialField(a.username), "[REDACTED]")
 	}
 	return nil
 }
@@ -136,10 +169,14 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	fmt.Printf("DEBUG: DHL request body: %s\n", string(reqBody))
-
+	// Log request with appropriate level of detail
 	url := fmt.Sprintf("%s/mydhlapi/test/rates?strictValidation=false", c.config.BaseURL)
-	fmt.Printf("DEBUG: Making DHL API call to: %s\n", url)
+	c.logger.WithFields(logrus.Fields{
+		"partner":   "DHL",
+		"method":    "POST",
+		"url":       url,
+		"body_size": len(reqBody),
+	}).Debug("Making DHL API request")
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -161,17 +198,22 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 
 	// Add authentication headers
 	authHeaders := c.auth.GetAuthHeaders()
-	fmt.Printf("DEBUG: Auth headers: %+v\n", authHeaders)
 	for key, value := range authHeaders {
 		req.Header.Set(key, value)
 	}
 
-	// Debug: Print all headers
-	fmt.Printf("DEBUG: All request headers:\n")
-	for key, values := range req.Header {
-		for _, value := range values {
-			fmt.Printf("  %s: %s\n", key, value)
+	// Log headers safely (with sensitive headers redacted)
+	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
+		logFields := logrus.Fields{
+			"partner": "DHL",
+			"headers": make(map[string]string),
 		}
+		for key, values := range req.Header {
+			for _, value := range values {
+				logFields["headers"].(map[string]string)[key] = redactHeaderValue(key, value)
+			}
+		}
+		c.logger.WithFields(logFields).Debug("Request headers prepared")
 	}
 
 	// Add retry logic
@@ -203,6 +245,13 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
+
+	// Log response details safely
+	c.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"status_code": resp.StatusCode,
+		"body_size":   len(body),
+	}).Debug("Received DHL API response")
 
 	if resp.StatusCode != http.StatusOK {
 		// Try to parse DHL error response for better error messages

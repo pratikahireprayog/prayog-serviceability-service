@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"prayog-serviceability-service/internal/shared/dtos/v1"
-	"prayog-serviceability-service/internal/shared/services/v1"
+	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // PartnerAttributeHandler handles partner attribute HTTP requests

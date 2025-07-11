@@ -6,10 +6,12 @@ import (
 	"strings"
 	"time"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
-	"prayog-serviceability-service/internal/shared/services/v1"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Adapter implements the PartnerAdapter interface for DHL international shipping
@@ -17,22 +19,41 @@ type Adapter struct {
 	client             *DHLClient
 	config             config.DHLConfig
 	geolocationService services.GeolocationService
+	logger             *logrus.Logger
 }
 
 // NewAdapter creates a new DHL adapter instance
 func NewAdapter(config config.DHLConfig, geolocationService services.GeolocationService) *Adapter {
-	// Debug: Log the configuration values
-	fmt.Printf("DEBUG: Creating DHL adapter with config:\n")
-	fmt.Printf("  BaseURL: %s\n", config.BaseURL)
-	fmt.Printf("  BasicAuth: '%s'\n", config.BasicAuth)
-	fmt.Printf("  Username: '%s'\n", config.Username)
-	fmt.Printf("  Enabled: %v\n", config.Enabled)
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	// Log configuration with redacted sensitive fields
+	logger.WithFields(logrus.Fields{
+		"partner":    "DHL",
+		"base_url":   config.BaseURL,
+		"username":   redactField(config.Username),
+		"enabled":    config.Enabled,
+		"basic_auth": "[REDACTED]", // Never log credentials
+	}).Info("Creating DHL adapter")
 
 	return &Adapter{
 		client:             NewDHLClient(config),
 		config:             config,
 		geolocationService: geolocationService,
+		logger:             logger,
 	}
+}
+
+// redactField safely redacts sensitive fields for logging
+func redactField(field string) string {
+	if field == "" {
+		return "[EMPTY]"
+	}
+	if len(field) <= 3 {
+		return "[REDACTED]"
+	}
+	return field[:3] + "***"
 }
 
 // GetPartnerCode returns the partner code (interface compatibility only)
@@ -127,18 +148,30 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 	// Use actual route geography for product code selection
 	isActuallyInternational := destinationCountry != sourceCountry
 
-	fmt.Printf("DEBUG: Route analysis - Source: %s, Destination: %s, ActuallyInternational: %v\n",
-		sourceCountry, destinationCountry, isActuallyInternational)
+	a.logger.WithFields(logrus.Fields{
+		"partner":                "DHL",
+		"source_country":         sourceCountry,
+		"destination_country":    destinationCountry,
+		"actually_international": isActuallyInternational,
+	}).Debug("Route analysis completed")
 
 	var productCodes []string
 	if isActuallyInternational {
 		// International product codes (in order of preference)
 		productCodes = []string{"U", "P", "D", "G", "J"}
-		fmt.Printf("DEBUG: Using international product codes: %v\n", productCodes)
+		a.logger.WithFields(logrus.Fields{
+			"partner":       "DHL",
+			"route_type":    "international",
+			"product_codes": productCodes,
+		}).Debug("Using international product codes")
 	} else {
 		// Domestic product codes for India (in order of preference)
 		productCodes = []string{"B", "D", "E", "G", "H"}
-		fmt.Printf("DEBUG: Using domestic product codes: %v\n", productCodes)
+		a.logger.WithFields(logrus.Fields{
+			"partner":       "DHL",
+			"route_type":    "domestic",
+			"product_codes": productCodes,
+		}).Debug("Using domestic product codes")
 	}
 
 	var lastError error
@@ -147,7 +180,10 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 	// Try each product code
 	for _, productCode := range productCodes {
 		attempts = append(attempts, productCode)
-		fmt.Printf("DEBUG: Trying DHL product code: %s\n", productCode)
+		a.logger.WithFields(logrus.Fields{
+			"partner":      "DHL",
+			"product_code": productCode,
+		}).Debug("Trying DHL product code")
 
 		// Create request with this product code
 		dhlRequest := a.convertToRatesRequestWithProductCode(request, productCode)
@@ -156,7 +192,11 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 		response, err := a.client.CheckRates(ctx, dhlRequest)
 		if err != nil {
 			lastError = err
-			fmt.Printf("DEBUG: DHL product code '%s' failed: %v\n", productCode, err)
+			a.logger.WithFields(logrus.Fields{
+				"partner":      "DHL",
+				"product_code": productCode,
+				"error":        err.Error(),
+			}).Debug("DHL product code failed")
 			continue
 		}
 
@@ -167,13 +207,20 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 			result.Metadata["product_code_used"] = productCode
 			result.Metadata["product_codes_attempted"] = attempts
 			result.Metadata["actual_route_type"] = map[string]bool{"international": isActuallyInternational}
-			fmt.Printf("DEBUG: Success with product code '%s'\n", productCode)
+			a.logger.WithFields(logrus.Fields{
+				"partner":      "DHL",
+				"product_code": productCode,
+				"services":     len(result.Services),
+			}).Debug("Success with product code")
 			return result, nil
 		}
 
 		// No products in response, try next product code
 		lastError = fmt.Errorf("no products available for product code %s", productCode)
-		fmt.Printf("DEBUG: Product code '%s' returned no products\n", productCode)
+		a.logger.WithFields(logrus.Fields{
+			"partner":      "DHL",
+			"product_code": productCode,
+		}).Debug("Product code returned no products")
 	}
 
 	// All product codes failed
@@ -238,7 +285,11 @@ func (a *Adapter) convertToRatesRequest(request *models.ServiceabilityV2Request)
 	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
 	if err != nil {
 		// Log error and use default country
-		fmt.Printf("DEBUG: Failed to get destination country code: %v, using default 'CN'\n", err)
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": destinationPincode,
+			"error":       err.Error(),
+		}).Debug("Failed to get destination country code, using default")
 		destinationCountry = "CN"
 	}
 
@@ -299,7 +350,11 @@ func (a *Adapter) convertToRatesRequestWithProductCode(request *models.Serviceab
 	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
 	if err != nil {
 		// Log error and use default country
-		fmt.Printf("DEBUG: Failed to get destination country code: %v, using default 'CN'\n", err)
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": destinationPincode,
+			"error":       err.Error(),
+		}).Debug("Failed to get destination country code, using default")
 		destinationCountry = "CN"
 	}
 
@@ -692,6 +747,11 @@ func (a *Adapter) getDestinationCountryCode(ctx context.Context, request *models
 	// Get country code from geolocation service
 	countryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, destinationPincode)
 	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": destinationPincode,
+			"error":       err.Error(),
+		}).Debug("Failed to get destination country code, using default")
 		return "", fmt.Errorf("country code not found for postal code %s: %w", destinationPincode, err)
 	}
 
