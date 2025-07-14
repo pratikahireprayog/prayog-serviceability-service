@@ -368,7 +368,7 @@ func (s *Server) setupRoutes() error {
 		routes.RegisterPartnerAttributeRoutes(v1, partnerAttributeHandler, s.logger)
 	}
 
-	// Try to create geo location handler and register routes if database is available
+	// Try to create geo location handler and register geo location routes if database is available
 	geoLocationHandler, err := s.createGeoLocationHandler()
 	if err != nil {
 		s.logger.WithError(err).Warn("Geo location features are disabled")
@@ -384,6 +384,16 @@ func (s *Server) setupRoutes() error {
 	} else {
 		// Register geo location routes under /serviceability/v1/
 		v1routes.RegisterGeoLocationRoutes(v1, geoLocationHandler)
+	}
+
+	// --- Add NearestHubLocation routes registration ---
+	if s.dbManager != nil {
+		db := s.dbManager.GetDB()
+		if db != nil {
+			repo := repositories.NewNearestHubLocationRepository(db)
+			handler := v1handlers.NewNearestHubLocationHandler(repo)
+			v1routes.RegisterNearestHubLocationRoutes(v1, handler)
+		}
 	}
 
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
