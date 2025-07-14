@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serviceability API Test Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+        .api-info {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .test-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .test-buttons button {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Serviceability API Test Client</h1>
+        
+        <div class="api-info">
+            <strong>API Endpoint:</strong> <span id="api-endpoint">https://sandbox-apis.prayog.io/serviceability/v1/check</span><br>
+            <strong>Server Status:</strong> <span id="server-status">Checking...</span>
+        </div>
+
+        <form id="serviceabilityForm">
+            <div class="form-group">
+                <label for="baseUrl">Base URL:</label>
+                <input type="text" id="baseUrl" value="https://sandbox-apis.prayog.io" placeholder="e.g., http://localhost:9022">
+            </div>
+
+            <div class="form-group">
+                <label for="sourcePostalCode">Source Postal Code:</label>
+                <input type="text" id="sourcePostalCode" value="713333" placeholder="e.g., 713333" required>
+            </div>
+
+            <div class="form-group">
+                <label for="destinationPostalCode">Destination Postal Code:</label>
+                <input type="text" id="destinationPostalCode" value="385515" placeholder="e.g., 385515" required>
+            </div>
+
+            <div class="form-group">
+                <label for="parcelCategory">Parcel Category (Optional):</label>
+                <select id="parcelCategory">
+                    <option value="">-- Select Category --</option>
+                    <option value="ecomm">E-commerce</option>
+                    <option value="document">Document</option>
+                    <option value="parcel">Parcel</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="productType">Product Type (Optional):</label>
+                <select id="productType">
+                    <option value="">-- Select Product Type --</option>
+                    <option value="travel_free">Travel Free</option>
+                    <option value="express">Express</option>
+                    <option value="standard">Standard</option>
+                </select>
+            </div>
+
+            <button type="submit" id="checkServiceabilityBtn">Check Serviceability</button>
+        </form>
+
+        <div class="test-buttons">
+            <button type="button" onclick="testServerStatus()">Test Server Status</button>
+            <button type="button" onclick="testHealth()">Test Health Check</button>
+        </div>
+
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('serviceabilityForm');
+        const resultDiv = document.getElementById('result');
+        const checkBtn = document.getElementById('checkServiceabilityBtn');
+        const serverStatusSpan = document.getElementById('server-status');
+        const apiEndpointSpan = document.getElementById('api-endpoint');
+
+        // Update API endpoint when base URL changes
+        document.getElementById('baseUrl').addEventListener('input', function() {
+            const baseUrl = this.value || 'https://sandbox-apis.prayog.io';
+            apiEndpointSpan.textContent = `${baseUrl}/serviceability/v1/check`;
+        });
+
+        // Check server status on page load
+        window.addEventListener('load', function() {
+            testServerStatus();
+        });
+
+        function showResult(content, type = 'info') {
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = content;
+        }
+
+        function showLoading() {
+            showResult('🔄 Loading...', 'loading');
+        }
+
+        async function makeRequest(url, options = {}) {
+            try {
+                console.log('Making request to:', url);
+                console.log('Request options:', options);
+                
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...options.headers
+                    }
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                const responseText = await response.text();
+                console.log('Response body:', responseText);
+
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    data = responseText;
+                }
+
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data,
+                    headers: response.headers
+                };
+            } catch (error) {
+                console.error('Request failed:', error);
+                throw error;
+            }
+        }
+
+        async function testServerStatus() {
+            const baseUrl = document.getElementById('baseUrl').value || 'https://sandbox-apis.prayog.io';
+            
+            try {
+                serverStatusSpan.textContent = 'Checking...';
+                const result = await makeRequest(`${baseUrl}/serviceability/v1/status`);
+                
+                if (result.ok) {
+                    serverStatusSpan.textContent = '✅ Online';
+                    serverStatusSpan.style.color = 'green';
+                    
+                    showResult(
+                        `✅ Server Status Check Successful!\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    serverStatusSpan.textContent = '❌ Error';
+                    serverStatusSpan.style.color = 'red';
+                    
+                    showResult(
+                        `❌ Server Status Check Failed!\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                serverStatusSpan.textContent = '❌ Offline';
+                serverStatusSpan.style.color = 'red';
+                
+                showResult(
+                    `❌ Connection Error!\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `Make sure the server is running on ${baseUrl}`, 
+                    'error'
+                );
+            }
+        }
+
+        async function testHealth() {
+            const baseUrl = document.getElementById('baseUrl').value || 'https://sandbox-apis.prayog.io';
+            showLoading();
+            
+            try {
+                const result = await makeRequest(`${baseUrl}/serviceability/ping`);
+                
+                if (result.ok) {
+                    showResult(
+                        `✅ Health Check Successful!\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    showResult(
+                        `❌ Health Check Failed!\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult(
+                    `❌ Health Check Error!\n\n` +
+                    `Error: ${error.message}`, 
+                    'error'
+                );
+            }
+        }
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const baseUrl = document.getElementById('baseUrl').value || 'https://sandbox-apis.prayog.io';
+            const sourcePostalCode = document.getElementById('sourcePostalCode').value;
+            const destinationPostalCode = document.getElementById('destinationPostalCode').value;
+            const parcelCategory = document.getElementById('parcelCategory').value;
+            const productType = document.getElementById('productType').value;
+
+            if (!sourcePostalCode || !destinationPostalCode) {
+                showResult('❌ Please fill in both postal codes!', 'error');
+                return;
+            }
+
+            const requestBody = {
+                source_postal_code: sourcePostalCode,
+                destination_postal_code: destinationPostalCode
+            };
+
+            if (parcelCategory) {
+                requestBody.parcel_category = parcelCategory;
+            }
+
+            if (productType) {
+                requestBody.product_type = productType;
+            }
+
+            checkBtn.disabled = true;
+            showLoading();
+
+            try {
+                const result = await makeRequest(`${baseUrl}/serviceability/v1/check`, {
+                    method: 'POST',
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (result.ok) {
+                    showResult(
+                        `✅ Serviceability Check Successful!\n\n` +
+                        `Request:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    showResult(
+                        `❌ Serviceability Check Failed!\n\n` +
+                        `Request:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
+                        `Status: ${result.status} ${result.statusText}\n\n` +
+                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult(
+                    `❌ Request Error!\n\n` +
+                    `Error: ${error.message}\n\n` +
+                    `This could be a CORS issue or network connectivity problem.\n` +
+                    `Check the browser console for more details.`, 
+                    'error'
+                );
+            } finally {
+                checkBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html> 

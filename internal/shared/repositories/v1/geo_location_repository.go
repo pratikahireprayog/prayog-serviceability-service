@@ -84,8 +84,8 @@ func (r *geoLocationRepository) GetAll(ctx context.Context, offset, limit int, f
 		if filters.CountryCode != nil {
 			query = query.Where("country_code = ?", strings.ToUpper(*filters.CountryCode))
 		}
-		if filters.PostalCode != nil {
-			query = query.Where("postal_code = ?", *filters.PostalCode)
+		if len(filters.PostalCodes) > 0 {
+			query = query.Where("postal_code IN ?", filters.PostalCodes)
 		}
 		if filters.Name != nil {
 			query = query.Where("name ILIKE ?", "%"+*filters.Name+"%")

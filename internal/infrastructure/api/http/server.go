@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -101,12 +102,47 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 	// Request ID middleware
 	app.Use(requestid.New())
 
-	// CORS middleware
+	// CORS middleware using Fiber's built-in cors.Config - optimized for Flutter Web
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
-		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders: "Origin,Content-Type,Accept,Authorization,X-Request-ID",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH",
+		AllowHeaders: strings.Join([]string{
+			"Origin",
+			"Content-Type",
+			"Accept",
+			"Authorization",
+			"X-Request-ID",
+			"X-Requested-With",
+			"X-Tenant-ID", // Your API requires this
+			"tenantid",    // Your API requires this (lowercase variant)
+			"User-Agent",
+			"Referer",
+			"sec-ch-ua", // Chrome security headers
+			"sec-ch-ua-mobile",
+			"sec-ch-ua-platform",
+		}, ","),
+		AllowCredentials: false,
+		ExposeHeaders: strings.Join([]string{
+			"Content-Length",
+			"X-API-Version",
+			"X-Service-Name",
+			"X-Request-ID",
+		}, ","),
+		MaxAge: 86400, // 24 hours preflight cache
 	}))
+
+	// CORS debugging middleware (remove in production)
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Method() == "OPTIONS" {
+			logger.WithFields(logrus.Fields{
+				"method":  c.Method(),
+				"path":    c.Path(),
+				"origin":  c.Get("Origin"),
+				"headers": c.Get("Access-Control-Request-Headers"),
+			}).Debug("CORS preflight request received")
+		}
+		return c.Next()
+	})
 
 	// Logger middleware
 	app.Use(fiberLogger.New(fiberLogger.Config{

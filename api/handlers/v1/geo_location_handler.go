@@ -97,8 +97,19 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 		filters.CountryCode = &countryCode
 	}
 
-	if postalCode := c.Query("postal_code"); postalCode != "" {
-		filters.PostalCode = &postalCode
+	// Parse multiple postal codes from query parameters
+	queryArgs := c.Request().URI().QueryArgs()
+	var postalCodes []string
+	queryArgs.VisitAll(func(key, value []byte) {
+		if string(key) == "postal_code" {
+			postalCode := strings.TrimSpace(string(value))
+			if postalCode != "" {
+				postalCodes = append(postalCodes, postalCode)
+			}
+		}
+	})
+	if len(postalCodes) > 0 {
+		filters.PostalCodes = postalCodes
 	}
 
 	if name := c.Query("name"); name != "" {
