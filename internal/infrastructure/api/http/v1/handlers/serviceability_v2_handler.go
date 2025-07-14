@@ -8,9 +8,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
+	"prayog-serviceability-service/internal/shared/errors"
 	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
-	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // ServiceabilityV2Handler handles V2 serviceability check requests
@@ -59,32 +60,37 @@ func (h *ServiceabilityV2Handler) CheckServiceability(c *fiber.Ctx) error {
 
 	h.logger.Debug("Request struct validation passed")
 
-	// Enhanced validation with geolocation support
-	h.logger.Debug("Starting enhanced validation")
-	if err := h.validateV2Request(c.Context(), &request); err != nil {
-		h.logger.WithError(err).Error("Enhanced validation failed")
-		return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidRequestType, "Invalid request data", err)
-	}
-
-	h.logger.Debug("Enhanced validation passed")
+	// Skip enhanced validation - let orchestrator and partners handle postal code validation
+	h.logger.Debug("Skipping enhanced validation - letting partners handle postal code validation")
 
 	// Call V2 orchestrator
 	h.logger.Debug("Calling V2 orchestrator")
 	response, err := h.v2Orchestrator.CheckServiceability(c.Context(), &request)
 	if err != nil {
 		h.logger.WithError(err).Error("V2 orchestrator failed")
+
+		// Handle structured errors with appropriate HTTP status codes
+		if serviceErr, ok := err.(*errors.ServiceError); ok {
+			return c.Status(serviceErr.HTTPStatus).JSON(modelsv1.ServiceabilityV2Response{
+				Success:  false,
+				Partners: []modelsv1.PartnerV2Response{},
+				Error: &modelsv1.ErrorResponse{
+					Code:    serviceErr.Code,
+					Message: serviceErr.Message,
+				},
+			})
+		}
+
+		// Fallback to generic error handler for non-structured errors
 		return h.errorHandler.HandleServiceError(c, ErrorCodeServiceabilityCheckFailed, "Failed to check V2 serviceability", err)
 	}
 
 	h.logger.Debug("V2 orchestrator completed successfully")
 
-	// Return response with appropriate status code
-	statusCode := fiber.StatusOK
-	if !response.Success {
-		statusCode = fiber.StatusInternalServerError
-	}
-
-	return c.Status(statusCode).JSON(response)
+	// Return response with 200 OK status
+	// Note: Success=false in response doesn't mean HTTP error - it means no serviceable partners found
+	// This is a valid business response that should return 200 OK
+	return c.Status(fiber.StatusOK).JSON(response)
 }
 
 // BulkCheckServiceability handles POST /bulk-check (V2 bulk serviceability check)
@@ -106,6 +112,20 @@ func (h *ServiceabilityV2Handler) BulkCheckServiceability(c *fiber.Ctx) error {
 	for i, req := range request.Requests {
 		if err := h.validateV2Request(c.Context(), &req); err != nil {
 			h.logger.WithError(err).Errorf("V2 bulk request item %d validation failed", i)
+
+			// Handle structured errors with appropriate HTTP status codes
+			if serviceErr, ok := err.(*errors.ServiceError); ok {
+				return c.Status(serviceErr.HTTPStatus).JSON(modelsv1.BulkServiceabilityV2Response{
+					Success: false,
+					Data:    []modelsv1.ServiceabilityV2Response{},
+					Error: &modelsv1.ErrorResponse{
+						Code:    serviceErr.Code,
+						Message: fmt.Sprintf("Validation failed for request item %d: %s", i+1, serviceErr.Message),
+					},
+				})
+			}
+
+			// Fallback to generic error handler for non-structured errors
 			return h.errorHandler.HandleBusinessLogicError(c, ErrorCodeInvalidRequestType, "Invalid request data in bulk request", err)
 		}
 	}
@@ -113,10 +133,24 @@ func (h *ServiceabilityV2Handler) BulkCheckServiceability(c *fiber.Ctx) error {
 	// Call V2 orchestrator
 	response, err := h.v2Orchestrator.BulkCheckServiceability(c.Context(), &request)
 	if err != nil {
+		// Handle structured errors with appropriate HTTP status codes
+		if serviceErr, ok := err.(*errors.ServiceError); ok {
+			return c.Status(serviceErr.HTTPStatus).JSON(modelsv1.BulkServiceabilityV2Response{
+				Success: false,
+				Data:    []modelsv1.ServiceabilityV2Response{},
+				Error: &modelsv1.ErrorResponse{
+					Code:    serviceErr.Code,
+					Message: serviceErr.Message,
+				},
+			})
+		}
+
+		// Fallback to generic error handler for non-structured errors
 		return h.errorHandler.HandleBulkServiceError(c, ErrorCodeBulkServiceabilityCheckFailed, "Failed to process V2 bulk serviceability check", err)
 	}
 
 	// Return response with appropriate status code
+	// Multi-status (207) is appropriate for bulk operations where some may succeed and others fail
 	statusCode := fiber.StatusOK
 	if !response.Success {
 		statusCode = fiber.StatusMultiStatus
@@ -178,21 +212,12 @@ func (h *ServiceabilityV2Handler) validateV2Request(ctx context.Context, request
 
 // validateBasicRequest performs basic validation on the request
 func (h *ServiceabilityV2Handler) validateBasicRequest(request *modelsv1.ServiceabilityV2Request) error {
-	// Validate source postal code format if provided
-	if request.SourcePostalCode != nil && *request.SourcePostalCode != "" {
-		// Basic validation - just check if it's not empty
-		// TODO: Add proper postal code format validation
-	}
-
-	// Validate destination postal code format if provided
-	if request.DestinationPostalCode != nil && *request.DestinationPostalCode != "" {
-		// Basic validation - just check if it's not empty
-		// TODO: Add proper postal code format validation
-	}
+	// Remove postal code existence validation - let partners handle invalid postal codes
+	// This allows the system to continue processing even with invalid postal codes
 
 	// Validate country code if provided
 	if request.CountryCode != nil && len(*request.CountryCode) != 2 {
-		return fiber.NewError(fiber.StatusBadRequest, "Country code must be 2 characters")
+		return errors.ErrInvalidCountryCode(*request.CountryCode)
 	}
 
 	// Validate parcel category if provided
@@ -206,7 +231,7 @@ func (h *ServiceabilityV2Handler) validateBasicRequest(request *modelsv1.Service
 			}
 		}
 		if !isValidCategory {
-			return fiber.NewError(fiber.StatusBadRequest, "Invalid parcel category")
+			return errors.ErrInvalidParcelCategory(*request.ParcelCategory)
 		}
 	}
 
@@ -235,13 +260,14 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		h.logger.Debugf("Request marked as international via parcel_category")
 	}
 
-	// Method 2: If no explicit category, check destination postal code for international shipping
+	// Method 2: If no explicit category, try to check destination postal code for international shipping
+	// But make it non-blocking - if postal code validation fails, just skip the geo check
 	if !isInternational && request.DestinationPostalCode != nil && *request.DestinationPostalCode != "" {
 		// Use geolocation service to determine if destination is international
 		isDestinationInternational, countryCode, err := h.geolocationService.ValidateInternationalRequest(ctx, *request.DestinationPostalCode)
 		if err != nil {
-			// If we can't determine country code, log warning but don't fail the request
-			h.logger.WithError(err).Warnf("Failed to get country code for postal code %s", *request.DestinationPostalCode)
+			// Don't fail early for postal code validation errors - just log and continue
+			h.logger.WithError(err).Warnf("Could not validate destination postal code %s for international check, continuing with processing", *request.DestinationPostalCode)
 		} else {
 			isInternational = isDestinationInternational
 			// Set country code in request if not already provided
@@ -253,10 +279,12 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 	}
 
 	// Method 3: Check if postal_code (generic) is international
+	// But make it non-blocking - if postal code validation fails, just skip the geo check
 	if !isInternational && request.PostalCode != nil && *request.PostalCode != "" {
 		isDestinationInternational, countryCode, err := h.geolocationService.ValidateInternationalRequest(ctx, *request.PostalCode)
 		if err != nil {
-			h.logger.WithError(err).Warnf("Failed to get country code for postal code %s", *request.PostalCode)
+			// Don't fail early for postal code validation errors - just log and continue
+			h.logger.WithError(err).Warnf("Could not validate postal code %s for international check, continuing with processing", *request.PostalCode)
 		} else {
 			isInternational = isDestinationInternational
 			// Set country code in request if not already provided
@@ -274,7 +302,7 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		// Package information is mandatory for international shipments
 		if request.Package == nil {
 			h.logger.Error("Package information is missing for international request")
-			return fiber.NewError(fiber.StatusBadRequest, "Package information (weight and dimensions) is required for international shipments")
+			return errors.ErrInternationalPackageRequired()
 		}
 
 		h.logger.Debugf("Package is not nil, checking weight")
@@ -282,7 +310,7 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		// Weight is mandatory for international shipments
 		if request.Package.Weight == nil {
 			h.logger.Error("Package weight is missing for international request")
-			return fiber.NewError(fiber.StatusBadRequest, "Package weight is required for international shipments")
+			return errors.ErrInternationalPackageRequired()
 		}
 
 		h.logger.Debugf("Weight is not nil, checking dimensions")
@@ -290,7 +318,7 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		// Dimensions are mandatory for international shipments
 		if request.Package.Dimensions == nil {
 			h.logger.Error("Package dimensions are missing for international request")
-			return fiber.NewError(fiber.StatusBadRequest, "Package dimensions are required for international shipments")
+			return errors.ErrInternationalPackageRequired()
 		}
 
 		h.logger.Debugf("Dimensions is not nil, validating weight value")
@@ -298,7 +326,7 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		// Validate weight values
 		if request.Package.Weight.Value <= 0 {
 			h.logger.Error("Package weight value is invalid for international request")
-			return fiber.NewError(fiber.StatusBadRequest, "Package weight must be greater than 0")
+			return errors.ErrInvalidPackageWeight(request.Package.Weight.Value)
 		}
 
 		h.logger.Debugf("Weight value is valid, validating dimension values")
@@ -306,17 +334,10 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		// Validate dimension values
 		if request.Package.Dimensions.Length <= 0 || request.Package.Dimensions.Width <= 0 || request.Package.Dimensions.Height <= 0 {
 			h.logger.Error("Package dimensions are invalid for international request")
-			return fiber.NewError(fiber.StatusBadRequest, "Package dimensions must be greater than 0")
+			return errors.ErrInvalidPackageDimensions()
 		}
 
-		h.logger.Debugf("All dimension values are valid")
-
-		// Log successful validation with proper nil check
-		if request.CountryCode != nil {
-			h.logger.Debugf("International request validation passed for country code: %s", *request.CountryCode)
-		} else {
-			h.logger.Debugf("International request validation passed (country code not resolved)")
-		}
+		h.logger.Debugf("All international request validations passed")
 	}
 
 	return nil

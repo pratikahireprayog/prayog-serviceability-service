@@ -8,6 +8,7 @@ import (
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
+	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
 
@@ -54,7 +55,7 @@ func NewServiceabilityOrchestrator(
 func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
 	// Validate input request
 	if req == nil {
-		return nil, fmt.Errorf("request cannot be nil")
+		return nil, errors.ErrInvalidRequest("request cannot be nil")
 	}
 
 	if err := s.validateV2Request(req); err != nil {
@@ -99,7 +100,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 // BulkCheckServiceability orchestrates bulk V2 serviceability checks
 func (s *serviceabilityOrchestrator) BulkCheckServiceability(ctx context.Context, req *models.BulkServiceabilityV2Request) (*models.BulkServiceabilityV2Response, error) {
 	if req == nil || len(req.Requests) == 0 {
-		return nil, fmt.Errorf("bulk request cannot be nil or empty")
+		return nil, errors.ErrInvalidRequest("bulk request cannot be nil or empty")
 	}
 
 	responses := make([]models.ServiceabilityV2Response, 0, len(req.Requests))
@@ -178,7 +179,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 	if !exists {
 		return partnerResult{
 			PartnerCode: partnerCode,
-			Error:       fmt.Errorf("partner adapter not found for code: %s", partnerCode),
+			Error:       errors.ErrPartnerNotFound(partnerCode),
 		}
 	}
 
@@ -186,7 +187,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 	if !adapter.IsHealthy(ctx) {
 		return partnerResult{
 			PartnerCode: partnerCode,
-			Error:       fmt.Errorf("partner %s is not healthy", partnerCode),
+			Error:       errors.ErrPartnerUnavailable(partnerCode),
 		}
 	}
 
@@ -207,7 +208,8 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 
 // buildV2Response builds the V2 response from partner results
 func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerResult, req *models.ServiceabilityV2Request) *models.ServiceabilityV2Response {
-	partners := make([]models.PartnerV2Response, 0)
+	allPartners := make([]models.PartnerV2Response, 0)
+	serviceablePartners := make([]models.PartnerV2Response, 0)
 	serviceableCount := 0
 
 	// Process each partner result
@@ -222,20 +224,21 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				partnerID = result.PartnerInfo.PartnerID.String()
 			}
 
-			// Filter out error partners if configuration is enabled
-			if !s.returnOnlyServiceable {
-				partners = append(partners, models.PartnerV2Response{
-					PartnerID:     partnerID,
-					PartnerCode:   result.PartnerCode,
-					PartnerName:   "",  // No partner name in database
-					Rating:        0.0, // No rating in database
-					IsServiceable: false,
-					Services:      []models.ServiceV2{},
-					Capabilities:  make(map[string]interface{}),
-					Error:         &errorMsg,
-					ResponseTime:  0,
-				})
+			errorPartnerResponse := models.PartnerV2Response{
+				PartnerID:     partnerID,
+				PartnerCode:   result.PartnerCode,
+				PartnerName:   "",  // No partner name in database
+				Rating:        0.0, // No rating in database
+				IsServiceable: false,
+				Services:      []models.ServiceV2{},
+				Capabilities:  make(map[string]interface{}),
+				Error:         &errorMsg,
+				ResponseTime:  0,
 			}
+
+			// Always add to all partners list
+			allPartners = append(allPartners, errorPartnerResponse)
+
 		} else if result.Result != nil {
 			// Convert partner result to V2 response using database info
 			partnerID := result.Result.PartnerCode // Default to partner code
@@ -259,21 +262,33 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				partnerResponse.Error = result.Result.ErrorMessage
 			}
 
-			// Filter out non-serviceable partners if configuration is enabled
-			if !s.returnOnlyServiceable || result.Result.IsServiceable {
-				partners = append(partners, partnerResponse)
-			}
+			// Always add to all partners list
+			allPartners = append(allPartners, partnerResponse)
 
+			// Add to serviceable partners only if serviceable
 			if result.Result.IsServiceable {
+				serviceablePartners = append(serviceablePartners, partnerResponse)
 				serviceableCount++
 			}
 		}
 	}
 
+	// Determine success and which partners to return
+	isSuccess := serviceableCount > 0
+	var partnersToReturn []models.PartnerV2Response
+
+	if isSuccess {
+		// When success=true, return only serviceable partners
+		partnersToReturn = serviceablePartners
+	} else {
+		// When success=false, return all partners (including non-serviceable ones and errors)
+		partnersToReturn = allPartners
+	}
+
 	// Build response
 	response := &models.ServiceabilityV2Response{
-		Success:  serviceableCount > 0,
-		Partners: partners,
+		Success:  isSuccess,
+		Partners: partnersToReturn,
 		Metadata: &models.V2ResponseMetadata{
 			TotalPartners:    len(partnerResults),
 			ServiceableCount: serviceableCount,
@@ -298,16 +313,16 @@ func (s *serviceabilityOrchestrator) validateV2Request(req *models.Serviceabilit
 		req.SourcePostalCode != nil && *req.SourcePostalCode != ""
 
 	if !hasSingleCode && !hasSourceDestination && !hasPostalCodeAsDestination {
-		return fmt.Errorf("must provide either: postal_code only, or both source_postal_code and destination_postal_code, or postal_code (destination) with source_postal_code")
+		return errors.ErrMissingRequiredField("postal_code or source_postal_code/destination_postal_code")
 	}
 
 	// Don't allow conflicting postal code configurations
 	if hasSingleCode && hasSourceDestination {
-		return fmt.Errorf("provide either postal_code only or source/destination postal codes, not both")
+		return errors.ErrInvalidRequest("provide either postal_code only or source/destination postal codes, not both")
 	}
 
 	if hasPostalCodeAsDestination && req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
-		return fmt.Errorf("when using postal_code as destination with source_postal_code, do not provide destination_postal_code")
+		return errors.ErrInvalidRequest("when using postal_code as destination with source_postal_code, do not provide destination_postal_code")
 	}
 
 	return nil

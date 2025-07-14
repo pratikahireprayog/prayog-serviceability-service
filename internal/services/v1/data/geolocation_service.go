@@ -2,9 +2,9 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
 )
@@ -31,73 +31,58 @@ func NewGeolocationService(postalCodeRepo repositories.PostalCodeRepository) Geo
 // GetCountryCodeByPostalCode retrieves the country code for a given postal code
 func (g *geolocationService) GetCountryCodeByPostalCode(ctx context.Context, postalCode string) (*string, error) {
 	if strings.TrimSpace(postalCode) == "" {
-		return nil, fmt.Errorf("postal code cannot be empty")
+		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
 	// Check if postal code repository is available
 	if g.postalCodeRepo == nil {
-		// Graceful degradation: return default country code
-		defaultCountry := "IN"
-		return &defaultCountry, nil
+		return nil, errors.ErrServiceUnavailable("postal code repository")
 	}
 
-	// First try to get postal code with preloaded country information
+	// Get postal code with preloaded country information
 	postal, err := g.postalCodeRepo.GetByCode(ctx, postalCode)
 	if err != nil {
-		// If we can't get postal code, return default country code
-		defaultCountry := "IN"
-		return &defaultCountry, fmt.Errorf("failed to get postal code details, defaulting to IN: %w", err)
+		// Properly propagate structured errors from repository
+		return nil, err
 	}
 
-	// Return country code from the postal code data
+	// First, try to get country code from the Country relationship
 	if postal.Country != nil && postal.Country.Code != "" {
 		return &postal.Country.Code, nil
 	}
 
-	// If no country code found, return default
-	defaultCountry := "IN"
-	return &defaultCountry, nil
+	// If Country relationship is not available, try the direct country_code field
+	if postal.CountryCode != nil && *postal.CountryCode != "" {
+		return postal.CountryCode, nil
+	}
+
+	// If no country code found in either place, return error
+	return nil, errors.ErrInternalError("postal code found but country code is missing", nil)
 }
 
 // GetLocationHierarchy retrieves the complete location hierarchy for a postal code
 func (g *geolocationService) GetLocationHierarchy(ctx context.Context, postalCode string) (*models.LocationHierarchy, error) {
 	if strings.TrimSpace(postalCode) == "" {
-		return nil, fmt.Errorf("postal code cannot be empty")
+		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
 	// Check if postal code repository is available
 	if g.postalCodeRepo == nil {
-		// Return a default hierarchy for graceful degradation
-		defaultHierarchy := &models.LocationHierarchy{
-			CountryCode: "IN",
-			CountryName: "India",
-			PostalCode:  postalCode,
-		}
-		return defaultHierarchy, nil
+		return nil, errors.ErrServiceUnavailable("postal code repository")
 	}
 
-	// First try to get country code for the postal code
+	// Get country code for the postal code
 	countryCode, err := g.GetCountryCodeByPostalCode(ctx, postalCode)
 	if err != nil {
-		// Return default hierarchy if we can't get country code
-		defaultHierarchy := &models.LocationHierarchy{
-			CountryCode: "IN",
-			CountryName: "India",
-			PostalCode:  postalCode,
-		}
-		return defaultHierarchy, fmt.Errorf("failed to get country code, returning default hierarchy: %w", err)
+		// Propagate the error from GetCountryCodeByPostalCode
+		return nil, err
 	}
 
 	// Get complete location hierarchy
 	hierarchy, err := g.postalCodeRepo.GetLocationHierarchy(ctx, postalCode, *countryCode)
 	if err != nil {
-		// Return default hierarchy if we can't get full hierarchy
-		defaultHierarchy := &models.LocationHierarchy{
-			CountryCode: *countryCode,
-			CountryName: "Unknown",
-			PostalCode:  postalCode,
-		}
-		return defaultHierarchy, fmt.Errorf("failed to get location hierarchy, returning default: %w", err)
+		// Propagate structured errors from repository
+		return nil, err
 	}
 
 	return hierarchy, nil
@@ -106,23 +91,19 @@ func (g *geolocationService) GetLocationHierarchy(ctx context.Context, postalCod
 // ValidateInternationalRequest validates if a request is international and returns country code
 func (g *geolocationService) ValidateInternationalRequest(ctx context.Context, postalCode string) (bool, *string, error) {
 	if strings.TrimSpace(postalCode) == "" {
-		return false, nil, fmt.Errorf("postal code cannot be empty")
+		return false, nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
 	// Check if postal code repository is available
 	if g.postalCodeRepo == nil {
-		// Graceful degradation: assume domestic if we can't check
-		// This allows the system to continue working even without geolocation
-		defaultCountry := "IN"
-		return false, &defaultCountry, nil
+		return false, nil, errors.ErrServiceUnavailable("postal code repository")
 	}
 
 	// Get country code for the postal code
 	countryCode, err := g.GetCountryCodeByPostalCode(ctx, postalCode)
 	if err != nil {
-		// If we can't get country code, assume domestic for safety
-		defaultCountry := "IN"
-		return false, &defaultCountry, fmt.Errorf("failed to get country code, defaulting to domestic: %w", err)
+		// Propagate the error from GetCountryCodeByPostalCode
+		return false, nil, err
 	}
 
 	// Define default origin country (India)
