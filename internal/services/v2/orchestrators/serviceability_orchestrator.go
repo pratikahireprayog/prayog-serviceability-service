@@ -465,6 +465,13 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	var eligiblePartnersByCategory []models.PartnerAttributeMap
 	var err error
 
+	// Log the start of the database query
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"parcel_category": *req.ParcelCategory,
+		"total_partners":  len(allSupportedPartners),
+	}).Info("Starting database query for partners by attribute")
+
 	// Attempt to call the repository method with error recovery
 	func() {
 		defer func() {
@@ -479,7 +486,18 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 				err = fmt.Errorf("repository unavailable due to panic: %v", r)
 			}
 		}()
+		
+		// Add timing measurement
+		start := time.Now()
 		eligiblePartnersByCategory, err = s.partnerAttributeMapRepo.GetPartnerInfoByAttribute(ctx, *req.ParcelCategory)
+		duration := time.Since(start)
+		
+		s.logger.WithFields(logrus.Fields{
+			"component":       "serviceability_orchestrator",
+			"parcel_category": *req.ParcelCategory,
+			"query_duration":  duration,
+			"partners_found":  len(eligiblePartnersByCategory),
+		}).Info("Database query completed")
 	}()
 	if err != nil {
 		// If error getting partners by attribute, log but continue with all partners
