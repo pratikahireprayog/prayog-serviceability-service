@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 
 	"gorm.io/gorm"
@@ -34,9 +35,9 @@ func (r *postalCodeRepository) GetByCode(ctx context.Context, code string) (*mod
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("postal code %s not found", code)
+			return nil, errors.ErrPostalCodeNotFound(code)
 		}
-		return nil, fmt.Errorf("failed to get postal code: %w", err)
+		return nil, errors.ErrDatabaseError("get postal code", err)
 	}
 
 	return &postalCode, nil
@@ -144,9 +145,9 @@ func (r *postalCodeRepository) GetByCodeAndCountry(ctx context.Context, code, co
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("postal code %s not found in country %s", code, countryCode)
+			return nil, errors.ErrPostalCodeNotFound(fmt.Sprintf("%s in country %s", code, countryCode))
 		}
-		return nil, fmt.Errorf("failed to get postal code: %w", err)
+		return nil, errors.ErrDatabaseError("get postal code by country", err)
 	}
 
 	return &postalCode, nil
@@ -212,9 +213,9 @@ func (r *postalCodeRepository) GetLocationHierarchy(ctx context.Context, postalC
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("postal code %s not found in country %s", postalCode, countryCode)
+			return nil, errors.ErrPostalCodeNotFound(fmt.Sprintf("%s in country %s", postalCode, countryCode))
 		}
-		return nil, fmt.Errorf("failed to get location hierarchy: %w", err)
+		return nil, errors.ErrDatabaseError("get location hierarchy", err)
 	}
 
 	hierarchy := &models.LocationHierarchy{
@@ -238,10 +239,15 @@ func (r *postalCodeRepository) GetLocationHierarchy(ctx context.Context, postalC
 func (r *postalCodeRepository) ValidatePostalCode(ctx context.Context, postalCode, countryCode string) (*models.LocationValidationResult, error) {
 	hierarchy, err := r.GetLocationHierarchy(ctx, postalCode, countryCode)
 	if err != nil {
-		return &models.LocationValidationResult{
-			IsValid: false,
-			Error:   err.Error(),
-		}, nil
+		// If it's a PostalCodeNotFound error, return validation result with error details
+		if errors.IsNotFound(err) {
+			return &models.LocationValidationResult{
+				IsValid: false,
+				Error:   err.Error(),
+			}, nil
+		}
+		// For other errors, return the error to be handled by the caller
+		return nil, err
 	}
 
 	return &models.LocationValidationResult{

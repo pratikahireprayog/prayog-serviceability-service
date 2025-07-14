@@ -14,15 +14,15 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/sirupsen/logrus"
 
-	"prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
-	"prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
+	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
+	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
-	"prayog-serviceability-service/internal/services/v1"
-	servicesv1 "prayog-serviceability-service/internal/services/v1"
+	dataServices "prayog-serviceability-service/internal/services/v1/data"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
+	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
 	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
-	sharedServices "prayog-serviceability-service/internal/shared/services/v1"
 	"prayog-serviceability-service/internal/shared/utils/v1"
 
 	// Add imports for geo location routes and handlers
@@ -35,8 +35,9 @@ type Server struct {
 	app                *fiber.App
 	config             *config.ConfigManager
 	dbManager          *db.DatabaseManager
-	integrationFactory *services.IntegrationFactory
+	integrationFactory *integrationServices.IntegrationFactory
 	orchestrator       interfaces.ServiceabilityOrchestrator
+	v2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	logger             *logrus.Logger
 }
 
@@ -44,8 +45,9 @@ type Server struct {
 type ServerDependencies struct {
 	Config             *config.ConfigManager
 	DBManager          *db.DatabaseManager
-	IntegrationFactory *services.IntegrationFactory
+	IntegrationFactory *integrationServices.IntegrationFactory
 	Orchestrator       interfaces.ServiceabilityOrchestrator
+	V2Orchestrator     orchestrators.ServiceabilityOrchestrator
 	Logger             *logrus.Logger
 }
 
@@ -86,6 +88,7 @@ func NewServer(deps *ServerDependencies) (*Server, error) {
 		dbManager:          deps.DBManager,
 		integrationFactory: deps.IntegrationFactory,
 		orchestrator:       deps.Orchestrator,
+		v2Orchestrator:     deps.V2Orchestrator,
 		logger:             deps.Logger,
 	}
 
@@ -113,8 +116,8 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 			"Authorization",
 			"X-Request-ID",
 			"X-Requested-With",
-			"X-Tenant-ID", // Your API requires this
-			"tenantid",    // Your API requires this (lowercase variant)
+			"X-Tenant-ID", // COMMENTED FOR TESTING - Your API requires this
+			"tenantid",    // COMMENTED FOR TESTING - Your API requires this (lowercase variant)
 			"User-Agent",
 			"Referer",
 			"sec-ch-ua", // Chrome security headers
@@ -192,6 +195,71 @@ func (s *Server) setupRoutes() error {
 	// Register serviceability routes directly under /serviceability/v1/
 	routes.RegisterServiceabilityRoutes(v1, serviceabilityHandler, s.logger)
 
+	// Create API v2 group under serviceability
+	v2 := serviceabilityGroup.Group("/v2")
+
+	// Create V2 serviceability handler if v2Orchestrator is available
+	if s.v2Orchestrator != nil {
+		v2ServiceabilityHandler, err := s.createServiceabilityV2Handler()
+		if err != nil {
+			s.logger.WithError(err).Warn("V2 serviceability features are disabled")
+			// Create placeholder routes that return service unavailable
+			v2.All("/*", func(c *fiber.Ctx) error {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+					"error": fiber.Map{
+						"code":    "SERVICE_UNAVAILABLE",
+						"message": "V2 serviceability features are temporarily unavailable",
+					},
+				})
+			})
+		} else {
+			// Register V2 serviceability routes under /serviceability/v2/
+			routes.RegisterServiceabilityV2Routes(v2, v2ServiceabilityHandler)
+		}
+
+		// Add a status route for the V2 serviceability service
+		v2.Get("/status", func(c *fiber.Ctx) error {
+			status := fiber.Map{
+				"service": "serviceability-v2",
+				"version": "2.0.0",
+				"status":  "available",
+				"message": "Serviceability V2 API is ready",
+			}
+
+			// Add partner adapter status information
+			if s.v2Orchestrator != nil {
+				status["partner_adapters"] = "available"
+				status["features"] = fiber.Map{
+					"multi_partner_orchestration": "available",
+					"concurrent_partner_calls":    "available",
+					"partner_filtering":           "available",
+					"attribute_based_selection":   "available",
+				}
+			} else {
+				status["partner_adapters"] = "unavailable"
+				status["features"] = fiber.Map{
+					"multi_partner_orchestration": "unavailable",
+					"concurrent_partner_calls":    "unavailable",
+					"partner_filtering":           "unavailable",
+					"attribute_based_selection":   "unavailable",
+				}
+			}
+
+			return c.JSON(status)
+		})
+	} else {
+		s.logger.Warn("V2 orchestrator is not available - V2 serviceability features will be disabled")
+		// Create placeholder routes that return service unavailable
+		v2.All("/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "V2 serviceability features are not enabled",
+				},
+			})
+		})
+	}
+
 	// Add a status route for the serviceability service
 	v1.Get("/status", func(c *fiber.Ctx) error {
 		status := fiber.Map{
@@ -256,6 +324,48 @@ func (s *Server) setupRoutes() error {
 	} else {
 		// Register partner location coverage routes under /serviceability/v1/
 		routes.RegisterPartnerLocationCoverageRoutes(v1, partnerLocationCoverageHandler, s.logger)
+	}
+
+	// Try to create partner attribute handler and register routes if database is available
+	partnerAttributeHandler, err := s.createPartnerAttributeHandler()
+	if err != nil {
+		s.logger.WithError(err).Warn("Partner attribute features are disabled")
+		// Create placeholder routes that return service unavailable
+		v1.All("/attribute-categories/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/attributes/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/partner-attribute-maps/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+		v1.All("/partners/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "Partner attribute features are temporarily unavailable - database connection required",
+				},
+			})
+		})
+	} else {
+		// Register partner attribute routes under /serviceability/v1/
+		routes.RegisterPartnerAttributeRoutes(v1, partnerAttributeHandler, s.logger)
 	}
 
 	// Try to create geo location handler and register routes if database is available
@@ -324,7 +434,7 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 	partnerLocationCoverageRepo := repoFactory.GetPartnerLocationCoverageRepository()
 
 	// Create postal code serviceability service
-	postalCodeServiceabilityService := sharedServices.NewPostalCodeServiceabilityService(
+	postalCodeServiceabilityService := dataServices.NewPostalCodeServiceabilityService(
 		partnerLocationCoverageRepo,
 	)
 
@@ -337,6 +447,47 @@ func (s *Server) createServiceabilityHandler() (*handlers.ServiceabilityHandler,
 	)
 
 	return serviceabilityHandler, nil
+}
+
+// createServiceabilityV2Handler creates a V2 serviceability handler with all dependencies
+func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Handler, error) {
+	// Check if V2 orchestrator is available
+	if s.v2Orchestrator == nil {
+		return nil, fmt.Errorf("V2 orchestrator is required")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create geolocation service for country code resolution
+	var geolocationService dataServices.GeolocationService
+	if s.dbManager != nil {
+		// Create repository factory from database connection
+		db := s.dbManager.GetDB()
+		if db != nil {
+			repoFactory := repositories.NewRepositoryFactory(db)
+			postalCodeRepo := repoFactory.GetPostalCodeRepository()
+			geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
+		}
+	}
+
+	// If geolocation service is not available, log a warning
+	if geolocationService == nil {
+		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
+		// Create a dummy geolocation service for graceful degradation
+		geolocationService = dataServices.NewGeolocationService(nil)
+	}
+
+	// Create V2 serviceability handler
+	v2ServiceabilityHandler := handlers.NewServiceabilityV2Handler(
+		s.v2Orchestrator,
+		geolocationService,
+		validator,
+		s.logger,
+	)
+
+	return v2ServiceabilityHandler, nil
 }
 
 // createLocationHandler creates a location handler with all dependencies
@@ -361,7 +512,7 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	repoFactory := repositories.NewRepositoryFactory(db)
 
 	// Create location service from repository factory
-	locationService := sharedServices.NewLocationService(repoFactory.GetLocationRepository(), s.logger)
+	locationService := dataServices.NewLocationService(repoFactory.GetLocationRepository(), s.logger)
 
 	// Create location handler
 	locationHandler := handlers.NewLocationHandler(
@@ -371,6 +522,54 @@ func (s *Server) createLocationHandler() (*handlers.LocationHandler, error) {
 	)
 
 	return locationHandler, nil
+}
+
+// createPartnerAttributeHandler creates a partner attribute handler with all dependencies
+func (s *Server) createPartnerAttributeHandler() (*handlers.PartnerAttributeHandler, error) {
+	// Check if database manager is available
+	if s.dbManager == nil {
+		return nil, fmt.Errorf("database manager is required for partner attribute handler")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create repository factory from database connection
+	db := s.dbManager.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection is not available")
+	}
+
+	repoFactory := repositories.NewRepositoryFactory(db)
+
+	// Get repositories and create services
+	attributeCategoryRepo := repoFactory.GetAttributeCategoryRepository()
+	attributeRepo := repoFactory.GetAttributeRepository()
+	partnerAttributeMapRepo := repoFactory.GetPartnerAttributeMapRepository()
+
+	// Create services
+	attributeCategoryService := dataServices.NewAttributeCategoryService(attributeCategoryRepo)
+	attributeService := dataServices.NewAttributeService(attributeRepo)
+	partnerAttributeMapService := dataServices.NewPartnerAttributeMapService(
+		partnerAttributeMapRepo,
+		attributeRepo,
+		attributeCategoryRepo,
+	)
+
+	// Create partner attribute handler with all services
+	partnerAttributeHandler, err := handlers.NewPartnerAttributeHandler(
+		attributeCategoryService,
+		attributeService,
+		partnerAttributeMapService,
+		validator,
+		s.logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create partner attribute handler: %w", err)
+	}
+
+	return partnerAttributeHandler, nil
 }
 
 // createPartnerLocationCoverageHandler creates a partner location coverage handler with all dependencies
@@ -404,20 +603,20 @@ func (s *Server) createPartnerLocationCoverageHandler() (*handlers.PartnerLocati
 	locationRepo := repoFactory.GetLocationRepository()
 
 	// Create partner validation service
-	partnerValidationConfig := servicesv1.LoadPartnerValidationConfig()
+	partnerValidationConfig := integrationServices.LoadPartnerValidationConfig()
 
 	// Create standard log.Logger for partner services
 	stdLogger := log.New(s.logger.WithField("component", "partner").WriterLevel(logrus.InfoLevel), "[partner] ", log.LstdFlags)
 
-	partnerHTTPClient := servicesv1.NewPartnerHTTPClient(partnerValidationConfig, stdLogger)
-	partnerValidationService := servicesv1.NewPartnerValidationService(
+	partnerHTTPClient := integrationServices.NewPartnerHTTPClient(partnerValidationConfig, stdLogger)
+	partnerValidationService := integrationServices.NewPartnerValidationService(
 		partnerValidationConfig,
 		partnerHTTPClient,
 		stdLogger,
 	)
 
 	// Create partner location coverage service
-	partnerLocationCoverageService := sharedServices.NewPartnerLocationCoverageService(
+	partnerLocationCoverageService := dataServices.NewPartnerLocationCoverageService(
 		partnerLocationCoverageRepo,
 		locationRepo,
 		partnerValidationService,
@@ -455,7 +654,7 @@ func (s *Server) createGeoLocationHandler() (*v1handlers.GeoLocationHandler, err
 	repoFactory := repositories.NewRepositoryFactory(db)
 
 	// Create geo location service from repository factory
-	geoLocationService := sharedServices.NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator)
+	geoLocationService := dataServices.NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator)
 
 	// Create geo location handler
 	geoLocationHandler := v1handlers.NewGeoLocationHandler(geoLocationService)

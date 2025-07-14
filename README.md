@@ -156,8 +156,7 @@ For detailed instructions on setting up and using Task Master, see [README-task-
 # Create the database
 psql -U postgres -c "CREATE DATABASE \"serviceability-dev\";"
 
-# Run migrations
-migrate -path cmd/migrations/migrations -database "postgresql://postgres:postgres@localhost:5432/serviceability-dev?sslmode=disable" up
+# Database schema is pre-created - no migrations needed for safety reasons
 ```
 
 The migration will create and populate the following tables:
@@ -228,7 +227,7 @@ project-root/
   ├── build/                # Build and CI/CD files
   ├── cmd/                  # Application entry points
   │   ├── api/              # Main API server
-  │   └── migrations/       # Database migrations
+  │   └── (migrations removed for safety)
   ├── docs/                 # Documentation
   ├── internal/             # Private application code
   │   ├── api/              # HTTP API handlers and routing

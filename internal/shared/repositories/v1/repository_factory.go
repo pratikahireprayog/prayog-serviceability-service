@@ -18,6 +18,9 @@ type RepositoryFactory struct {
 	locationTypeRepository            LocationTypeRepository
 	locationAliasRepository           LocationAliasRepository
 	partnerLocationCoverageRepository PartnerLocationCoverageRepository
+	attributeCategoryRepository       AttributeCategoryRepository
+	attributeRepository               AttributeRepository
+	partnerAttributeMapRepository     PartnerAttributeMapRepository
 	geoLocationRepository             GeoLocationRepository
 	locationRepository                LocationRepository
 	locationSearchRepository          LocationSearchRepository
@@ -41,6 +44,9 @@ func NewRepositoryFactory(db *gorm.DB) *RepositoryFactory {
 	factory.locationTypeRepository = NewLocationTypeRepository(db)
 	factory.locationAliasRepository = NewLocationAliasRepository(db)
 	factory.partnerLocationCoverageRepository = NewPartnerLocationCoverageRepository(db)
+	factory.attributeCategoryRepository = NewAttributeCategoryRepository(db)
+	factory.attributeRepository = NewAttributeRepository(db)
+	factory.partnerAttributeMapRepository = NewPartnerAttributeMapRepository(db)
 	factory.geoLocationRepository = NewGeoLocationRepository(db)
 	factory.locationRepository = NewLocationRepository(factory)
 	factory.locationSearchRepository = NewLocationSearchRepository(db)
@@ -116,6 +122,21 @@ func (f *RepositoryFactory) GetLocationRepository() LocationRepository {
 // GetLocationSearchRepository returns the location search repository
 func (f *RepositoryFactory) GetLocationSearchRepository() LocationSearchRepository {
 	return f.locationSearchRepository
+}
+
+// GetAttributeCategoryRepository returns the attribute category repository
+func (f *RepositoryFactory) GetAttributeCategoryRepository() AttributeCategoryRepository {
+	return f.attributeCategoryRepository
+}
+
+// GetAttributeRepository returns the attribute repository
+func (f *RepositoryFactory) GetAttributeRepository() AttributeRepository {
+	return f.attributeRepository
+}
+
+// GetPartnerAttributeMapRepository returns the partner attribute map repository
+func (f *RepositoryFactory) GetPartnerAttributeMapRepository() PartnerAttributeMapRepository {
+	return f.partnerAttributeMapRepository
 }
 
 // DB returns the underlying database connection
