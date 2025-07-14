@@ -334,4 +334,3 @@ func (m *MockLogger) String() string {
 	}
 	return builder.String()
 }
-

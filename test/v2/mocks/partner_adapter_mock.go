@@ -206,6 +206,21 @@ func (m *MockPartnerAdapter) CreateNonServiceableResult() *common.PartnerService
 	}
 }
 
+// CreateCleanNonServiceableResult creates a non-serviceable result without error messages for testing
+func (m *MockPartnerAdapter) CreateCleanNonServiceableResult() *common.PartnerServiceabilityResult {
+	return &common.PartnerServiceabilityResult{
+		PartnerCode:   m.PartnerCode,
+		IsServiceable: false,
+		Services:      []models.ServiceV2{},
+		Capabilities:  make(map[string]interface{}),
+		ErrorMessage:  nil, // No error message - truly non-serviceable without validation errors
+		ResponseTime:  50 * time.Millisecond,
+		Metadata: map[string]interface{}{
+			"mock": true,
+		},
+	}
+}
+
 // CreateErrorResult creates an error result for testing
 func (m *MockPartnerAdapter) CreateErrorResult(err error) *common.PartnerServiceabilityResult {
 	errorMsg := err.Error()

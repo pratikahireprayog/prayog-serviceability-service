@@ -546,7 +546,7 @@ func TestCheckServiceabilityEligiblePartnersScenarios(t *testing.T) {
 				adapter2 := mocks.NewMockPartnerAdapter("partner2")
 				adapter2.SetServiceabilityResult(adapter2.CreateServiceableResult())
 				factory.SetAdapter("partner2", adapter2)
-				
+
 				// Note: repo will be nil for this test case - don't call methods on it
 			},
 			expectSuccess:            true,
@@ -557,6 +557,7 @@ func TestCheckServiceabilityEligiblePartnersScenarios(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture loop variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -564,8 +565,8 @@ func TestCheckServiceabilityEligiblePartnersScenarios(t *testing.T) {
 			factory := mocks.NewMockPartnerAdapterFactory()
 			var repo *mocks.MockPartnerAttributeMapRepository
 
-						if tt.name == "EligiblePartners_NilRepository_FallbackToAll" {
-				repo = nil // Test with nil repository
+			if tt.name == "EligiblePartners_NilRepository_FallbackToAll" {
+				repo = nil                  // Test with nil repository
 				tt.setupMocks(factory, nil) // Pass nil to setupMocks
 			} else {
 				repo = mocks.NewMockPartnerAttributeMapRepository()

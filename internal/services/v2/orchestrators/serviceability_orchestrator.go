@@ -3,6 +3,7 @@ package orchestrators
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -273,21 +274,60 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 		}
 	}
 
-	// Determine success and which partners to return
+	// Check if we have any errors (validation errors, partner API errors, etc.)
+	hasErrors := false
+	var errorMessage string
+	for _, result := range partnerResults {
+		if result.Error != nil {
+			hasErrors = true
+			errorMessage = result.Error.Error()
+			break
+		}
+		// Also check for embedded error messages in the result
+		if result.Result != nil && result.Result.ErrorMessage != nil {
+			hasErrors = true
+			errorMessage = *result.Result.ErrorMessage
+			break
+		}
+	}
+
+	// Determine success and which partners to return based on returnOnlyServiceable setting
 	isSuccess := serviceableCount > 0
 	var partnersToReturn []models.PartnerV2Response
 
-	if isSuccess {
-		// When success=true, return only serviceable partners
-		partnersToReturn = serviceablePartners
+	if s.returnOnlyServiceable {
+		// When returnOnlyServiceable=true, only return serviceable partners
+		if isSuccess && !hasErrors {
+			// Return only serviceable partners with success=true (no errors)
+			partnersToReturn = serviceablePartners
+		} else {
+			// Any errors or no serviceable partners = empty array
+			partnersToReturn = []models.PartnerV2Response{}
+		}
 	} else {
-		// When success=false, return all partners (including non-serviceable ones and errors)
-		partnersToReturn = allPartners
+		// When returnOnlyServiceable=false, follow old logic
+		if isSuccess {
+			// When success=true, return only serviceable partners
+			partnersToReturn = serviceablePartners
+		} else {
+			// When success=false, return all partners (including non-serviceable ones and errors)
+			partnersToReturn = allPartners
+		}
+	}
+
+	// Determine success based on returnOnlyServiceable setting
+	var success bool
+	if s.returnOnlyServiceable {
+		// When returnOnlyServiceable=true, success only if serviceable partners AND no errors
+		success = isSuccess && !hasErrors
+	} else {
+		// When returnOnlyServiceable=false, success based on serviceable partners only (old behavior)
+		success = isSuccess
 	}
 
 	// Build response
 	response := &models.ServiceabilityV2Response{
-		Success:  isSuccess,
+		Success:  success,
 		Partners: partnersToReturn,
 		Metadata: &models.V2ResponseMetadata{
 			TotalPartners:    len(partnerResults),
@@ -300,7 +340,63 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 		},
 	}
 
+	// Add error message when returnOnlyServiceable=true and there are errors or no serviceable partners
+	if s.returnOnlyServiceable && (!isSuccess || hasErrors) && len(partnerResults) > 0 {
+		if hasErrors {
+			// Classify the error type and return appropriate error code
+			errorCode := s.classifyErrorType(errorMessage)
+			response.Error = &models.ErrorResponse{
+				Code:    errorCode,
+				Message: errorMessage,
+			}
+		} else {
+			// No serviceable partners found
+			response.Error = &models.ErrorResponse{
+				Code:    "NO_SERVICEABLE_PARTNERS",
+				Message: "No serviceable partners found for the given request",
+			}
+		}
+	}
+
 	return response
+}
+
+// classifyErrorType determines the appropriate error code based on the error message
+func (s *serviceabilityOrchestrator) classifyErrorType(errorMessage string) string {
+	// Check for specific error patterns - order matters (most specific first)
+	if strings.Contains(errorMessage, "POSTAL_CODE_NOT_FOUND") {
+		return "POSTAL_CODE_NOT_FOUND"
+	}
+	if strings.Contains(errorMessage, "country code not found") {
+		return "POSTAL_CODE_NOT_FOUND"
+	}
+	if strings.Contains(errorMessage, "postal code not found") {
+		return "POSTAL_CODE_NOT_FOUND"
+	}
+	if strings.Contains(errorMessage, "Postal code") && strings.Contains(errorMessage, "does not exist") {
+		return "POSTAL_CODE_NOT_FOUND"
+	}
+	if strings.Contains(errorMessage, "VALIDATION_ERROR") || strings.Contains(errorMessage, "validation failed") {
+		return "VALIDATION_ERROR"
+	}
+	if strings.Contains(errorMessage, "DATABASE_ERROR") || strings.Contains(errorMessage, "database") {
+		return "DATABASE_ERROR"
+	}
+	if strings.Contains(errorMessage, "timeout") || strings.Contains(errorMessage, "TIMEOUT") {
+		return "TIMEOUT_ERROR"
+	}
+	if strings.Contains(errorMessage, "unavailable") || strings.Contains(errorMessage, "UNAVAILABLE") {
+		return "SERVICE_UNAVAILABLE"
+	}
+	if strings.Contains(errorMessage, "invalid") || strings.Contains(errorMessage, "INVALID") {
+		return "INVALID_REQUEST"
+	}
+	if strings.Contains(errorMessage, "not found") {
+		return "NOT_FOUND"
+	}
+
+	// Default to PARTNER_ERROR for actual partner-specific errors
+	return "PARTNER_ERROR"
 }
 
 // validateV2Request validates the V2 serviceability request
@@ -346,6 +442,7 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}
 
 	// If partner attribute mapping repository is not available, return all supported partners
+	// Use a defensive approach to handle both nil interface and typed nil pointers
 	if s.partnerAttributeMapRepo == nil {
 		s.logger.WithFields(logrus.Fields{
 			"component":       "serviceability_orchestrator",
@@ -364,7 +461,26 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}
 
 	// Get partners that support the specific parcel category from database
-	eligiblePartnersByCategory, err := s.partnerAttributeMapRepo.GetPartnerInfoByAttribute(ctx, *req.ParcelCategory)
+	// Use defensive programming to handle potential nil interface issues
+	var eligiblePartnersByCategory []models.PartnerAttributeMap
+	var err error
+
+	// Attempt to call the repository method with error recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// If we panic due to nil pointer, treat as repository unavailable
+				s.logger.WithFields(logrus.Fields{
+					"component":       "serviceability_orchestrator",
+					"parcel_category": *req.ParcelCategory,
+					"error":           "repository method panic - treating as unavailable",
+					"panic_info":      fmt.Sprintf("%v", r),
+				}).Warn("Repository method panicked, falling back to all supported partners")
+				err = fmt.Errorf("repository unavailable due to panic: %v", r)
+			}
+		}()
+		eligiblePartnersByCategory, err = s.partnerAttributeMapRepo.GetPartnerInfoByAttribute(ctx, *req.ParcelCategory)
+	}()
 	if err != nil {
 		// If error getting partners by attribute, log but continue with all partners
 		// This ensures backward compatibility

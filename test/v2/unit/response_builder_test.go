@@ -569,3 +569,275 @@ func TestBuildV2ResponseMetadata(t *testing.T) {
 	assert.Equal(t, stringPtr("ecomm"), response.Metadata.Filters.ParcelCategory)
 	assert.Equal(t, stringPtr("electronics"), response.Metadata.Filters.ProductType)
 }
+
+// TestReturnOnlyServiceablePartners tests the returnOnlyServiceable functionality
+func TestReturnOnlyServiceablePartners(t *testing.T) {
+	tests := []struct {
+		name                     string
+		returnOnlyServiceable    bool
+		request                  *models.ServiceabilityV2Request
+		setupMocks               func(*mocks.MockPartnerAdapterFactory, *mocks.MockPartnerAttributeMapRepository)
+		expectedSuccess          bool
+		expectedPartnersCount    int
+		expectedServiceableCount int
+		expectedError            *string
+		verifyPartnerContent     func(t *testing.T, partners []models.PartnerV2Response)
+		description              string
+	}{
+		{
+			name:                  "ReturnOnlyServiceable_True_WithServiceablePartners_NoErrors",
+			returnOnlyServiceable: true,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:  stringPtr("12345"),
+				CountryCode: stringPtr("IN"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// One serviceable, one non-serviceable, NO errors
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          true,
+			expectedPartnersCount:    1, // Only serviceable partner returned
+			expectedServiceableCount: 1,
+			expectedError:            nil,
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should only return serviceable partners
+				assert.Len(t, partners, 1, "Should return only serviceable partners")
+				assert.Equal(t, "dhl", partners[0].PartnerCode, "Should return only DHL")
+				assert.True(t, partners[0].IsServiceable, "Returned partner should be serviceable")
+				assert.Nil(t, partners[0].Error, "Serviceable partner should not have error")
+			},
+			description: "When returnOnlyServiceable=true and serviceable partners exist with no errors, return only serviceable ones",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_ValidationErrors",
+			returnOnlyServiceable: true,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:     stringPtr("266001"),
+				CountryCode:    stringPtr("IN"),
+				ParcelCategory: stringPtr("international"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl"})
+
+				// Partner has validation error (postal code not found)
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityError(errors.New("Failed to determine destination country: country code not found for postal code 266001: POSTAL_CODE_NOT_FOUND: Postal code not found (Postal code '266001' does not exist in our database)"))
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          false,
+			expectedPartnersCount:    0, // Empty array when returnOnlyServiceable=true and there are errors
+			expectedServiceableCount: 0,
+			expectedError:            stringPtr("POSTAL_CODE_NOT_FOUND"), // Return specific error code
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should return empty array when returnOnlyServiceable=true and there are errors
+				assert.Empty(t, partners, "Should return empty partners array when returnOnlyServiceable=true and there are errors")
+			},
+			description: "When returnOnlyServiceable=true and there are validation errors, return empty array with specific error",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_MixedWithErrors",
+			returnOnlyServiceable: true,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:     stringPtr("266001"),
+				CountryCode:    stringPtr("IN"),
+				ParcelCategory: stringPtr("international"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// One partner is serviceable, one has error
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityError(errors.New("postal code not found"))
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          false,
+			expectedPartnersCount:    0, // Empty array when there are errors, even if some partners are serviceable
+			expectedServiceableCount: 1,
+			expectedError:            stringPtr("POSTAL_CODE_NOT_FOUND"),
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should return empty array when there are errors, even if some partners are serviceable
+				assert.Empty(t, partners, "Should return empty partners array when there are errors, even if some partners are serviceable")
+			},
+			description: "When returnOnlyServiceable=true and there are errors (even with serviceable partners), return empty array with error",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_NoServiceablePartners",
+			returnOnlyServiceable: true,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:     stringPtr("266001"),
+				CountryCode:    stringPtr("IN"),
+				ParcelCategory: stringPtr("international"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// All partners called successfully but are non-serviceable (no errors)
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          false,
+			expectedPartnersCount:    0, // Empty array when no serviceable partners and no errors
+			expectedServiceableCount: 0,
+			expectedError:            stringPtr("NO_SERVICEABLE_PARTNERS"),
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should return empty array
+				assert.Empty(t, partners, "Should return empty partners array when no serviceable partners and no errors")
+			},
+			description: "When returnOnlyServiceable=true and no serviceable partners (no errors), return empty array with NO_SERVICEABLE_PARTNERS error",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_False_NoServiceablePartners",
+			returnOnlyServiceable: false,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:     stringPtr("266001"),
+				CountryCode:    stringPtr("IN"),
+				ParcelCategory: stringPtr("international"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// One partner has validation error, one is non-serviceable
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityError(errors.New("Failed to determine destination country: country code not found for postal code 266001"))
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateNonServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          false,
+			expectedPartnersCount:    2, // All partners returned when returnOnlyServiceable=false
+			expectedServiceableCount: 0,
+			expectedError:            nil,
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should return all partners including validation errors and non-serviceable ones
+				assert.Len(t, partners, 2, "Should return all partners when returnOnlyServiceable=false")
+				for _, partner := range partners {
+					assert.False(t, partner.IsServiceable, "All partners should be non-serviceable")
+				}
+				// Find DHL partner and verify it has error
+				var dhlPartner *models.PartnerV2Response
+				for _, partner := range partners {
+					if partner.PartnerCode == "dhl" {
+						dhlPartner = &partner
+						break
+					}
+				}
+				assert.NotNil(t, dhlPartner, "DHL partner should be present")
+				assert.NotNil(t, dhlPartner.Error, "DHL partner should have error")
+				assert.Contains(t, *dhlPartner.Error, "code not found", "Should contain validation error")
+			},
+			description: "When returnOnlyServiceable=false, return all partners including validation errors",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_AllServiceable",
+			returnOnlyServiceable: true,
+			request: &models.ServiceabilityV2Request{
+				PostalCode:  stringPtr("12345"),
+				CountryCode: stringPtr("IN"),
+			},
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// All partners serviceable
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(errors.New("not filtered"))
+			},
+			expectedSuccess:          true,
+			expectedPartnersCount:    2, // All serviceable partners returned
+			expectedServiceableCount: 2,
+			expectedError:            nil,
+			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
+				// Should return all serviceable partners
+				assert.Len(t, partners, 2, "Should return all serviceable partners")
+				for _, partner := range partners {
+					assert.True(t, partner.IsServiceable, "All returned partners should be serviceable")
+					assert.Nil(t, partner.Error, "Serviceable partners should not have errors")
+				}
+			},
+			description: "When returnOnlyServiceable=true and all partners serviceable, return all",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup mocks
+			factory := mocks.NewMockPartnerAdapterFactory()
+			repo := mocks.NewMockPartnerAttributeMapRepository()
+
+			tt.setupMocks(factory, repo)
+
+			// Create orchestrator with specified returnOnlyServiceable setting
+			orchestrator := orchestrators.NewServiceabilityOrchestrator(
+				factory,
+				repo,
+				time.Second*30,
+				tt.returnOnlyServiceable,
+			)
+
+			// Execute
+			ctx := context.Background()
+			response, err := orchestrator.CheckServiceability(ctx, tt.request)
+
+			// Verify
+			require.NoError(t, err, "CheckServiceability should not return error")
+			require.NotNil(t, response, "Response should not be nil")
+
+			assert.Equal(t, tt.expectedSuccess, response.Success, "Success should match expected: %s", tt.description)
+			assert.Equal(t, tt.expectedPartnersCount, len(response.Partners), "Partners count should match expected: %s", tt.description)
+
+			// Verify metadata
+			require.NotNil(t, response.Metadata, "Metadata should not be nil")
+			assert.Equal(t, tt.expectedServiceableCount, response.Metadata.ServiceableCount, "Serviceable count should match expected: %s", tt.description)
+
+			// Verify error presence
+			if tt.expectedError != nil {
+				require.NotNil(t, response.Error, "Response should have error when expected")
+				assert.Equal(t, *tt.expectedError, response.Error.Code, "Error code should match expected")
+			} else {
+				assert.Nil(t, response.Error, "Response should not have error when not expected")
+			}
+
+			// Verify partner content if specified
+			if tt.verifyPartnerContent != nil {
+				tt.verifyPartnerContent(t, response.Partners)
+			}
+		})
+	}
+}

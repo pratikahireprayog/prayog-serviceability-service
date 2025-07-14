@@ -2,6 +2,7 @@ package unit
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -489,4 +490,161 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 
 	// Verify all requests succeeded
 	assert.Equal(t, concurrency, successCount, "All concurrent requests should succeed")
+}
+
+// TestIntegration_ReturnOnlyServiceablePartners_EndToEnd tests the complete workflow with returnOnlyServiceable=true
+func TestIntegration_ReturnOnlyServiceablePartners_EndToEnd(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                  string
+		returnOnlyServiceable bool
+		setupMocks            func(*mocks.MockPartnerAdapterFactory, *mocks.MockPartnerAttributeMapRepository)
+		expectedSuccess       bool
+		expectedPartnersCount int
+		expectedErrorCode     string
+		description           string
+	}{
+		{
+			name:                  "ReturnOnlyServiceable_True_ValidationError_EndToEnd",
+			returnOnlyServiceable: true,
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl"})
+
+				// DHL adapter with validation error (postal code not found)
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityError(fmt.Errorf("Failed to determine destination country: country code not found for postal code 266001: POSTAL_CODE_NOT_FOUND: Postal code not found (Postal code '266001' does not exist in our database)"))
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(fmt.Errorf("not filtered"))
+			},
+			expectedSuccess:       false,
+			expectedPartnersCount: 0,
+			expectedErrorCode:     "POSTAL_CODE_NOT_FOUND",
+			description:           "End-to-end test with validation error should return empty partners array and POSTAL_CODE_NOT_FOUND",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_NoServiceablePartners_EndToEnd",
+			returnOnlyServiceable: true,
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// Both partners non-serviceable (no errors)
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(fmt.Errorf("not filtered"))
+			},
+			expectedSuccess:       false,
+			expectedPartnersCount: 0,
+			expectedErrorCode:     "NO_SERVICEABLE_PARTNERS",
+			description:           "End-to-end test with no serviceable partners should return empty partners array and NO_SERVICEABLE_PARTNERS error",
+		},
+		{
+			name:                  "ReturnOnlyServiceable_True_SuccessfulServiceable_EndToEnd",
+			returnOnlyServiceable: true,
+			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
+				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
+
+				// One serviceable, one non-serviceable (no errors)
+				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
+				dhlAdapter.SetServiceabilityResult(dhlAdapter.CreateServiceableResult())
+				factory.SetAdapter("dhl", dhlAdapter)
+
+				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
+				shipyaariAdapter.SetServiceabilityResult(shipyaariAdapter.CreateCleanNonServiceableResult())
+				factory.SetAdapter("shipyaari", shipyaariAdapter)
+
+				repo.SetGetPartnerInfoByAttributeError(fmt.Errorf("not filtered"))
+			},
+			expectedSuccess:       true,
+			expectedPartnersCount: 1,
+			expectedErrorCode:     "",
+			description:           "End-to-end test with serviceable partners should return only serviceable partners",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup mocks
+			mockFactory := mocks.NewMockPartnerAdapterFactory()
+			mockRepo := mocks.NewMockPartnerAttributeMapRepository()
+			tt.setupMocks(mockFactory, mockRepo)
+
+			// Create orchestrator with specific returnOnlyServiceable setting
+			orchestrator := orchestrators.NewServiceabilityOrchestrator(
+				mockFactory,
+				mockRepo,
+				10*time.Second, // Longer timeout for integration tests
+				tt.returnOnlyServiceable,
+			)
+
+			// Create test request
+			request := &models.ServiceabilityV2Request{
+				PostalCode:     stringPtr("266001"),
+				CountryCode:    stringPtr("IN"),
+				ParcelCategory: stringPtr("international"),
+				Package: &models.Package{
+					Weight: &models.Weight{
+						Value: 1.5,
+						Unit:  "kg",
+					},
+					Dimensions: &models.Dimensions{
+						Length: 25.0,
+						Width:  15.0,
+						Height: 10.0,
+						Unit:   "cm",
+					},
+				},
+			}
+
+			// Execute the complete workflow
+			startTime := time.Now()
+			response, err := orchestrator.CheckServiceability(context.Background(), request)
+			processingTime := time.Since(startTime)
+
+			// Verify no system errors
+			require.NoError(t, err, "Should not return system error")
+			require.NotNil(t, response, "Response should not be nil")
+
+			// Verify response structure
+			assert.Equal(t, tt.expectedSuccess, response.Success, "Success should match expected")
+			assert.Len(t, response.Partners, tt.expectedPartnersCount, "Partners count should match expected")
+
+			// Verify metadata
+			assert.NotNil(t, response.Metadata, "Metadata should be present")
+			assert.Equal(t, "international", *response.Metadata.Filters.ParcelCategory, "Parcel category should be preserved")
+			assert.Equal(t, "IN", *response.Metadata.Filters.CountryCode, "Country code should be preserved")
+
+			// Verify error handling
+			if tt.expectedErrorCode != "" {
+				assert.NotNil(t, response.Error, "Should have error when expected")
+				assert.Equal(t, tt.expectedErrorCode, response.Error.Code, "Error code should match expected")
+				assert.NotEmpty(t, response.Error.Message, "Error message should not be empty")
+			} else {
+				assert.Nil(t, response.Error, "Should not have error when not expected")
+			}
+
+			// Verify performance
+			assert.Less(t, processingTime, 5*time.Second, "Processing should complete within reasonable time")
+
+			// Verify partner responses when present
+			if tt.expectedPartnersCount > 0 {
+				for _, partner := range response.Partners {
+					assert.True(t, partner.IsServiceable, "All returned partners should be serviceable when returnOnlyServiceable=true")
+					assert.Nil(t, partner.Error, "Serviceable partners should not have errors")
+					assert.NotEmpty(t, partner.PartnerCode, "Partner code should be present")
+				}
+			}
+
+			t.Logf("✅ %s: Processing time: %v", tt.description, processingTime)
+		})
+	}
 }
