@@ -3,6 +3,7 @@ package dhl
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -305,35 +306,113 @@ func (a *Adapter) getShipperCityName(hubLocation *models.HubLocationInfo) string
 	return "Unknown City" // Fallback if hub info is not available
 }
 
-// getReceiverCityName gets the receiver city name from geolocation service
+// getReceiverCityName gets the receiver city name from geolocation service using asciiname
 func (a *Adapter) getReceiverCityName(ctx context.Context, postalCode string) string {
 	if a.geolocationService == nil {
-		a.logger.Debug("Geolocation service not available for receiver city lookup")
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+		}).Warn("Geolocation service not available for receiver city lookup")
 		return "Unknown City"
 	}
 
-	// Get location hierarchy to find ASCII name
+	a.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"postal_code": postalCode,
+	}).Debug("Attempting to get city name from geo_locations table")
+
+	// Try direct asciiname lookup first
+	cityName, err := a.geolocationService.GetCityNameByPostalCode(ctx, postalCode)
+	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"error":       err.Error(),
+		}).Warn("Failed to get asciiname from geo_locations table, trying fallback method")
+
+		// Fallback to location hierarchy method
+		return a.getReceiverCityNameFallback(ctx, postalCode)
+	}
+
+	if cityName == nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+		}).Warn("City name returned as nil from geo_locations table, trying fallback method")
+
+		// Fallback to location hierarchy method
+		return a.getReceiverCityNameFallback(ctx, postalCode)
+	}
+
+	if *cityName == "" {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+		}).Warn("City name returned as empty string from geo_locations table, trying fallback method")
+
+		// Fallback to location hierarchy method
+		return a.getReceiverCityNameFallback(ctx, postalCode)
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"postal_code": postalCode,
+		"city_name":   *cityName,
+	}).Info("Successfully retrieved asciiname from geo_locations table")
+	return *cityName
+}
+
+// getReceiverCityNameFallback tries to get city name using location hierarchy as fallback
+func (a *Adapter) getReceiverCityNameFallback(ctx context.Context, postalCode string) string {
+	a.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"postal_code": postalCode,
+	}).Debug("Using fallback method to get city name from location hierarchy")
+
+	// Get location hierarchy to find city name as fallback
 	hierarchy, err := a.geolocationService.GetLocationHierarchy(ctx, postalCode)
 	if err != nil {
 		a.logger.WithFields(logrus.Fields{
 			"partner":     "DHL",
 			"postal_code": postalCode,
 			"error":       err.Error(),
-		}).Debug("Failed to get location hierarchy for receiver city")
+		}).Debug("Failed to get location hierarchy for receiver city fallback")
 		return "Unknown City"
 	}
 
 	// Try to get city name from different levels of hierarchy
 	if hierarchy.CityName != "" {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"city_name":   hierarchy.CityName,
+			"method":      "fallback-city",
+		}).Info("Retrieved city name from location hierarchy fallback")
 		return hierarchy.CityName
 	}
 	if hierarchy.RegionName != "" {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"city_name":   hierarchy.RegionName,
+			"method":      "fallback-region",
+		}).Info("Retrieved region name as city from location hierarchy fallback")
 		return hierarchy.RegionName
 	}
 	if hierarchy.CountryName != "" {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"city_name":   hierarchy.CountryName,
+			"method":      "fallback-country",
+		}).Info("Retrieved country name as city from location hierarchy fallback")
 		return hierarchy.CountryName
 	}
 
+	a.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"postal_code": postalCode,
+	}).Warn("All fallback methods failed to retrieve city name")
 	return "Unknown City"
 }
 
@@ -356,11 +435,17 @@ func (a *Adapter) createInternationalRatesRequest(ctx context.Context, request *
 	shipperCityName := a.getShipperCityName(hubLocation)
 	receiverCityName := a.getReceiverCityName(ctx, destinationPincode)
 
+	// Get international hub postal code for shipper details
+	shipperPostalCode := sourcePincode // fallback to source if hub info not available
+	if hubLocation != nil && hubLocation.InternationalHub != nil && hubLocation.InternationalHub.PostalCode != nil {
+		shipperPostalCode = strconv.Itoa(*hubLocation.InternationalHub.PostalCode)
+	}
+
 	// Create rates request with dynamic values
 	dhlReq := RatesRequest{
 		CustomerDetails: CustomerDetails{
 			ShipperDetails: ShipperDetails{
-				PostalCode:  sourcePincode,
+				PostalCode:  shipperPostalCode,
 				CityName:    shipperCityName,
 				CountryCode: sourceCountryCode,
 			},

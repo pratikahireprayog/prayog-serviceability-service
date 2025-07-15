@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ type GeolocationService interface {
 	GetCountryCodeByPostalCode(ctx context.Context, postalCode string) (*string, error)
 	GetLocationHierarchy(ctx context.Context, postalCode string) (*models.LocationHierarchy, error)
 	ValidateInternationalRequest(ctx context.Context, postalCode string) (bool, *string, error)
+	GetCityNameByPostalCode(ctx context.Context, postalCode string) (*string, error)
 }
 
 // geolocationService implements the GeolocationService interface
@@ -114,4 +116,45 @@ func (g *geolocationService) ValidateInternationalRequest(ctx context.Context, p
 	isInternational := strings.ToUpper(*countryCode) != originCountry
 
 	return isInternational, countryCode, nil
+}
+
+// GetCityNameByPostalCode retrieves the city name (asciiname) for a given postal code
+func (g *geolocationService) GetCityNameByPostalCode(ctx context.Context, postalCode string) (*string, error) {
+	if strings.TrimSpace(postalCode) == "" {
+		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
+	}
+
+	// Check if geolocation repository is available
+	if g.geoLocationRepo == nil {
+		return nil, errors.ErrServiceUnavailable("geolocation repository")
+	}
+
+	// Create a timeout context specifically for database operations (5 minutes)
+	// This is longer than the default context to handle potential database performance issues
+	dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Get geolocation data by postal code with extended timeout
+	geoLocation, err := g.geoLocationRepo.GetByID(dbCtx, postalCode)
+	if err != nil {
+		// Enhanced error logging for debugging
+		if strings.Contains(err.Error(), "not found") {
+			return nil, errors.ErrNotFound("geo_location", fmt.Sprintf("postal code %s not found in geo_locations table", postalCode))
+		}
+		// Properly propagate structured errors from repository
+		return nil, fmt.Errorf("failed to get geo_location for postal code %s: %w", postalCode, err)
+	}
+
+	// Enhanced debugging - log what we found
+	if geoLocation == nil {
+		return nil, errors.ErrInternalError(fmt.Sprintf("geo_location returned nil for postal code %s", postalCode), nil)
+	}
+
+	// Get ascii name from the GeoLocation model
+	if geoLocation.AsciiName != "" {
+		return &geoLocation.AsciiName, nil
+	}
+
+	// If ascii name is empty, provide more detailed error
+	return nil, errors.ErrInternalError(fmt.Sprintf("postal code %s found in geo_locations table but ascii name is empty (name='%s', country_code='%s')", postalCode, geoLocation.Name, geoLocation.CountryCode), nil)
 }
