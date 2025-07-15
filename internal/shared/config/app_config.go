@@ -129,7 +129,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Serviceability: ServiceabilityConfig{
-			ReturnOnlyServiceablePartners: getEnvAsBoolOrDefault("RETURN_ONLY_SERVICEABLE_PARTNERS", false),
+			ReturnOnlyServiceablePartners: getEnvAsBoolOrDefault("RETURN_ONLY_SERVICEABLE_PARTNERS", true),
 		},
 		Integration: LoadIntegrationConfig(),
 	}
