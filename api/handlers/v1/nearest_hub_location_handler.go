@@ -100,7 +100,20 @@ func (h *NearestHubLocationHandler) Update(c *fiber.Ctx) error {
 			"error":   fiber.Map{"code": 400, "message": "invalid request body"},
 		})
 	}
-	if err := h.repo.Update(c.Context(), postalCode, &req); err != nil {
+
+	// Get the existing model first
+	existingModel, err := h.repo.GetByPostalCode(c.Context(), postalCode)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   fiber.Map{"code": 404, "message": "nearest hub location not found"},
+		})
+	}
+
+	// Update the model with values from the DTO
+	updateNearestHubLocationModelFromDTO(existingModel, &req)
+
+	if err := h.repo.Update(c.Context(), postalCode, existingModel); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"error":   fiber.Map{"code": 500, "message": err.Error()},
@@ -170,6 +183,37 @@ func modelToNearestHubLocationResponse(m *models.NearestHubLocation) *dtos.Neare
 		InternationalHubCentroidLng: m.InternationalHubCentroidLng,
 		InternationalHubCityCode:    m.InternationalHubCityCode,
 		HubCityCode:                 m.HubCityCode,
+	}
+}
+
+func updateNearestHubLocationModelFromDTO(model *models.NearestHubLocation, req *dtos.UpdateNearestHubLocationRequest) {
+	// Update only the fields that are provided in the request
+	if req.Address != nil {
+		model.Address = req.Address
+	}
+	if req.CentroidLat != nil {
+		model.CentroidLat = req.CentroidLat
+	}
+	if req.CentroidLng != nil {
+		model.CentroidLng = req.CentroidLng
+	}
+	if req.InternationalHubPostalCode != nil {
+		model.InternationalHubPostalCode = req.InternationalHubPostalCode
+	}
+	if req.InternationalHubAddress != nil {
+		model.InternationalHubAddress = req.InternationalHubAddress
+	}
+	if req.InternationalHubCentroidLat != nil {
+		model.InternationalHubCentroidLat = req.InternationalHubCentroidLat
+	}
+	if req.InternationalHubCentroidLng != nil {
+		model.InternationalHubCentroidLng = req.InternationalHubCentroidLng
+	}
+	if req.InternationalHubCityCode != nil {
+		model.InternationalHubCityCode = req.InternationalHubCityCode
+	}
+	if req.HubCityCode != nil {
+		model.HubCityCode = req.HubCityCode
 	}
 }
 

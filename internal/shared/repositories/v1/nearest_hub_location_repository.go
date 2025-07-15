@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"prayog-serviceability-service/internal/shared/dtos/v1"
 	"prayog-serviceability-service/internal/shared/models/v1"
 
 	"gorm.io/gorm"
@@ -15,6 +16,7 @@ type NearestHubLocationRepository interface {
 	GetByPostalCode(ctx context.Context, postalCode int) (*models.NearestHubLocation, error)
 	GetByPostalCodeString(ctx context.Context, postalCode string) (*models.NearestHubLocation, error)
 	GetAll(ctx context.Context, offset, limit int) ([]models.NearestHubLocation, int64, error)
+	GetByFilters(ctx context.Context, filters *dtos.NearestHubLocationFilters) ([]models.NearestHubLocation, error)
 	GetByInternationalHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error)
 	GetByHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error)
 	GetByInternationalHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error)
@@ -59,6 +61,34 @@ func (r *nearestHubLocationRepository) GetByPostalCodeString(ctx context.Context
 	}
 
 	return r.GetByPostalCode(ctx, postalCodeInt)
+}
+
+// GetByFilters retrieves nearest hub locations based on filters
+func (r *nearestHubLocationRepository) GetByFilters(ctx context.Context, filters *dtos.NearestHubLocationFilters) ([]models.NearestHubLocation, error) {
+	var hubLocations []models.NearestHubLocation
+	query := r.db.WithContext(ctx)
+
+	// Apply postal code filters if provided
+	if len(filters.PostalCodes) > 0 {
+		query = query.Where("postal_code IN ?", filters.PostalCodes)
+	}
+
+	// Apply international hub postal code filters if provided
+	if len(filters.InternationalHubPostalCodes) > 0 {
+		query = query.Where("international_hub_postal_code IN ?", filters.InternationalHubPostalCodes)
+	}
+
+	// Apply international hub city code filters if provided
+	if len(filters.InternationalHubCityCodes) > 0 {
+		query = query.Where("international_hub_city_code IN ?", filters.InternationalHubCityCodes)
+	}
+
+	err := query.Find(&hubLocations).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nearest hub locations by filters: %w", err)
+	}
+
+	return hubLocations, nil
 }
 
 // GetAll retrieves all nearest hub locations with pagination
