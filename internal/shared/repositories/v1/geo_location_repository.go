@@ -49,15 +49,15 @@ func NewGeoLocationRepository(db *gorm.DB) GeoLocationRepository {
 // GetByID retrieves a geo location by ID
 func (r *geoLocationRepository) GetByID(ctx context.Context, postalCode string) (*models.GeoLocation, error) {
 	var geoLocation models.GeoLocation
-	
+
 	// Use optimized query with limit and specific columns to improve performance
 	err := r.db.WithContext(ctx).
-		Select("postal_code, country_code, name, latitude, longitude, created_at, updated_at").
+		Select("postal_code, country_code, name, asciiname, latitude, longitude, created_at, updated_at").
 		Where("postal_code = ? AND deleted_at IS NULL", postalCode).
 		Order("created_at DESC").
 		Limit(1).
 		First(&geoLocation).Error
-		
+
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("geo location with postal code %s not found", postalCode)
