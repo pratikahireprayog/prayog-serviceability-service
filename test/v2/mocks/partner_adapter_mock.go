@@ -91,7 +91,7 @@ func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, req *model
 	return &common.PartnerServiceabilityResult{
 		PartnerID:     partnerInfo.PartnerID,
 		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: true,
+		
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
 		ResponseTime:  50 * time.Millisecond,
@@ -158,7 +158,7 @@ func (m *MockPartnerAdapter) Reset() {
 func (m *MockPartnerAdapter) CreateServiceableResult() *common.PartnerServiceabilityResult {
 	return &common.PartnerServiceabilityResult{
 		PartnerCode:   m.PartnerCode,
-		IsServiceable: true,
+		
 		Services: []models.ServiceV2{
 			{
 				ServiceCode: "express",
@@ -196,7 +196,7 @@ func (m *MockPartnerAdapter) CreateNonServiceableResult() *common.PartnerService
 	errorMsg := "Not serviceable in this location"
 	return &common.PartnerServiceabilityResult{
 		PartnerCode:   m.PartnerCode,
-		IsServiceable: false,
+		
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
 		ErrorMessage:  &errorMsg,
@@ -211,7 +211,7 @@ func (m *MockPartnerAdapter) CreateNonServiceableResult() *common.PartnerService
 func (m *MockPartnerAdapter) CreateCleanNonServiceableResult() *common.PartnerServiceabilityResult {
 	return &common.PartnerServiceabilityResult{
 		PartnerCode:   m.PartnerCode,
-		IsServiceable: false,
+		
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
 		ErrorMessage:  nil, // No error message - truly non-serviceable without validation errors
@@ -227,7 +227,7 @@ func (m *MockPartnerAdapter) CreateErrorResult(err error) *common.PartnerService
 	errorMsg := err.Error()
 	return &common.PartnerServiceabilityResult{
 		PartnerCode:   m.PartnerCode,
-		IsServiceable: false,
+		
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
 		Error:         err,

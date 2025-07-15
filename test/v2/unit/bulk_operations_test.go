@@ -30,17 +30,15 @@ func TestBulkCheckServiceability_AllSuccessful(t *testing.T) {
 
 	adapter1 := mocks.NewMockPartnerAdapter("shipyaari")
 	adapter1.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "shipyaari",
-		IsServiceable: true,
-		Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+		PartnerCode: "shipyaari",
+		Services:    []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 	})
 	mockFactory.SetAdapter("shipyaari", adapter1)
 
 	adapter2 := mocks.NewMockPartnerAdapter("smile_ecom")
 	adapter2.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "smile_ecom",
-		IsServiceable: true,
-		Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
+		PartnerCode: "smile_ecom",
+		Services:    []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 	})
 	mockFactory.SetAdapter("smile_ecom", adapter2)
 
@@ -88,9 +86,9 @@ func TestBulkCheckServiceability_AllSuccessful(t *testing.T) {
 		assert.Len(t, individualResponse.Partners, 2, "Request %d should have 2 partners", i+1)
 		assert.Nil(t, individualResponse.Error, "Request %d should have no error", i+1)
 
-		// Verify all partners are serviceable
+		// Verify all partners have services (indicating serviceability)
 		for _, partner := range individualResponse.Partners {
-			assert.True(t, partner.IsServiceable)
+			assert.True(t, len(partner.Services) > 0, "Partner %s should have services", partner.PartnerCode)
 		}
 	}
 }
@@ -197,9 +195,9 @@ func TestBulkCheckServiceability_MaxRequestsLimit(t *testing.T) {
 			mockFactory.SetSupportedPartners([]string{"shipyaari"})
 			adapter := mocks.NewMockPartnerAdapter("shipyaari")
 			adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-				PartnerCode:   "shipyaari",
-				IsServiceable: true,
-				Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+				PartnerCode: "shipyaari",
+
+				Services: []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 			})
 			mockFactory.SetAdapter("shipyaari", adapter)
 
@@ -264,9 +262,8 @@ func TestBulkCheckServiceability_PerformanceAndConcurrency(t *testing.T) {
 	for _, partnerCode := range []string{"shipyaari", "smile_ecom", "smile_courier"} {
 		adapter := mocks.NewMockPartnerAdapter(partnerCode)
 		adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-			PartnerCode:   partnerCode,
-			IsServiceable: true,
-			Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+			PartnerCode: partnerCode,
+			Services:    []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 		})
 		mockFactory.SetAdapter(partnerCode, adapter)
 	}
@@ -334,17 +331,15 @@ func TestBulkCheckServiceability_MixedRequestTypes(t *testing.T) {
 
 	adapter1 := mocks.NewMockPartnerAdapter("shipyaari")
 	adapter1.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "shipyaari",
-		IsServiceable: true,
-		Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+		PartnerCode: "shipyaari",
+		Services:    []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 	})
 	mockFactory.SetAdapter("shipyaari", adapter1)
 
 	adapter2 := mocks.NewMockPartnerAdapter("smile_ecom")
 	adapter2.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "smile_ecom",
-		IsServiceable: true,
-		Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
+		PartnerCode: "smile_ecom",
+		Services:    []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 	})
 	mockFactory.SetAdapter("smile_ecom", adapter2)
 
@@ -467,7 +462,7 @@ func TestBulkCheckServiceability_ReturnOnlyServiceable(t *testing.T) {
 			// If successful, should have serviceable partners
 			assert.NotEmpty(t, individualResponse.Partners, "Successful responses should have partners")
 			for _, partner := range individualResponse.Partners {
-				assert.True(t, partner.IsServiceable, "All returned partners should be serviceable when returnOnlyServiceable=true")
+				assert.True(t, len(partner.Services) > 0, "All returned partners should have services when returnOnlyServiceable=true")
 			}
 		} else {
 			// If not successful, with returnOnlyServiceable=true, should have empty partners or error

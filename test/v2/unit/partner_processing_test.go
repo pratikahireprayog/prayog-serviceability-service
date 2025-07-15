@@ -247,7 +247,7 @@ func TestPartnerErrorHandling(t *testing.T) {
 			expectedServiceable: 1, // Default adapter is serviceable
 			verifyPartnerErrors: func(t *testing.T, partners []models.PartnerV2Response) {
 				assert.Equal(t, "missing_partner", partners[0].PartnerCode)
-				assert.True(t, partners[0].IsServiceable, "Default adapter should be serviceable")
+				assert.True(t, len(partners[0].Services) > 0, "Default adapter should be serviceable")
 			},
 			description: "Missing partner is handled gracefully by creating default adapter",
 		},
@@ -272,7 +272,7 @@ func TestPartnerErrorHandling(t *testing.T) {
 			verifyPartnerErrors: func(t *testing.T, partners []models.PartnerV2Response) {
 				assert.Len(t, partners, 1, "Should only return healthy partner")
 				assert.Equal(t, "healthy_partner", partners[0].PartnerCode)
-				assert.True(t, partners[0].IsServiceable)
+				assert.True(t, len(partners[0].Services) > 0)
 			},
 			description: "Unhealthy partners are skipped correctly",
 		},
@@ -297,7 +297,7 @@ func TestPartnerErrorHandling(t *testing.T) {
 			verifyPartnerErrors: func(t *testing.T, partners []models.PartnerV2Response) {
 				assert.Len(t, partners, 1, "Should only return working partner")
 				assert.Equal(t, "working_partner", partners[0].PartnerCode)
-				assert.True(t, partners[0].IsServiceable)
+				assert.True(t, len(partners[0].Services) > 0)
 				assert.Nil(t, partners[0].Error)
 			},
 			description: "Partner service errors are handled correctly",

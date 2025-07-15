@@ -75,13 +75,12 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	// Validate DHL-specific requirements
 	if err := a.validateDHLRequirements(request); err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("DHL validation failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("DHL validation failed: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason": "DHL validation failed",
 			},
@@ -109,13 +108,12 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	hubLocation, err := a.findNearestHub(ctx, sourcePincode)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Hub location not found: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Hub location not found: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason":         "Hub location not found",
 				"source_pincode": sourcePincode,
@@ -136,13 +134,12 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	sourceCountryCode, destinationCountryCode, err := a.resolveCountryCodes(ctx, sourcePincode, destinationPincode)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Country code resolution failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Country code resolution failed: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason":              "Country code resolution failed",
 				"source_pincode":      sourcePincode,
@@ -166,13 +163,12 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	response, err := a.client.CheckRates(ctx, dhlRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason":                   "DHL API call failed",
 				"source_country_code":      sourceCountryCode,
@@ -185,11 +181,10 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	// Step 6: Process response
 	if len(response.Products) == 0 {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
 			Metadata: map[string]interface{}{
 				"reason":                   "No DHL products available",
 				"source_country_code":      sourceCountryCode,
@@ -213,7 +208,7 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
 		"services":                 len(result.Services),
-		"is_serviceable":           result.IsServiceable,
+		"is_serviceable":           len(result.Services) > 0,
 		"flow":                     "international",
 	}).Info("DHL international serviceability check completed")
 
@@ -384,13 +379,12 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 	destinationCountry, err := a.getDestinationCountryCode(ctx, request, a.getDestinationPincode(request))
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Failed to determine destination country: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Failed to determine destination country: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason": "Failed to determine destination country",
 			},
@@ -478,13 +472,12 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 
 	// All product codes failed
 	return &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: false,
-		Services:      make([]models.ServiceV2, 0),
-		ResponseTime:  time.Since(startTime),
-		Error:         lastError,
-		ErrorMessage:  &[]string{fmt.Sprintf("DHL API call failed: %v", lastError)}[0],
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		ResponseTime: time.Since(startTime),
+		Error:        lastError,
+		ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", lastError)}[0],
 		Metadata: map[string]interface{}{
 			"reason":                  "All product codes failed",
 			"product_codes_attempted": attempts,
@@ -645,12 +638,11 @@ func (a *Adapter) convertToRatesRequestWithProductCode(request *models.Serviceab
 // convertRatesResponse converts DHL rates response to common format with capabilities
 func (a *Adapter) convertRatesResponse(response *RatesResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: len(response.Products) > 0,
-		Services:      make([]models.ServiceV2, 0),
-		Capabilities:  make(map[string]interface{}),
-		Metadata:      make(map[string]interface{}),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
+		Metadata:     make(map[string]interface{}),
 	}
 
 	if len(response.Products) == 0 {
@@ -661,28 +653,26 @@ func (a *Adapter) convertRatesResponse(response *RatesResponse, partnerInfo comm
 	// Use the first product for capabilities (DHL typically returns one main product)
 	product := response.Products[0]
 
-	// Build capabilities structure as per the expected format
+	// Build flattened capabilities structure as per the expected format
 	capabilities := map[string]interface{}{
-		"pickup_capabilities": map[string]interface{}{
-			"next_business_day":                          product.PickupCapabilities.NextBusinessDay,
-			"local_cutoff_date_and_time":                 product.PickupCapabilities.LocalCutoffDateAndTime,
-			"pickup_earliest":                            product.PickupCapabilities.PickupEarliest,
-			"pickup_latest":                              product.PickupCapabilities.PickupLatest,
-			"pickup_cutoff_same_day_outbound_processing": product.PickupCapabilities.PickupCutoffSameDayOutboundProcessing,
-			"origin_service_area_code":                   product.PickupCapabilities.OriginServiceAreaCode,
-			"origin_facility_area_code":                  product.PickupCapabilities.OriginFacilityAreaCode,
-			"pickup_additional_days":                     product.PickupCapabilities.PickupAdditionalDays,
-			"pickup_day_of_week":                         product.PickupCapabilities.PickupDayOfWeek,
-		},
-		"delivery_capabilities": map[string]interface{}{
-			"delivery_type_code":               product.DeliveryCapabilities.DeliveryTypeCode,
-			"estimated_delivery_date_and_time": product.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
-			"destination_service_area_code":    product.DeliveryCapabilities.DestinationServiceAreaCode,
-			"destination_facility_area_code":   product.DeliveryCapabilities.DestinationFacilityAreaCode,
-			"delivery_additional_days":         product.DeliveryCapabilities.DeliveryAdditionalDays,
-			"delivery_day_of_week":             product.DeliveryCapabilities.DeliveryDayOfWeek,
-			"total_transit_days":               product.DeliveryCapabilities.TotalTransitDays,
-		},
+		// Pickup capabilities (flattened)
+		"next_business_day":                          product.PickupCapabilities.NextBusinessDay,
+		"local_cutoff_date_and_time":                 product.PickupCapabilities.LocalCutoffDateAndTime,
+		"pickup_earliest":                            product.PickupCapabilities.PickupEarliest,
+		"pickup_latest":                              product.PickupCapabilities.PickupLatest,
+		"pickup_cutoff_same_day_outbound_processing": product.PickupCapabilities.PickupCutoffSameDayOutboundProcessing,
+		"origin_service_area_code":                   product.PickupCapabilities.OriginServiceAreaCode,
+		"origin_facility_area_code":                  product.PickupCapabilities.OriginFacilityAreaCode,
+		"pickup_additional_days":                     product.PickupCapabilities.PickupAdditionalDays,
+		"pickup_day_of_week":                         product.PickupCapabilities.PickupDayOfWeek,
+		// Delivery capabilities (flattened)
+		"delivery_type_code":               product.DeliveryCapabilities.DeliveryTypeCode,
+		"estimated_delivery_date_and_time": product.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
+		"destination_service_area_code":    product.DeliveryCapabilities.DestinationServiceAreaCode,
+		"destination_facility_area_code":   product.DeliveryCapabilities.DestinationFacilityAreaCode,
+		"delivery_additional_days":         product.DeliveryCapabilities.DeliveryAdditionalDays,
+		"delivery_day_of_week":             product.DeliveryCapabilities.DeliveryDayOfWeek,
+		"total_transit_days":               product.DeliveryCapabilities.TotalTransitDays,
 	}
 
 	result.Capabilities = capabilities

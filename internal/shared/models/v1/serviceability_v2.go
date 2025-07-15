@@ -47,15 +47,14 @@ type ServiceabilityV2Response struct {
 
 // PartnerV2Response represents individual partner response in v2 format
 type PartnerV2Response struct {
-	PartnerID     string                 `json:"partner_id"`
-	PartnerCode   string                 `json:"partner_code"`
-	PartnerName   string                 `json:"partner_name,omitempty"`
-	Rating        float64                `json:"rating"`
-	IsServiceable bool                   `json:"is_serviceable"`
-	Services      []ServiceV2            `json:"services,omitempty"`
-	Capabilities  map[string]interface{} `json:"capabilities,omitempty"`
-	Error         *string                `json:"error,omitempty"`
-	ResponseTime  time.Duration          `json:"response_time"`
+	PartnerID    string                 `json:"partner_id"`
+	PartnerCode  string                 `json:"partner_code"`
+	PartnerName  string                 `json:"partner_name,omitempty"`
+	Rating       float64                `json:"rating"`
+	Services     []ServiceV2            `json:"services,omitempty"`
+	Capabilities map[string]interface{} `json:"capabilities,omitempty"`
+	Error        *string                `json:"error,omitempty"`
+	ResponseTime time.Duration          `json:"response_time"`
 }
 
 // ServiceV2 represents service information for v2 responses

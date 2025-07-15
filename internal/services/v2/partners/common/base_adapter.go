@@ -175,13 +175,12 @@ func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.Se
 	errorMsg := "implementation pending"
 
 	return &PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: false,
-		Services:      []models.ServiceV2{},
-		Capabilities:  make(map[string]interface{}),
-		ErrorMessage:  &errorMsg,
-		ResponseTime:  time.Since(startTime),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     []models.ServiceV2{},
+		Capabilities: make(map[string]interface{}),
+		ErrorMessage: &errorMsg,
+		ResponseTime: time.Since(startTime),
 		// Rating comes from database, not hardcoded
 		Metadata: map[string]interface{}{
 			"adapter_type": "generic",

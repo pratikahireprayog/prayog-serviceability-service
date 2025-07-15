@@ -66,13 +66,12 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	// Basic validation
 	if err := s.validateShipyaariRequirements(request); err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			PartnerName:   s.GetPartnerName(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Shipyaari validation failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			PartnerName:  s.GetPartnerName(),
+			Services:     make([]models.ServiceV2, 0),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Shipyaari validation failed: %v", err)}[0],
 			Metadata: map[string]interface{}{
 				"reason": "Shipyaari does not support this request type",
 			},
@@ -83,13 +82,12 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	shipyaariRequest, err := s.transformRequest(request)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			PartnerName:   s.GetPartnerName(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Shipyaari request transformation failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			PartnerName:  s.GetPartnerName(),
+			Services:     make([]models.ServiceV2, 0),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Shipyaari request transformation failed: %v", err)}[0],
 		}, nil
 	}
 
@@ -97,13 +95,12 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	response, err := s.client.CheckServiceability(ctx, shipyaariRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			PartnerName:   s.GetPartnerName(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Shipyaari API call failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			PartnerName:  s.GetPartnerName(),
+			Services:     make([]models.ServiceV2, 0),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Shipyaari API call failed: %v", err)}[0],
 		}, nil
 	}
 
@@ -214,13 +211,12 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	// ]
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		PartnerName:   s.GetPartnerName(),
-		IsServiceable: resp.IsServiceable,
-		Services:      make([]models.ServiceV2, 0),
-		Capabilities:  make(map[string]interface{}),
-		Metadata:      make(map[string]interface{}),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		PartnerName:  s.GetPartnerName(),
+		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
+		Metadata:     make(map[string]interface{}),
 	}
 
 	// Add services if available

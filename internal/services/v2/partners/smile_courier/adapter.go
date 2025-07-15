@@ -63,11 +63,10 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	if err := common.ValidateServiceabilityRequest(req); err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -76,11 +75,10 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -89,11 +87,10 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -147,18 +144,15 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 	// Current implementation is placeholder - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: false,
-		Services:      make([]models.ServiceV2, 0),
-		Capabilities:  make(map[string]interface{}),
-		Metadata:      make(map[string]interface{}),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
+		Metadata:     make(map[string]interface{}),
 	}
 
 	// Handle response based on success status
 	if resp.Success && resp.Data != nil {
-		result.IsServiceable = resp.Data.IsServiceable
-
 		// Add services if available
 		if resp.Data.IsServiceable && len(resp.Data.Services) > 0 {
 			for _, service := range resp.Data.Services {

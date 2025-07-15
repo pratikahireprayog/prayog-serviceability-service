@@ -111,17 +111,16 @@ const (
 
 // PartnerServiceabilityResult represents the result from a partner serviceability check
 type PartnerServiceabilityResult struct {
-	PartnerID     *uuid.UUID             `json:"partner_id,omitempty"`
-	PartnerCode   string                 `json:"partner_code"`
-	PartnerName   string                 `json:"partner_name,omitempty"`
-	IsServiceable bool                   `json:"is_serviceable"`
-	Services      []models.ServiceV2     `json:"services,omitempty"`
-	Capabilities  map[string]interface{} `json:"capabilities,omitempty"`
-	Error         error                  `json:"-"`
-	ErrorMessage  *string                `json:"error,omitempty"`
-	ResponseTime  time.Duration          `json:"response_time"`
-	Rating        float64                `json:"rating,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	PartnerID    *uuid.UUID             `json:"partner_id,omitempty"`
+	PartnerCode  string                 `json:"partner_code"`
+	PartnerName  string                 `json:"partner_name,omitempty"`
+	Services     []models.ServiceV2     `json:"services,omitempty"`
+	Capabilities map[string]interface{} `json:"capabilities,omitempty"`
+	Error        error                  `json:"-"`
+	ErrorMessage *string                `json:"error,omitempty"`
+	ResponseTime time.Duration          `json:"response_time"`
+	Rating       float64                `json:"rating,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // PartnerMetrics represents performance and health metrics for a partner

@@ -145,7 +145,7 @@ func TestPostalCodeScenarios(t *testing.T) {
 				adapter := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				mockFactory.SetAdapter("shipyaari", adapter)
@@ -169,7 +169,7 @@ func TestPostalCodeScenarios(t *testing.T) {
 				assert.True(t, response.Success)
 				assert.Len(t, response.Partners, 1)
 				assert.Equal(t, "shipyaari", response.Partners[0].PartnerCode)
-				assert.True(t, response.Partners[0].IsServiceable)
+				assert.True(t, len(response.Partners[0].Services) > 0)
 			} else {
 				// Invalid request should fail with validation error
 				require.Error(t, err)
@@ -210,7 +210,7 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			verify: func(t *testing.T, response *models.ServiceabilityV2Response) {
 				assert.True(t, response.Success)
 				assert.Len(t, response.Partners, 1)
-				assert.True(t, response.Partners[0].IsServiceable)
+				assert.True(t, len(response.Partners[0].Services) > 0)
 			},
 		},
 		{
@@ -229,7 +229,7 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			verify: func(t *testing.T, response *models.ServiceabilityV2Response) {
 				assert.True(t, response.Success)
 				assert.Len(t, response.Partners, 1)
-				assert.True(t, response.Partners[0].IsServiceable)
+				assert.True(t, len(response.Partners[0].Services) > 0)
 			},
 		},
 		{
@@ -250,7 +250,7 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			verify: func(t *testing.T, response *models.ServiceabilityV2Response) {
 				assert.True(t, response.Success)
 				assert.Len(t, response.Partners, 1)
-				assert.True(t, response.Partners[0].IsServiceable)
+				assert.True(t, len(response.Partners[0].Services) > 0)
 			},
 		},
 	}
@@ -269,7 +269,7 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			adapter := mocks.NewMockPartnerAdapter("shipyaari")
 			adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 				PartnerCode:   "shipyaari",
-				IsServiceable: true,
+				
 				Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 			})
 			mockFactory.SetAdapter("shipyaari", adapter)
@@ -318,7 +318,7 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 				adapter1 := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter1.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				factory.SetAdapter("shipyaari", adapter1)
@@ -326,7 +326,7 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 				adapter2 := mocks.NewMockPartnerAdapter("smile_ecom")
 				adapter2.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "smile_ecom",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 				})
 				factory.SetAdapter("smile_ecom", adapter2)
@@ -348,7 +348,7 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 				adapter := mocks.NewMockPartnerAdapter("smile_courier")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "smile_courier",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 				})
 				factory.SetAdapter("smile_courier", adapter)
@@ -369,7 +369,7 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 				adapter := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: false,
+					
 					Services:      []models.ServiceV2{},
 				})
 				factory.SetAdapter("shipyaari", adapter)
@@ -408,7 +408,7 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 			if tt.expectedSuccess {
 				assert.Len(t, response.Partners, tt.expectedCount)
 				for _, partner := range response.Partners {
-					assert.True(t, partner.IsServiceable)
+					assert.True(t, len(partner.Services) > 0)
 				}
 			} else {
 				// When success=false, check that partners are returned but not serviceable

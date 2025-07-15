@@ -56,11 +56,10 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 	if err := common.ValidateServiceabilityRequest(req); err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -78,11 +77,10 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -91,11 +89,10 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerID:     partnerInfo.PartnerID,
-			PartnerCode:   partnerInfo.PartnerCode,
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -162,12 +159,11 @@ func (s *SmileEcomAdapter) transformDatabaseResult(dbResult *ServiceabilityData,
 	// Current implementation is database-based - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		IsServiceable: dbResult.IsServiceable,
-		Services:      make([]models.ServiceV2, 0),
-		Capabilities:  make(map[string]interface{}),
-		Metadata:      make(map[string]interface{}),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
+		Metadata:     make(map[string]interface{}),
 	}
 
 	// Add services if available
