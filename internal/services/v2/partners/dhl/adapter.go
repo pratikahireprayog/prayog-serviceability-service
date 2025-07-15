@@ -94,8 +94,8 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 // checkInternationalServiceability implements the international serviceability flow for DHL
 func (a *Adapter) checkInternationalServiceability(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	// Step 1: Extract postal codes from request
-	sourcePincode := a.getSourcePincode(request)
-	destinationPincode := a.getDestinationPincode(request)
+	sourcePincode := *request.SourcePostalCode
+	destinationPincode := *request.DestinationPostalCode
 
 	a.logger.WithFields(logrus.Fields{
 		"partner":             "DHL",
@@ -136,7 +136,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
-			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Error:        err,
 			ErrorMessage: &[]string{fmt.Sprintf("Country code resolution failed: %v", err)}[0],
@@ -156,8 +155,8 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"flow":                     "international",
 	}).Info("Resolved country codes for international flow")
 
-	// Step 4: Create DHL API request with hardcoded values
-	dhlRequest := a.createInternationalRatesRequest(request, sourceCountryCode, destinationCountryCode)
+	// Step 4: Create DHL API request with dynamic values
+	dhlRequest := a.createInternationalRatesRequest(ctx, request, sourceCountryCode, destinationCountryCode, hubLocation)
 
 	// Step 5: Call DHL API
 	response, err := a.client.CheckRates(ctx, dhlRequest)
@@ -165,7 +164,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
-			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Error:        err,
 			ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
@@ -183,7 +181,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
-			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Metadata: map[string]interface{}{
 				"reason":                   "No DHL products available",
@@ -300,11 +297,51 @@ func (a *Adapter) resolveCountryCodes(ctx context.Context, sourcePincode, destin
 	return *sourceCountryCode, *destinationCountryCode, nil
 }
 
-// createInternationalRatesRequest creates a DHL rates request with hardcoded values for international flow
-func (a *Adapter) createInternationalRatesRequest(request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) RatesRequest {
+// getShipperCityName gets the shipper city name from hub location info
+func (a *Adapter) getShipperCityName(hubLocation *models.HubLocationInfo) string {
+	if hubLocation != nil && hubLocation.InternationalHub != nil && hubLocation.InternationalHub.CityCode != nil {
+		return *hubLocation.InternationalHub.CityCode
+	}
+	return "Unknown City" // Fallback if hub info is not available
+}
+
+// getReceiverCityName gets the receiver city name from geolocation service
+func (a *Adapter) getReceiverCityName(ctx context.Context, postalCode string) string {
+	if a.geolocationService == nil {
+		a.logger.Debug("Geolocation service not available for receiver city lookup")
+		return "Unknown City"
+	}
+
+	// Get location hierarchy to find ASCII name
+	hierarchy, err := a.geolocationService.GetLocationHierarchy(ctx, postalCode)
+	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"error":       err.Error(),
+		}).Debug("Failed to get location hierarchy for receiver city")
+		return "Unknown City"
+	}
+
+	// Try to get city name from different levels of hierarchy
+	if hierarchy.CityName != "" {
+		return hierarchy.CityName
+	}
+	if hierarchy.RegionName != "" {
+		return hierarchy.RegionName
+	}
+	if hierarchy.CountryName != "" {
+		return hierarchy.CountryName
+	}
+
+	return "Unknown City"
+}
+
+// createInternationalRatesRequest creates a DHL rates request with dynamic values for international flow
+func (a *Adapter) createInternationalRatesRequest(ctx context.Context, request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string, hubLocation *models.HubLocationInfo) RatesRequest {
 	// Extract postal codes
-	sourcePincode := a.getSourcePincode(request)
-	destinationPincode := a.getDestinationPincode(request)
+	sourcePincode := *request.SourcePostalCode
+	destinationPincode := *request.DestinationPostalCode
 
 	a.logger.WithFields(logrus.Fields{
 		"partner":                  "DHL",
@@ -313,49 +350,50 @@ func (a *Adapter) createInternationalRatesRequest(request *models.Serviceability
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
 		"method":                   "createInternationalRatesRequest",
-	}).Debug("Creating DHL rates request with hardcoded values")
+	}).Debug("Creating DHL rates request with dynamic values")
 
-	// Create rates request with hardcoded values as per requirements
+	// Get dynamic city names
+	shipperCityName := a.getShipperCityName(hubLocation)
+	receiverCityName := a.getReceiverCityName(ctx, destinationPincode)
+
+	// Create rates request with dynamic values
 	dhlReq := RatesRequest{
 		CustomerDetails: CustomerDetails{
 			ShipperDetails: ShipperDetails{
 				PostalCode:  sourcePincode,
-				CityName:    "Bangalore", // Enhanced with actual city
+				CityName:    shipperCityName,
 				CountryCode: sourceCountryCode,
 			},
 			ReceiverDetails: ReceiverDetails{
 				PostalCode:  destinationPincode,
-				CityName:    "Destination City", // Could be enhanced with actual city lookup
+				CityName:    receiverCityName,
 				CountryCode: destinationCountryCode,
 			},
 		},
-		// Hardcoded account information as per requirements
+		// Static account information as per business requirements
 		Accounts: []Account{
 			{
 				TypeCode: "shipper",
 				Number:   "533748932",
 			},
 		},
-		// Hardcoded product information as per requirements
+		// Static product information - hardcoded as per requirements
 		ProductsAndServices: []ProductAndService{
 			{
 				ProductCode:      "P",
 				LocalProductCode: "P",
 			},
 		},
-		PayerCountryCode: "IN",
-		// Hardcoded shipping date as per requirements
-		PlannedShippingDateAndTime: "2025-05-05T13:00:00GMT+05:30",
-		// Hardcoded unit of measurement as per requirements
-		UnitOfMeasurement: "metric",
-		// Hardcoded customs declarable flag as per requirements
+		PayerCountryCode: sourceCountryCode,
+		// Current time for shipping date
+		PlannedShippingDateAndTime: a.getPlannedShippingDateTime(),
+		// Static configuration as per business requirements
+		UnitOfMeasurement:   "metric",
 		IsCustomsDeclarable: true,
-		// Hardcoded estimated delivery date configuration as per requirements
 		EstimatedDeliveryDate: EstimatedDeliveryDate{
 			IsRequested: true,
 			TypeCode:    "QDDC",
 		},
-		// Hardcoded return standard products only flag as per requirements
 		ReturnStandardProductsOnly: true,
 		Packages:                   a.getPackages(request),
 	}
@@ -364,129 +402,15 @@ func (a *Adapter) createInternationalRatesRequest(request *models.Serviceability
 		"partner":                  "DHL",
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
+		"shipper_city":             shipperCityName,
+		"receiver_city":            receiverCityName,
 		"product_code":             "P",
-		"account_number":           "533748932",
-		"unit_of_measurement":      "metric",
-		"customs_declarable":       true,
-	}).Debug("Created DHL rates request with hardcoded values")
+	}).Debug("Created DHL rates request with dynamic values")
 
 	return dhlReq
 }
 
-// checkServiceabilityWithFallback attempts multiple product codes
-func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
-	// Determine product codes to try based on ACTUAL route geography, not just parcel_category
-	destinationCountry, err := a.getDestinationCountryCode(ctx, request, a.getDestinationPincode(request))
-	if err != nil {
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			Services:     make([]models.ServiceV2, 0),
-			ResponseTime: time.Since(startTime),
-			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("Failed to determine destination country: %v", err)}[0],
-			Metadata: map[string]interface{}{
-				"reason": "Failed to determine destination country",
-			},
-		}, nil
-	}
-	sourceCountry := "IN" // Source is always India
-
-	// Use actual route geography for product code selection
-	isActuallyInternational := destinationCountry != sourceCountry
-
-	a.logger.WithFields(logrus.Fields{
-		"partner":                "DHL",
-		"source_country":         sourceCountry,
-		"destination_country":    destinationCountry,
-		"actually_international": isActuallyInternational,
-	}).Debug("Route analysis completed")
-
-	var productCodes []string
-	if isActuallyInternational {
-		// International product codes (in order of preference)
-		productCodes = []string{"U", "P", "D", "G", "J"}
-		a.logger.WithFields(logrus.Fields{
-			"partner":       "DHL",
-			"route_type":    "international",
-			"product_codes": productCodes,
-		}).Debug("Using international product codes")
-	} else {
-		// Domestic product codes for India (in order of preference)
-		productCodes = []string{"B", "D", "E", "G", "H"}
-		a.logger.WithFields(logrus.Fields{
-			"partner":       "DHL",
-			"route_type":    "domestic",
-			"product_codes": productCodes,
-		}).Debug("Using domestic product codes")
-	}
-
-	var lastError error
-	var attempts []string
-
-	// Try each product code
-	for _, productCode := range productCodes {
-		attempts = append(attempts, productCode)
-		a.logger.WithFields(logrus.Fields{
-			"partner":      "DHL",
-			"product_code": productCode,
-		}).Debug("Trying DHL product code")
-
-		// Create request with this product code
-		dhlRequest := a.convertToRatesRequestWithProductCode(request, productCode)
-
-		// Make API call
-		response, err := a.client.CheckRates(ctx, dhlRequest)
-		if err != nil {
-			lastError = err
-			a.logger.WithFields(logrus.Fields{
-				"partner":      "DHL",
-				"product_code": productCode,
-				"error":        err.Error(),
-			}).Debug("DHL product code failed")
-			continue
-		}
-
-		// If we got a valid response with products, return success
-		if len(response.Products) > 0 {
-			result := a.convertRatesResponse(response, partnerInfo)
-			result.ResponseTime = time.Since(startTime)
-			result.Metadata["product_code_used"] = productCode
-			result.Metadata["product_codes_attempted"] = attempts
-			result.Metadata["actual_route_type"] = map[string]bool{"international": isActuallyInternational}
-			a.logger.WithFields(logrus.Fields{
-				"partner":      "DHL",
-				"product_code": productCode,
-				"services":     len(result.Services),
-			}).Debug("Success with product code")
-			return result, nil
-		}
-
-		// No products in response, try next product code
-		lastError = fmt.Errorf("no products available for product code %s", productCode)
-		a.logger.WithFields(logrus.Fields{
-			"partner":      "DHL",
-			"product_code": productCode,
-		}).Debug("Product code returned no products")
-	}
-
-	// All product codes failed
-	return &common.PartnerServiceabilityResult{
-		PartnerID:    partnerInfo.PartnerID,
-		PartnerCode:  partnerInfo.PartnerCode,
-		Services:     make([]models.ServiceV2, 0),
-		ResponseTime: time.Since(startTime),
-		Error:        lastError,
-		ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", lastError)}[0],
-		Metadata: map[string]interface{}{
-			"reason":                  "All product codes failed",
-			"product_codes_attempted": attempts,
-			"actual_route_type":       map[string]bool{"international": isActuallyInternational},
-			"source_country":          sourceCountry,
-			"destination_country":     destinationCountry,
-		},
-	}, nil
-}
+// This function was removed as it's dead code - not called anywhere and we're using hardcoded product code "P"
 
 // validateDHLRequirements validates DHL-specific requirements
 func (a *Adapter) validateDHLRequirements(request *models.ServiceabilityV2Request) error {
@@ -499,141 +423,36 @@ func (a *Adapter) validateDHLRequirements(request *models.ServiceabilityV2Reques
 		return fmt.Errorf("destination postal code is required for DHL shipments")
 	}
 
-	// DHL will use default package information if not provided
-	// No additional restrictions based on request type
+	// DHL requires package information for international shipments
+	if len(request.Packages) == 0 {
+		return fmt.Errorf("at least one package is required for DHL shipments")
+	}
+
+	// Validate each package in the array
+	for i, pkg := range request.Packages {
+		// Validate package weight
+		if pkg.Weight == nil {
+			return fmt.Errorf("package weight is required for package %d in DHL shipments", i+1)
+		}
+
+		if pkg.Weight.Value <= 0 {
+			return fmt.Errorf("package weight must be greater than 0 for package %d in DHL shipments", i+1)
+		}
+
+		// Validate package dimensions
+		if pkg.Dimensions == nil {
+			return fmt.Errorf("package dimensions are required for package %d in DHL shipments", i+1)
+		}
+
+		if pkg.Dimensions.Length <= 0 || pkg.Dimensions.Width <= 0 || pkg.Dimensions.Height <= 0 {
+			return fmt.Errorf("package dimensions must be greater than 0 for package %d in DHL shipments", i+1)
+		}
+	}
 
 	return nil
 }
 
-// convertToRatesRequest converts v2 request to DHL rates format
-func (a *Adapter) convertToRatesRequest(request *models.ServiceabilityV2Request) RatesRequest {
-	// Extract postal codes
-	sourcePincode := a.getSourcePincode(request)
-	destinationPincode := a.getDestinationPincode(request)
-
-	// For international requests, we need to determine the destination country
-	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
-	if err != nil {
-		// Log error and use default country
-		a.logger.WithFields(logrus.Fields{
-			"partner":     "DHL",
-			"postal_code": destinationPincode,
-			"error":       err.Error(),
-		}).Debug("Failed to get destination country code, using default")
-		destinationCountry = "CN"
-	}
-
-	// Create rates request with static values
-	dhlReq := RatesRequest{
-		CustomerDetails: CustomerDetails{
-			ShipperDetails: ShipperDetails{
-				PostalCode:  sourcePincode,
-				CityName:    "Bangalore", // Enhanced with actual city
-				CountryCode: "IN",        // Source is always India
-			},
-			ReceiverDetails: ReceiverDetails{
-				PostalCode:  destinationPincode,
-				CityName:    "Destination City", // Could be enhanced with actual city lookup
-				CountryCode: destinationCountry,
-			},
-		},
-		// Static account information
-		Accounts: []Account{
-			{
-				TypeCode: "shipper",
-				Number:   "533748932",
-			},
-		},
-		// Static product and service information
-		ProductsAndServices: []ProductAndService{
-			{
-				ProductCode:      "P",
-				LocalProductCode: "P",
-			},
-		},
-		PayerCountryCode:           "IN",
-		PlannedShippingDateAndTime: a.getPlannedShippingDateTime(),
-		// Static unit of measurement
-		UnitOfMeasurement: "metric",
-		// Static customs declarable flag
-		IsCustomsDeclarable: true,
-		// Static estimated delivery date configuration
-		EstimatedDeliveryDate: EstimatedDeliveryDate{
-			IsRequested: true,
-			TypeCode:    "QDDC",
-		},
-		// Static return standard products only flag
-		ReturnStandardProductsOnly: true,
-		Packages:                   a.getPackages(request),
-	}
-
-	return dhlReq
-}
-
-// convertToRatesRequestWithProductCode converts v2 request to DHL rates format with specific product code
-func (a *Adapter) convertToRatesRequestWithProductCode(request *models.ServiceabilityV2Request, productCode string) RatesRequest {
-	// Extract postal codes
-	sourcePincode := a.getSourcePincode(request)
-	destinationPincode := a.getDestinationPincode(request)
-
-	// For international requests, we need to determine the destination country
-	destinationCountry, err := a.getDestinationCountryCode(context.Background(), request, destinationPincode)
-	if err != nil {
-		// Log error and use default country
-		a.logger.WithFields(logrus.Fields{
-			"partner":     "DHL",
-			"postal_code": destinationPincode,
-			"error":       err.Error(),
-		}).Debug("Failed to get destination country code, using default")
-		destinationCountry = "CN"
-	}
-
-	// Create rates request with static values and specific product code
-	dhlReq := RatesRequest{
-		CustomerDetails: CustomerDetails{
-			ShipperDetails: ShipperDetails{
-				PostalCode:  sourcePincode,
-				CityName:    "Bangalore", // Enhanced with actual city
-				CountryCode: "IN",        // Source is always India
-			},
-			ReceiverDetails: ReceiverDetails{
-				PostalCode:  destinationPincode,
-				CityName:    "Destination City", // Could be enhanced with actual city lookup
-				CountryCode: destinationCountry,
-			},
-		},
-		// Static account information
-		Accounts: []Account{
-			{
-				TypeCode: "shipper",
-				Number:   "533748932",
-			},
-		},
-		// Dynamic product code but static structure
-		ProductsAndServices: []ProductAndService{
-			{
-				ProductCode:      productCode,
-				LocalProductCode: productCode,
-			},
-		},
-		PayerCountryCode:           "IN",
-		PlannedShippingDateAndTime: a.getPlannedShippingDateTime(),
-		// Static unit of measurement
-		UnitOfMeasurement: "metric",
-		// Static customs declarable flag
-		IsCustomsDeclarable: true,
-		// Static estimated delivery date configuration
-		EstimatedDeliveryDate: EstimatedDeliveryDate{
-			IsRequested: true,
-			TypeCode:    "QDDC",
-		},
-		// Static return standard products only flag
-		ReturnStandardProductsOnly: true,
-		Packages:                   a.getPackages(request),
-	}
-
-	return dhlReq
-}
+// These functions are removed as they were duplicates and we now use createInternationalRatesRequest
 
 // convertRatesResponse converts DHL rates response to common format with capabilities
 func (a *Adapter) convertRatesResponse(response *RatesResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
@@ -700,74 +519,42 @@ func (a *Adapter) extractFuelSurcharge(breakdowns []DetailedPriceBreakdown) floa
 	return 0.0
 }
 
-// getSourcePincode extracts source pincode from request
-func (a *Adapter) getSourcePincode(request *models.ServiceabilityV2Request) string {
-	if request.SourcePostalCode != nil {
-		return *request.SourcePostalCode
-	}
-	// TODO: Remove this once we have a proper source pincode
-	return "110001" // Default to Delhi if no source specified
-}
-
-// getDestinationPincode extracts destination pincode from request
-func (a *Adapter) getDestinationPincode(request *models.ServiceabilityV2Request) string {
-	if request.DestinationPostalCode != nil {
-		return *request.DestinationPostalCode
-	}
-	if request.PostalCode != nil {
-		return *request.PostalCode
-	}
-	return ""
-}
-
-// getCountryCode extracts country code from request with default
-func (a *Adapter) getCountryCode(request *models.ServiceabilityV2Request) string {
-	if request.CountryCode != nil {
-		return *request.CountryCode
-	}
-	// TODO: Remove this once we have a proper country code
-	return "IN" // Default to India if no country code specified
-}
-
 // getPlannedShippingDateTime gets the planned shipping date and time
 func (a *Adapter) getPlannedShippingDateTime() string {
-	// Use current time + 2 days, formatted as "YYYY-MM-DDTHH:MM:SSGMT+05:30"
+	// Use current time, formatted as "YYYY-MM-DDTHH:MM:SSGMT+05:30"
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		loc = time.FixedZone("GMT+05:30", 5*60*60+30*60)
 	}
-	plannedTime := time.Now().In(loc).Add(48 * time.Hour)
+	plannedTime := time.Now().In(loc)
 	return plannedTime.Format("2006-01-02T15:04:05") + "GMT+05:30"
 }
 
 // getPackages creates packages from request
 func (a *Adapter) getPackages(request *models.ServiceabilityV2Request) []Package {
-	if request.Package != nil {
-		return []Package{
-			{
-				Weight:     a.getWeight(request.Package.Weight),
-				Dimensions: a.getDimensions(request.Package.Dimensions),
-			},
-		}
+	if len(request.Packages) == 0 {
+		// This should not happen as we validate package existence in validateDHLRequirements
+		a.logger.Error("Package information is missing - this should have been caught in validation")
+		return []Package{}
 	}
 
-	// Default package
-	return []Package{
-		{
-			Weight: 0.5, // Default 0.5 kg
-			Dimensions: Dimensions{
-				Length: 30,
-				Width:  20,
-				Height: 15,
-			},
-		},
+	packages := make([]Package, 0, len(request.Packages))
+	for _, pkg := range request.Packages {
+		packages = append(packages, Package{
+			Weight:     a.getWeight(pkg.Weight),
+			Dimensions: a.getDimensions(pkg.Dimensions),
+		})
 	}
+
+	return packages
 }
 
 // getWeight converts weight to kg
 func (a *Adapter) getWeight(weight *models.Weight) float64 {
 	if weight == nil {
-		return 0.5 // Default weight
+		// This should not happen as we validate weight existence in validateDHLRequirements
+		a.logger.Error("Weight information is missing - this should have been caught in validation")
+		return 0.0
 	}
 
 	switch strings.ToLower(weight.Unit) {
@@ -787,10 +574,12 @@ func (a *Adapter) getWeight(weight *models.Weight) float64 {
 // getDimensions converts dimensions to cm
 func (a *Adapter) getDimensions(dimensions *models.Dimensions) Dimensions {
 	if dimensions == nil {
+		// This should not happen as we validate dimensions existence in validateDHLRequirements
+		a.logger.Error("Dimensions information is missing - this should have been caught in validation")
 		return Dimensions{
-			Length: 30,
-			Width:  20,
-			Height: 15,
+			Length: 0,
+			Width:  0,
+			Height: 0,
 		}
 	}
 
@@ -860,14 +649,19 @@ func (a *Adapter) Shutdown(ctx context.Context) error {
 func (a *Adapter) GetQuote(ctx context.Context, request *models.ServiceabilityV2Request) (*QuoteResponse, error) {
 
 	// Convert to quote request format
+	// Get dynamic country codes
+	sourceCountryCode, destinationCountryCode, err := a.resolveCountryCodes(ctx, *request.SourcePostalCode, *request.DestinationPostalCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve country codes: %w", err)
+	}
+
 	quoteRequest := QuoteRequest{
-		DestinationCountryCode: *request.CountryCode,
-		// TODO: Remove this once we have a proper country code
-		OriginCountryCode:     "IN",
-		ServiceType:           "P", // Express
-		DestinationPostalCode: a.getDestinationPincode(request),
-		OriginPostalCode:      a.getSourcePincode(request),
-		Packages:              a.convertToQuotePackages(request),
+		DestinationCountryCode: destinationCountryCode,
+		OriginCountryCode:      sourceCountryCode,
+		ServiceType:            "P", // Express
+		DestinationPostalCode:  *request.DestinationPostalCode,
+		OriginPostalCode:       *request.SourcePostalCode,
+		Packages:               a.convertToQuotePackages(request),
 	}
 
 	return a.client.GetQuote(ctx, quoteRequest)
@@ -875,31 +669,26 @@ func (a *Adapter) GetQuote(ctx context.Context, request *models.ServiceabilityV2
 
 // convertToQuotePackages converts request packages to quote format
 func (a *Adapter) convertToQuotePackages(request *models.ServiceabilityV2Request) []DHLPackage {
-	if request.Package == nil {
-		return []DHLPackage{
-			{
-				Weight:        0.5,
-				Length:        30,
-				Width:         20,
-				Height:        15,
-				DeclaredValue: 100.0,
-				// TODO: Remove this once we have a proper currency
-				Currency: "INR",
-			},
-		}
+	if len(request.Packages) == 0 {
+		// This should not happen as we validate package existence in validateDHLRequirements
+		a.logger.Error("Package information is missing - this should have been caught in validation")
+		return []DHLPackage{}
 	}
 
-	return []DHLPackage{
-		{
-			Weight:        a.getWeight(request.Package.Weight),
-			Length:        a.convertToCm(request.Package.Dimensions.Length, request.Package.Dimensions.Unit),
-			Width:         a.convertToCm(request.Package.Dimensions.Width, request.Package.Dimensions.Unit),
-			Height:        a.convertToCm(request.Package.Dimensions.Height, request.Package.Dimensions.Unit),
+	packages := make([]DHLPackage, 0, len(request.Packages))
+	for _, pkg := range request.Packages {
+		packages = append(packages, DHLPackage{
+			Weight:        a.getWeight(pkg.Weight),
+			Length:        a.convertToCm(pkg.Dimensions.Length, pkg.Dimensions.Unit),
+			Width:         a.convertToCm(pkg.Dimensions.Width, pkg.Dimensions.Unit),
+			Height:        a.convertToCm(pkg.Dimensions.Height, pkg.Dimensions.Unit),
 			DeclaredValue: 100.0, // Default value
 			// TODO: Remove this once we have a proper currency
 			Currency: "INR",
-		},
+		})
 	}
+
+	return packages
 }
 
 // getDestinationCountryCode determines the destination country code using geolocation service

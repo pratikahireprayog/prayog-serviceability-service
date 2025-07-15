@@ -32,9 +32,9 @@ type ServiceabilityV2Request struct {
 	SourcePostalCode      *string  `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
 	DestinationPostalCode *string  `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
 	CountryCode           *string  `json:"country_code,omitempty" validate:"omitempty,len=2"`
-	ParcelCategory        *string  `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
-	ProductType           *string  `json:"product_type,omitempty"`
-	Package               *Package `json:"package,omitempty" validate:"omitempty"`
+	ParcelCategory        *string   `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
+	ProductType           *string   `json:"product_type,omitempty"`
+	Packages              []Package `json:"packages,omitempty" validate:"omitempty,dive"`
 }
 
 // ServiceabilityV2Response represents the aggregated response structure for v2

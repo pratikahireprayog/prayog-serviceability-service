@@ -149,18 +149,29 @@ func (s *ShipyaariAdapter) validateShipyaariRequirements(req *models.Serviceabil
 	}
 
 	// Shipyaari requires package information for accurate pricing calculations
-	if req.Package == nil {
-		return fmt.Errorf("package information is required for Shipyaari pricing calculations")
+	if len(req.Packages) == 0 {
+		return fmt.Errorf("at least one package is required for Shipyaari pricing calculations")
 	}
 
-	// Validate weight is provided
-	if req.Package.Weight == nil {
-		return fmt.Errorf("weight information is required for Shipyaari pricing calculations")
-	}
+	// Validate each package in the array
+	for i, pkg := range req.Packages {
+		// Validate weight is provided
+		if pkg.Weight == nil {
+			return fmt.Errorf("weight information is required for package %d in Shipyaari pricing calculations", i+1)
+		}
 
-	// Validate dimensions are provided
-	if req.Package.Dimensions == nil {
-		return fmt.Errorf("dimensions information is required for Shipyaari pricing calculations")
+		if pkg.Weight.Value <= 0 {
+			return fmt.Errorf("package weight must be greater than 0 for package %d in Shipyaari pricing calculations", i+1)
+		}
+
+		// Validate dimensions are provided
+		if pkg.Dimensions == nil {
+			return fmt.Errorf("dimensions information is required for package %d in Shipyaari pricing calculations", i+1)
+		}
+
+		if pkg.Dimensions.Length <= 0 || pkg.Dimensions.Width <= 0 || pkg.Dimensions.Height <= 0 {
+			return fmt.Errorf("package dimensions must be greater than 0 for package %d in Shipyaari pricing calculations", i+1)
+		}
 	}
 
 	return nil
@@ -174,6 +185,24 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 		OrderValue:  getOrderValue(req),
 		PaymentMode: getPaymentMode(req),
 		ProductType: getProductType(req),
+	}
+
+	// Extract package information from the first package if available
+	// Note: Shipyaari may not support multiple packages, so we use the first one
+	if len(req.Packages) > 0 {
+		pkg := req.Packages[0]
+
+		// Extract weight
+		if pkg.Weight != nil {
+			shipyaariReq.Weight = getWeightInKg(pkg.Weight)
+		}
+
+		// Extract dimensions
+		if pkg.Dimensions != nil {
+			shipyaariReq.Length = getDimensionInCm(pkg.Dimensions.Length, pkg.Dimensions.Unit)
+			shipyaariReq.Breadth = getDimensionInCm(pkg.Dimensions.Width, pkg.Dimensions.Unit)
+			shipyaariReq.Height = getDimensionInCm(pkg.Dimensions.Height, pkg.Dimensions.Unit)
+		}
 	}
 
 	return shipyaariReq, nil
@@ -292,4 +321,40 @@ func getProductType(req *models.ServiceabilityV2Request) string {
 		return *req.ProductType
 	}
 	return "general"
+}
+
+// getWeightInKg converts weight to kg
+func getWeightInKg(weight *models.Weight) float64 {
+	if weight == nil {
+		return 0.0
+	}
+
+	switch weight.Unit {
+	case "kg":
+		return weight.Value
+	case "g":
+		return weight.Value / 1000.0
+	case "lb":
+		return weight.Value * 0.453592
+	case "oz":
+		return weight.Value * 0.0283495
+	default:
+		return weight.Value // Assume kg if unit unknown
+	}
+}
+
+// getDimensionInCm converts dimension to cm
+func getDimensionInCm(value float64, unit string) float64 {
+	switch unit {
+	case "cm":
+		return value
+	case "mm":
+		return value / 10.0
+	case "in":
+		return value * 2.54
+	case "ft":
+		return value * 30.48
+	default:
+		return value // Assume cm if unit unknown
+	}
 }

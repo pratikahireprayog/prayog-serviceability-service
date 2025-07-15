@@ -299,41 +299,48 @@ func (h *ServiceabilityV2Handler) validateInternationalRequest(ctx context.Conte
 		h.logger.Debugf("Validating international request requirements")
 
 		// Package information is mandatory for international shipments
-		if request.Package == nil {
+		if len(request.Packages) == 0 {
 			h.logger.Error("Package information is missing for international request")
 			return errors.ErrInternationalPackageRequired()
 		}
 
-		h.logger.Debugf("Package is not nil, checking weight")
+		h.logger.Debugf("Packages array is not empty, validating each package")
 
-		// Weight is mandatory for international shipments
-		if request.Package.Weight == nil {
-			h.logger.Error("Package weight is missing for international request")
-			return errors.ErrInternationalPackageRequired()
-		}
+		// Validate each package in the array
+		for i, pkg := range request.Packages {
+			h.logger.Debugf("Validating package %d", i+1)
 
-		h.logger.Debugf("Weight is not nil, checking dimensions")
+			// Weight is mandatory for international shipments
+			if pkg.Weight == nil {
+				h.logger.Errorf("Package weight is missing for international request package %d", i+1)
+				return errors.ErrInternationalPackageRequired()
+			}
 
-		// Dimensions are mandatory for international shipments
-		if request.Package.Dimensions == nil {
-			h.logger.Error("Package dimensions are missing for international request")
-			return errors.ErrInternationalPackageRequired()
-		}
+			h.logger.Debugf("Weight is not nil for package %d, checking dimensions", i+1)
 
-		h.logger.Debugf("Dimensions is not nil, validating weight value")
+			// Dimensions are mandatory for international shipments
+			if pkg.Dimensions == nil {
+				h.logger.Errorf("Package dimensions are missing for international request package %d", i+1)
+				return errors.ErrInternationalPackageRequired()
+			}
 
-		// Validate weight values
-		if request.Package.Weight.Value <= 0 {
-			h.logger.Error("Package weight value is invalid for international request")
-			return errors.ErrInvalidPackageWeight(request.Package.Weight.Value)
-		}
+			h.logger.Debugf("Dimensions is not nil for package %d, validating weight value", i+1)
 
-		h.logger.Debugf("Weight value is valid, validating dimension values")
+			// Validate weight values
+			if pkg.Weight.Value <= 0 {
+				h.logger.Errorf("Package weight value is invalid for international request package %d", i+1)
+				return errors.ErrInvalidPackageWeight(pkg.Weight.Value)
+			}
 
-		// Validate dimension values
-		if request.Package.Dimensions.Length <= 0 || request.Package.Dimensions.Width <= 0 || request.Package.Dimensions.Height <= 0 {
-			h.logger.Error("Package dimensions are invalid for international request")
-			return errors.ErrInvalidPackageDimensions()
+			h.logger.Debugf("Weight value is valid for package %d, validating dimension values", i+1)
+
+			// Validate dimension values
+			if pkg.Dimensions.Length <= 0 || pkg.Dimensions.Width <= 0 || pkg.Dimensions.Height <= 0 {
+				h.logger.Errorf("Package dimensions are invalid for international request package %d", i+1)
+				return errors.ErrInvalidPackageDimensions()
+			}
+
+			h.logger.Debugf("Package %d validation passed", i+1)
 		}
 
 		h.logger.Debugf("All international request validations passed")
