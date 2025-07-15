@@ -5,17 +5,14 @@ import (
 	"time"
 
 	"prayog-serviceability-service/internal/shared/models/v1"
+
+	"github.com/google/uuid"
 )
 
 // PartnerAdapter defines the main interface that all partner adapters must implement
 type PartnerAdapter interface {
-	// Core identification
-	GetPartnerCode() string
-	GetPartnerName() string
-	GetAdapterType() AdapterType
-
 	// Main functionality
-	CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*PartnerServiceabilityResult, error)
+	CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo PartnerInfo) (*PartnerServiceabilityResult, error)
 
 	// Health and monitoring
 	IsHealthy(ctx context.Context) bool
@@ -114,6 +111,7 @@ const (
 
 // PartnerServiceabilityResult represents the result from a partner serviceability check
 type PartnerServiceabilityResult struct {
+	PartnerID     *uuid.UUID             `json:"partner_id,omitempty"`
 	PartnerCode   string                 `json:"partner_code"`
 	PartnerName   string                 `json:"partner_name,omitempty"`
 	IsServiceable bool                   `json:"is_serviceable"`
@@ -218,3 +216,9 @@ const (
 	AuthTypeBasic  AuthType = "basic"
 	AuthTypeOAuth2 AuthType = "oauth2"
 )
+
+// PartnerInfo holds partner information
+type PartnerInfo struct {
+	PartnerID   *uuid.UUID `json:"partner_id"`
+	PartnerCode string     `json:"partner_code"`
+}

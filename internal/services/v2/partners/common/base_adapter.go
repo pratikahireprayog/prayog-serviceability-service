@@ -162,7 +162,7 @@ func NewGenericAdapter(partnerCode, partnerName string) PartnerAdapter {
 }
 
 // CheckServiceability implements a generic serviceability check
-func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*PartnerServiceabilityResult, error) {
+func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo PartnerInfo) (*PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
 	// Record the request
@@ -175,7 +175,8 @@ func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.Se
 	errorMsg := "implementation pending"
 
 	return &PartnerServiceabilityResult{
-		PartnerCode:   g.GetPartnerCode(),
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
 		IsServiceable: false,
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),
@@ -192,32 +193,33 @@ func (g *GenericAdapter) CheckServiceability(ctx context.Context, req *models.Se
 // PartnerCodeAdapter wraps another adapter and preserves the original partner code
 type PartnerCodeAdapter struct {
 	PartnerAdapter
-	originalCode string
+	originalInfo PartnerInfo
 }
 
 // NewPartnerCodeAdapter creates a wrapper that preserves the original partner code
-func NewPartnerCodeAdapter(originalCode string, wrappedAdapter PartnerAdapter) PartnerAdapter {
+func NewPartnerCodeAdapter(originalInfo PartnerInfo, wrappedAdapter PartnerAdapter) PartnerAdapter {
 	return &PartnerCodeAdapter{
 		PartnerAdapter: wrappedAdapter,
-		originalCode:   originalCode,
+		originalInfo:   originalInfo,
 	}
 }
 
 // GetPartnerCode returns the original partner code (from database)
 func (p *PartnerCodeAdapter) GetPartnerCode() string {
-	return p.originalCode
+	return p.originalInfo.PartnerCode
 }
 
 // CheckServiceability wraps the underlying adapter but preserves the original partner code
-func (p *PartnerCodeAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*PartnerServiceabilityResult, error) {
-	result, err := p.PartnerAdapter.CheckServiceability(ctx, req)
+func (p *PartnerCodeAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo PartnerInfo) (*PartnerServiceabilityResult, error) {
+	result, err := p.PartnerAdapter.CheckServiceability(ctx, req, partnerInfo)
 	if err != nil {
 		return nil, err
 	}
 
 	// Preserve the original partner code in the result
 	if result != nil {
-		result.PartnerCode = p.originalCode
+		result.PartnerID = p.originalInfo.PartnerID
+		result.PartnerCode = p.originalInfo.PartnerCode
 	}
 
 	return result, nil

@@ -56,13 +56,19 @@ func NewSmileCourierAdapter(cfg config.SmileCourierConfig) common.PartnerAdapter
 }
 
 // CheckServiceability implements the main serviceability check for Smile Courier
-func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
 	// Validate request
 	if err := common.ValidateServiceabilityRequest(req); err != nil {
 		s.RecordRequest(time.Since(startTime), false)
-		return nil, err
+		return &common.PartnerServiceabilityResult{
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			IsServiceable: false,
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+		}, nil
 	}
 
 	// Transform request to Smile Courier format
@@ -70,7 +76,8 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -82,7 +89,8 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			ResponseTime:  time.Since(startTime),
 			Error:         err,
@@ -90,7 +98,7 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	}
 
 	// Transform response to standard format
-	result := s.transformResponse(smileCourierResp)
+	result := s.transformResponse(smileCourierResp, partnerInfo)
 	result.ResponseTime = time.Since(startTime)
 
 	// Record successful request
@@ -134,12 +142,13 @@ func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Reque
 }
 
 // transformResponse converts Smile Courier response to standard format
-func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse) *common.PartnerServiceabilityResult {
+func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	// TODO: Update response structure when Smile Courier API is integrated
 	// Current implementation is placeholder - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:   s.GetPartnerCode(),
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
 		IsServiceable: false,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),

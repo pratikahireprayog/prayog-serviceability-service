@@ -74,7 +74,7 @@ func (m *MockPartnerAdapter) GetAdapterType() common.AdapterType {
 }
 
 // CheckServiceability mocks the serviceability check
-func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	m.CheckServiceabilityCalled = true
 	m.LastContext = ctx
 	m.LastRequest = req
@@ -89,7 +89,8 @@ func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, req *model
 
 	// Default response
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   m.PartnerCode,
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
 		IsServiceable: true,
 		Services:      []models.ServiceV2{},
 		Capabilities:  make(map[string]interface{}),

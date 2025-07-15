@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"strings"
+	"time"
 
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
@@ -18,13 +19,13 @@ type GeolocationService interface {
 
 // geolocationService implements the GeolocationService interface
 type geolocationService struct {
-	postalCodeRepo repositories.PostalCodeRepository
+	geoLocationRepo repositories.GeoLocationRepository
 }
 
 // NewGeolocationService creates a new geolocation service instance
-func NewGeolocationService(postalCodeRepo repositories.PostalCodeRepository) GeolocationService {
+func NewGeolocationService(geoLocationRepo repositories.GeoLocationRepository) GeolocationService {
 	return &geolocationService{
-		postalCodeRepo: postalCodeRepo,
+		geoLocationRepo: geoLocationRepo,
 	}
 }
 
@@ -34,29 +35,29 @@ func (g *geolocationService) GetCountryCodeByPostalCode(ctx context.Context, pos
 		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
-	// Check if postal code repository is available
-	if g.postalCodeRepo == nil {
-		return nil, errors.ErrServiceUnavailable("postal code repository")
+	// Check if geolocation repository is available
+	if g.geoLocationRepo == nil {
+		return nil, errors.ErrServiceUnavailable("geolocation repository")
 	}
 
-	// Get postal code with preloaded country information
-	postal, err := g.postalCodeRepo.GetByCode(ctx, postalCode)
+	// Create a timeout context specifically for database operations (5 minutes)
+	// This is longer than the default context to handle potential database performance issues
+	dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Get geolocation data by postal code with extended timeout
+	geoLocation, err := g.geoLocationRepo.GetByID(dbCtx, postalCode)
 	if err != nil {
 		// Properly propagate structured errors from repository
 		return nil, err
 	}
 
-	// First, try to get country code from the Country relationship
-	if postal.Country != nil && postal.Country.Code != "" {
-		return &postal.Country.Code, nil
+	// Get country code from the GeoLocation model
+	if geoLocation.CountryCode != "" {
+		return &geoLocation.CountryCode, nil
 	}
 
-	// If Country relationship is not available, try the direct country_code field
-	if postal.CountryCode != nil && *postal.CountryCode != "" {
-		return postal.CountryCode, nil
-	}
-
-	// If no country code found in either place, return error
+	// If no country code found, return error
 	return nil, errors.ErrInternalError("postal code found but country code is missing", nil)
 }
 
@@ -66,9 +67,9 @@ func (g *geolocationService) GetLocationHierarchy(ctx context.Context, postalCod
 		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
-	// Check if postal code repository is available
-	if g.postalCodeRepo == nil {
-		return nil, errors.ErrServiceUnavailable("postal code repository")
+	// Check if geolocation repository is available
+	if g.geoLocationRepo == nil {
+		return nil, errors.ErrServiceUnavailable("geolocation repository")
 	}
 
 	// Get country code for the postal code
@@ -78,11 +79,11 @@ func (g *geolocationService) GetLocationHierarchy(ctx context.Context, postalCod
 		return nil, err
 	}
 
-	// Get complete location hierarchy
-	hierarchy, err := g.postalCodeRepo.GetLocationHierarchy(ctx, postalCode, *countryCode)
-	if err != nil {
-		// Propagate structured errors from repository
-		return nil, err
+	// For now, return a basic hierarchy with country code
+	// This can be enhanced later to build a complete hierarchy from geolocation data
+	hierarchy := &models.LocationHierarchy{
+		CountryCode: *countryCode,
+		PostalCode:  postalCode,
 	}
 
 	return hierarchy, nil
@@ -94,9 +95,9 @@ func (g *geolocationService) ValidateInternationalRequest(ctx context.Context, p
 		return false, nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
-	// Check if postal code repository is available
-	if g.postalCodeRepo == nil {
-		return false, nil, errors.ErrServiceUnavailable("postal code repository")
+	// Check if geolocation repository is available
+	if g.geoLocationRepo == nil {
+		return false, nil, errors.ErrServiceUnavailable("geolocation repository")
 	}
 
 	// Get country code for the postal code

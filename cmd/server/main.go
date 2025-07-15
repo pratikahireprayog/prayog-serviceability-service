@@ -246,14 +246,20 @@ func initV2Orchestrator(
 
 	// Create geolocation service for partner adapters
 	var geolocationService dataServices.GeolocationService
+	var hubLocationService dataServices.HubLocationService
 	if gormDB != nil {
 		// Create repository factory from database connection
 		repoFactory := repositories.NewRepositoryFactory(gormDB)
-		postalCodeRepo := repoFactory.GetPostalCodeRepository()
-		geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
+		geoLocationRepo := repoFactory.GetGeoLocationRepository()
+		geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
+
+		// Create hub location service for partner adapters
+		hubLocationRepo := repoFactory.GetNearestHubLocationRepository()
+		hubLocationService = dataServices.NewHubLocationService(hubLocationRepo, logger)
 	} else {
 		// Create a dummy geolocation service for graceful degradation
 		geolocationService = dataServices.NewGeolocationService(nil)
+		hubLocationService = dataServices.NewHubLocationService(nil, logger)
 	}
 
 	// Create partner adapter factory using v2 factory
@@ -262,6 +268,7 @@ func initV2Orchestrator(
 		httpClient,
 		sqlDB,
 		geolocationService,
+		hubLocationService,
 	)
 
 	// Get partner attribute mapping repository for filtering

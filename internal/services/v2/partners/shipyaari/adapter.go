@@ -62,11 +62,12 @@ func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
 }
 
 // CheckServiceability checks serviceability for the request
-func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	// Basic validation
 	if err := s.validateShipyaariRequirements(request); err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
@@ -82,7 +83,9 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	shipyaariRequest, err := s.transformRequest(request)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -94,7 +97,9 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	response, err := s.client.CheckServiceability(ctx, shipyaariRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			PartnerName:   s.GetPartnerName(),
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -104,7 +109,7 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
-	return s.transformResponse(response), nil
+	return s.transformResponse(response, partnerInfo), nil
 }
 
 // Initialize performs any necessary initialization
@@ -178,7 +183,7 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 }
 
 // transformResponse converts Shipyaari response to standard format
-func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse) *common.PartnerServiceabilityResult {
+func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	// TODO: Implement new Shipyaari services structure as per final payload format:
 	// services: [
 	//   {
@@ -209,7 +214,9 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse) *comm
 	// ]
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:   s.GetPartnerCode(),
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
+		PartnerName:   s.GetPartnerName(),
 		IsServiceable: resp.IsServiceable,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),

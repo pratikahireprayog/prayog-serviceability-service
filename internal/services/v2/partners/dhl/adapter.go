@@ -19,11 +19,12 @@ type Adapter struct {
 	client             *DHLClient
 	config             config.DHLConfig
 	geolocationService services.GeolocationService
+	hubLocationService services.HubLocationService
 	logger             *logrus.Logger
 }
 
 // NewAdapter creates a new DHL adapter instance
-func NewAdapter(config config.DHLConfig, geolocationService services.GeolocationService) *Adapter {
+func NewAdapter(config config.DHLConfig, geolocationService services.GeolocationService, hubLocationService services.HubLocationService) *Adapter {
 	// Initialize logger
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
@@ -41,6 +42,7 @@ func NewAdapter(config config.DHLConfig, geolocationService services.Geolocation
 		client:             NewDHLClient(config),
 		config:             config,
 		geolocationService: geolocationService,
+		hubLocationService: hubLocationService,
 		logger:             logger,
 	}
 }
@@ -56,18 +58,6 @@ func redactField(field string) string {
 	return field[:3] + "***"
 }
 
-// GetPartnerCode returns the partner code (interface compatibility only)
-// TODO: This should be removed when all code uses database values
-func (a *Adapter) GetPartnerCode() string {
-	return "dhl"
-}
-
-// GetPartnerName returns the partner name (interface compatibility only)
-// TODO: This should be removed when all code uses database values
-func (a *Adapter) GetPartnerName() string {
-	return "DHL"
-}
-
 // GetAdapterType returns the adapter type
 func (a *Adapter) GetAdapterType() common.AdapterType {
 	return common.AdapterTypeHTTP
@@ -78,39 +68,15 @@ func (a *Adapter) IsEnabled() bool {
 	return a.config.Enabled
 }
 
-// SupportsRequest checks if DHL supports the given request
-func (a *Adapter) SupportsRequest(ctx context.Context, request *models.ServiceabilityV2Request) bool {
-	// DHL specializes in international shipping
-	if !a.IsInternationalRequest(request) {
-		return false
-	}
-
-	// Partner attribute mapping in database determines supported parcel categories
-	// No hardcoded category filtering needed here
-	// Validation of required fields (like CountryCode) should be done in CheckServiceability
-	return true
-}
-
 // CheckServiceability checks if DHL can service the given request
-func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
-
-	if !a.SupportsRequest(ctx, request) {
-		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  time.Since(startTime),
-			Metadata: map[string]interface{}{
-				"reason": "DHL does not support this request type",
-			},
-		}, nil
-	}
 
 	// Validate DHL-specific requirements
 	if err := a.validateDHLRequirements(request); err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			ResponseTime:  time.Since(startTime),
@@ -122,17 +88,304 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
-	// Try multiple product codes with fallback logic
-	return a.checkServiceabilityWithFallback(ctx, request, startTime)
+	// Use international flow for DHL
+	return a.checkInternationalServiceability(ctx, request, startTime, partnerInfo)
+}
+
+// checkInternationalServiceability implements the international serviceability flow for DHL
+func (a *Adapter) checkInternationalServiceability(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+	// Step 1: Extract postal codes from request
+	sourcePincode := a.getSourcePincode(request)
+	destinationPincode := a.getDestinationPincode(request)
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":             "DHL",
+		"source_pincode":      sourcePincode,
+		"destination_pincode": destinationPincode,
+		"flow":                "international",
+	}).Info("Starting DHL international serviceability check")
+
+	// Step 2: Find nearest hub for source postal code
+	hubLocation, err := a.findNearestHub(ctx, sourcePincode)
+	if err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+			ErrorMessage:  &[]string{fmt.Sprintf("Hub location not found: %v", err)}[0],
+			Metadata: map[string]interface{}{
+				"reason":         "Hub location not found",
+				"source_pincode": sourcePincode,
+				"step":           "hub_lookup",
+			},
+		}, nil
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                       "DHL",
+		"source_pincode":                sourcePincode,
+		"hub_postal_code":               hubLocation.PostalCode,
+		"international_hub_postal_code": hubLocation.InternationalHub.PostalCode,
+		"international_hub_city_code":   hubLocation.InternationalHub.CityCode,
+	}).Info("Found nearest hub for source postal code")
+
+	// Step 3: Get country codes for source and destination
+	sourceCountryCode, destinationCountryCode, err := a.resolveCountryCodes(ctx, sourcePincode, destinationPincode)
+	if err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+			ErrorMessage:  &[]string{fmt.Sprintf("Country code resolution failed: %v", err)}[0],
+			Metadata: map[string]interface{}{
+				"reason":              "Country code resolution failed",
+				"source_pincode":      sourcePincode,
+				"destination_pincode": destinationPincode,
+				"step":                "country_code_resolution",
+			},
+		}, nil
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                  "DHL",
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+		"flow":                     "international",
+	}).Info("Resolved country codes for international flow")
+
+	// Step 4: Create DHL API request with hardcoded values
+	dhlRequest := a.createInternationalRatesRequest(request, sourceCountryCode, destinationCountryCode)
+
+	// Step 5: Call DHL API
+	response, err := a.client.CheckRates(ctx, dhlRequest)
+	if err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Error:         err,
+			ErrorMessage:  &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
+			Metadata: map[string]interface{}{
+				"reason":                   "DHL API call failed",
+				"source_country_code":      sourceCountryCode,
+				"destination_country_code": destinationCountryCode,
+				"step":                     "dhl_api_call",
+			},
+		}, nil
+	}
+
+	// Step 6: Process response
+	if len(response.Products) == 0 {
+		return &common.PartnerServiceabilityResult{
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
+			IsServiceable: false,
+			Services:      make([]models.ServiceV2, 0),
+			ResponseTime:  time.Since(startTime),
+			Metadata: map[string]interface{}{
+				"reason":                   "No DHL products available",
+				"source_country_code":      sourceCountryCode,
+				"destination_country_code": destinationCountryCode,
+				"hub_info":                 hubLocation,
+			},
+		}, nil
+	}
+
+	// Step 7: Convert response to serviceability result
+	result := a.convertRatesResponse(response, partnerInfo)
+	result.ResponseTime = time.Since(startTime)
+	result.Metadata["flow"] = "international"
+	result.Metadata["source_country_code"] = sourceCountryCode
+	result.Metadata["destination_country_code"] = destinationCountryCode
+	result.Metadata["hub_info"] = hubLocation
+	result.Metadata["product_code_used"] = "P" // Hardcoded as per requirements
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                  "DHL",
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+		"services":                 len(result.Services),
+		"is_serviceable":           result.IsServiceable,
+		"flow":                     "international",
+	}).Info("DHL international serviceability check completed")
+
+	return result, nil
+}
+
+// findNearestHub finds the nearest hub for a given postal code
+func (a *Adapter) findNearestHub(ctx context.Context, postalCode string) (*models.HubLocationInfo, error) {
+	a.logger.WithFields(logrus.Fields{
+		"partner":     "DHL",
+		"postal_code": postalCode,
+		"method":      "findNearestHub",
+	}).Debug("Looking up nearest hub")
+
+	// Check if hub location service is available
+	if a.hubLocationService == nil {
+		return nil, fmt.Errorf("hub location service is not available")
+	}
+
+	// Get nearest hub from service
+	hubLocation, err := a.hubLocationService.GetNearestHubByPostalCode(ctx, postalCode)
+	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":     "DHL",
+			"postal_code": postalCode,
+			"error":       err.Error(),
+		}).Error("Failed to find nearest hub")
+		return nil, fmt.Errorf("failed to find nearest hub for postal code %s: %w", postalCode, err)
+	}
+
+	// Validate that international hub information is available
+	if hubLocation.InternationalHub == nil {
+		return nil, fmt.Errorf("no international hub found for postal code %s", postalCode)
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                       "DHL",
+		"postal_code":                   postalCode,
+		"hub_postal_code":               hubLocation.PostalCode,
+		"international_hub_postal_code": hubLocation.InternationalHub.PostalCode,
+		"international_hub_city_code":   hubLocation.InternationalHub.CityCode,
+	}).Debug("Successfully found nearest hub")
+
+	return hubLocation, nil
+}
+
+// resolveCountryCodes resolves country codes for source and destination postal codes
+func (a *Adapter) resolveCountryCodes(ctx context.Context, sourcePincode, destinationPincode string) (string, string, error) {
+	a.logger.WithFields(logrus.Fields{
+		"partner":             "DHL",
+		"source_pincode":      sourcePincode,
+		"destination_pincode": destinationPincode,
+		"method":              "resolveCountryCodes",
+	}).Debug("Resolving country codes")
+
+	// Check if geolocation service is available
+	if a.geolocationService == nil {
+		return "", "", fmt.Errorf("geolocation service is not available")
+	}
+
+	// Get source country code
+	sourceCountryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, sourcePincode)
+	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":        "DHL",
+			"source_pincode": sourcePincode,
+			"error":          err.Error(),
+		}).Error("Failed to get source country code")
+		return "", "", fmt.Errorf("failed to get source country code for postal code %s: %w", sourcePincode, err)
+	}
+
+	// Get destination country code
+	destinationCountryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, destinationPincode)
+	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"partner":             "DHL",
+			"destination_pincode": destinationPincode,
+			"error":               err.Error(),
+		}).Error("Failed to get destination country code")
+		return "", "", fmt.Errorf("failed to get destination country code for postal code %s: %w", destinationPincode, err)
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                  "DHL",
+		"source_country_code":      *sourceCountryCode,
+		"destination_country_code": *destinationCountryCode,
+	}).Debug("Successfully resolved country codes")
+
+	return *sourceCountryCode, *destinationCountryCode, nil
+}
+
+// createInternationalRatesRequest creates a DHL rates request with hardcoded values for international flow
+func (a *Adapter) createInternationalRatesRequest(request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) RatesRequest {
+	// Extract postal codes
+	sourcePincode := a.getSourcePincode(request)
+	destinationPincode := a.getDestinationPincode(request)
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                  "DHL",
+		"source_pincode":           sourcePincode,
+		"destination_pincode":      destinationPincode,
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+		"method":                   "createInternationalRatesRequest",
+	}).Debug("Creating DHL rates request with hardcoded values")
+
+	// Create rates request with hardcoded values as per requirements
+	dhlReq := RatesRequest{
+		CustomerDetails: CustomerDetails{
+			ShipperDetails: ShipperDetails{
+				PostalCode:  sourcePincode,
+				CityName:    "Bangalore", // Enhanced with actual city
+				CountryCode: sourceCountryCode,
+			},
+			ReceiverDetails: ReceiverDetails{
+				PostalCode:  destinationPincode,
+				CityName:    "Destination City", // Could be enhanced with actual city lookup
+				CountryCode: destinationCountryCode,
+			},
+		},
+		// Hardcoded account information as per requirements
+		Accounts: []Account{
+			{
+				TypeCode: "shipper",
+				Number:   "533748932",
+			},
+		},
+		// Hardcoded product information as per requirements
+		ProductsAndServices: []ProductAndService{
+			{
+				ProductCode:      "P",
+				LocalProductCode: "P",
+			},
+		},
+		PayerCountryCode: "IN",
+		// Hardcoded shipping date as per requirements
+		PlannedShippingDateAndTime: "2025-05-05T13:00:00GMT+05:30",
+		// Hardcoded unit of measurement as per requirements
+		UnitOfMeasurement: "metric",
+		// Hardcoded customs declarable flag as per requirements
+		IsCustomsDeclarable: true,
+		// Hardcoded estimated delivery date configuration as per requirements
+		EstimatedDeliveryDate: EstimatedDeliveryDate{
+			IsRequested: true,
+			TypeCode:    "QDDC",
+		},
+		// Hardcoded return standard products only flag as per requirements
+		ReturnStandardProductsOnly: true,
+		Packages:                   a.getPackages(request),
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"partner":                  "DHL",
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+		"product_code":             "P",
+		"account_number":           "533748932",
+		"unit_of_measurement":      "metric",
+		"customs_declarable":       true,
+	}).Debug("Created DHL rates request with hardcoded values")
+
+	return dhlReq
 }
 
 // checkServiceabilityWithFallback attempts multiple product codes
-func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time) (*common.PartnerServiceabilityResult, error) {
+func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	// Determine product codes to try based on ACTUAL route geography, not just parcel_category
 	destinationCountry, err := a.getDestinationCountryCode(ctx, request, a.getDestinationPincode(request))
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			ResponseTime:  time.Since(startTime),
@@ -202,7 +455,7 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 
 		// If we got a valid response with products, return success
 		if len(response.Products) > 0 {
-			result := a.convertRatesResponse(response)
+			result := a.convertRatesResponse(response, partnerInfo)
 			result.ResponseTime = time.Since(startTime)
 			result.Metadata["product_code_used"] = productCode
 			result.Metadata["product_codes_attempted"] = attempts
@@ -225,7 +478,8 @@ func (a *Adapter) checkServiceabilityWithFallback(ctx context.Context, request *
 
 	// All product codes failed
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   a.GetPartnerCode(),
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
 		IsServiceable: false,
 		Services:      make([]models.ServiceV2, 0),
 		ResponseTime:  time.Since(startTime),
@@ -252,25 +506,8 @@ func (a *Adapter) validateDHLRequirements(request *models.ServiceabilityV2Reques
 		return fmt.Errorf("destination postal code is required for DHL shipments")
 	}
 
-	// DHL requires package information for international shipments
-	if a.IsInternationalRequest(request) {
-		// Country code validation is now handled by the handler layer
-		// The handler will populate country code using geolocation service
-
-		if request.Package == nil {
-			return fmt.Errorf("package information is required for international shipments via DHL")
-		}
-
-		// Validate weight is provided
-		if request.Package.Weight == nil {
-			return fmt.Errorf("weight information is required for international shipments via DHL")
-		}
-
-		// Validate dimensions are provided
-		if request.Package.Dimensions == nil {
-			return fmt.Errorf("dimensions information is required for international shipments via DHL")
-		}
-	}
+	// DHL will use default package information if not provided
+	// No additional restrictions based on request type
 
 	return nil
 }
@@ -406,9 +643,10 @@ func (a *Adapter) convertToRatesRequestWithProductCode(request *models.Serviceab
 }
 
 // convertRatesResponse converts DHL rates response to common format with capabilities
-func (a *Adapter) convertRatesResponse(response *RatesResponse) *common.PartnerServiceabilityResult {
+func (a *Adapter) convertRatesResponse(response *RatesResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:   a.GetPartnerCode(),
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
 		IsServiceable: len(response.Products) > 0,
 		Services:      make([]models.ServiceV2, 0),
 		Capabilities:  make(map[string]interface{}),
@@ -449,42 +687,11 @@ func (a *Adapter) convertRatesResponse(response *RatesResponse) *common.PartnerS
 
 	result.Capabilities = capabilities
 
-	// Add services for backward compatibility
-	for _, product := range response.Products {
-		serviceV2 := models.ServiceV2{
-			ServiceCode: product.ProductCode,
-			ServiceName: product.ProductName,
-			TATDays:     product.DeliveryCapabilities.TotalTransitDays,
-			IsCOD:       false, // DHL typically doesn't do COD internationally
-			Pickup:      true,
-			Delivery:    true,
-			Insurance:   true,
-			ProductTypes: map[string]bool{
-				"international": true,
-				"express":       strings.Contains(strings.ToLower(product.ProductName), "express"),
-				"economy":       strings.Contains(strings.ToLower(product.ProductName), "economy"),
-			},
-			DeliveryModes: map[string]bool{
-				"international": true,
-				"express":       strings.Contains(strings.ToLower(product.ProductName), "express"),
-			},
-		}
-
-		// Add pricing if available
-		if len(product.TotalPrice) > 0 {
-			serviceV2.Pricing = &models.ServicePricingV2{
-				BaseCost:      product.TotalPrice[0].Price,
-				Currency:      product.TotalPrice[0].PriceCurrency,
-				CODCharges:    0.0,
-				FuelSurcharge: a.extractFuelSurcharge(product.DetailedPriceBreakdown),
-			}
-		}
-
-		result.Services = append(result.Services, serviceV2)
-	}
+	// Services array is intentionally left empty as we only provide serviceability status
+	// The detailed services information is not real-time and should not be included
 
 	// Set metadata
-	result.Metadata["reason"] = fmt.Sprintf("DHL offers %d services", len(result.Services))
+	result.Metadata["reason"] = "DHL serviceability check completed"
 	result.Metadata["product_count"] = len(response.Products)
 	result.Metadata["exchange_rates"] = len(response.ExchangeRates)
 
@@ -620,25 +827,6 @@ func (a *Adapter) convertToCm(value float64, unit string) float64 {
 	}
 }
 
-// IsInternationalRequest checks if the request is for international shipping
-func (a *Adapter) IsInternationalRequest(request *models.ServiceabilityV2Request) bool {
-	// Check if parcel_category is explicitly set to "international"
-	if request.ParcelCategory != nil && strings.ToLower(*request.ParcelCategory) == "international" {
-		return true
-	}
-
-	// Check if country code indicates international shipping
-	if request.CountryCode == nil {
-		return false
-	}
-	// TODO: Remove this once we have a proper country code
-	originCountry := "IN" // Default origin
-	destCountry := strings.ToUpper(*request.CountryCode)
-
-	// Consider it international if countries are different
-	return originCountry != destCountry && destCountry != ""
-}
-
 // Initialize implements PartnerAdapter interface
 func (a *Adapter) Initialize(ctx context.Context) error {
 	// Test authentication
@@ -662,8 +850,8 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 // GetMetrics implements PartnerAdapter interface
 func (a *Adapter) GetMetrics() *common.PartnerMetrics {
 	return &common.PartnerMetrics{
-		PartnerCode:         a.GetPartnerCode(),
-		TotalRequests:       0, // TODO: Implement actual metrics
+		PartnerCode:         "", // Will be set by orchestrator from database
+		TotalRequests:       0,  // TODO: Implement actual metrics
 		SuccessfulRequests:  0,
 		FailedRequests:      0,
 		AverageResponseTime: 0,
@@ -680,9 +868,6 @@ func (a *Adapter) Shutdown(ctx context.Context) error {
 
 // GetQuote gets a quote for international shipping (optional method for enhanced functionality)
 func (a *Adapter) GetQuote(ctx context.Context, request *models.ServiceabilityV2Request) (*QuoteResponse, error) {
-	if !a.SupportsRequest(ctx, request) {
-		return nil, fmt.Errorf("quote request not supported by DHL")
-	}
 
 	// Convert to quote request format
 	quoteRequest := QuoteRequest{

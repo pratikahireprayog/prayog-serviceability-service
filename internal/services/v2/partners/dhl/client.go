@@ -170,7 +170,7 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 	}
 
 	// Log request with appropriate level of detail
-	url := fmt.Sprintf("%s/mydhlapi/test/rates?strictValidation=false", c.config.BaseURL)
+	url := fmt.Sprintf("%s/rates?strictValidation=false", c.config.BaseURL)
 	c.logger.WithFields(logrus.Fields{
 		"partner":   "DHL",
 		"method":    "POST",

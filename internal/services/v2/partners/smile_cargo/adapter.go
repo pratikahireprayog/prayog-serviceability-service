@@ -59,10 +59,11 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 }
 
 // CheckServiceability checks serviceability for the request
-func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	if !a.SupportsRequest(ctx, request) {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			ResponseTime:  0,
@@ -79,7 +80,8 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	response, err := a.client.CheckServiceAvailability(ctx, smileCargoRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
+			PartnerID:     partnerInfo.PartnerID,
+			PartnerCode:   partnerInfo.PartnerCode,
 			IsServiceable: false,
 			Services:      make([]models.ServiceV2, 0),
 			Error:         err,
@@ -89,7 +91,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
-	return a.convertServiceAvailabilityResponse(response), nil
+	return a.convertServiceAvailabilityResponse(response, partnerInfo), nil
 }
 
 // convertToServiceAvailabilityRequest converts v2 request to Smile Cargo format
@@ -115,9 +117,10 @@ func (a *Adapter) convertToServiceAvailabilityRequest(request *models.Serviceabi
 }
 
 // convertServiceAvailabilityResponse converts Smile Cargo response to common format
-func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse) *common.PartnerServiceabilityResult {
+func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:  a.GetPartnerCode(),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
 		Services:     make([]models.ServiceV2, 0),
 		Capabilities: make(map[string]interface{}),
 		Metadata:     make(map[string]interface{}),
