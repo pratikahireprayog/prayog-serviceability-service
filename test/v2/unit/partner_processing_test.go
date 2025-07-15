@@ -323,7 +323,7 @@ func TestPartnerErrorHandling(t *testing.T) {
 			verifyPartnerErrors: func(t *testing.T, partners []models.PartnerV2Response) {
 				assert.Len(t, partners, 2, "Should return all partners with errors")
 				for _, partner := range partners {
-					assert.False(t, partner.IsServiceable, "Partner %s should not be serviceable", partner.PartnerCode)
+					assert.False(t, len(partner.Services) > 0, "Partner %s should not be serviceable", partner.PartnerCode)
 					assert.NotNil(t, partner.Error, "Partner %s should have error", partner.PartnerCode)
 				}
 			},

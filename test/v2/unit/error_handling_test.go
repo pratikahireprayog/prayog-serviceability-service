@@ -244,7 +244,7 @@ func TestPartnerSpecificErrorHandling(t *testing.T) {
 			for i, expectedErr := range tt.expectedErrors {
 				partner := response.Partners[i]
 				assert.Equal(t, expectedErr.PartnerCode, partner.PartnerCode)
-				assert.False(t, partner.IsServiceable)
+				assert.False(t, len(partner.Services) > 0)
 				assert.NotNil(t, partner.Error)
 				assert.Contains(t, *partner.Error, expectedErr.ExpectedError)
 			}
@@ -293,7 +293,7 @@ func TestErrorMetadataHandling(t *testing.T) {
 				adapter1.SetHealthy(true)
 				adapter1.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				factory.SetAdapter("shipyaari", adapter1)
@@ -387,7 +387,7 @@ func TestBulkErrorHandling(t *testing.T) {
 				adapter.SetHealthy(true)
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: true,
+					
 					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				factory.SetAdapter("shipyaari", adapter)

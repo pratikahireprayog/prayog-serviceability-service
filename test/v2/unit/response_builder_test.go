@@ -70,7 +70,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// All partners should be serviceable
 				for _, partner := range partners {
-					assert.True(t, partner.IsServiceable, "Partner %s should be serviceable", partner.PartnerCode)
+					assert.True(t, len(partner.Services) > 0, "Partner %s should be serviceable", partner.PartnerCode)
 					assert.Nil(t, partner.Error, "Partner %s should not have error", partner.PartnerCode)
 				}
 
@@ -122,7 +122,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// Only serviceable partners should be returned
 				for _, partner := range partners {
-					assert.True(t, partner.IsServiceable, "Partner %s should be serviceable", partner.PartnerCode)
+					assert.True(t, len(partner.Services) > 0, "Partner %s should be serviceable", partner.PartnerCode)
 					assert.Nil(t, partner.Error, "Partner %s should not have error", partner.PartnerCode)
 				}
 
@@ -164,7 +164,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// All partners should be non-serviceable
 				for _, partner := range partners {
-					assert.False(t, partner.IsServiceable, "Partner %s should not be serviceable", partner.PartnerCode)
+					assert.False(t, len(partner.Services) > 0, "Partner %s should not be serviceable", partner.PartnerCode)
 					// Non-serviceable partners may have informational error messages
 					if partner.Error != nil {
 						assert.Contains(t, *partner.Error, "Not serviceable", "Error message should indicate non-serviceability")
@@ -205,7 +205,7 @@ func TestBuildV2Response(t *testing.T) {
 				// Only serviceable partner should be returned
 				assert.Len(t, partners, 1, "Should return only serviceable partner")
 				assert.Equal(t, "partner1", partners[0].PartnerCode)
-				assert.True(t, partners[0].IsServiceable)
+				assert.True(t, len(partners[0].Services) > 0)
 				assert.Nil(t, partners[0].Error)
 			},
 			description: "When partners have errors, returns only serviceable partners",
@@ -237,7 +237,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// All partners should have errors
 				for _, partner := range partners {
-					assert.False(t, partner.IsServiceable, "Partner %s should not be serviceable", partner.PartnerCode)
+					assert.False(t, len(partner.Services) > 0, "Partner %s should not be serviceable", partner.PartnerCode)
 					assert.NotNil(t, partner.Error, "Partner %s should have error", partner.PartnerCode)
 				}
 
@@ -287,7 +287,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// Partners should use UUID as PartnerID instead of PartnerCode
 				for _, partner := range partners {
-					assert.True(t, partner.IsServiceable, "Partner %s should be serviceable", partner.PartnerCode)
+					assert.True(t, len(partner.Services) > 0, "Partner %s should be serviceable", partner.PartnerCode)
 
 					// PartnerID should be UUID string, not the partner code
 					assert.NotEqual(t, partner.PartnerCode, partner.PartnerID, "PartnerID should be UUID, not code")
@@ -326,7 +326,7 @@ func TestBuildV2Response(t *testing.T) {
 			verifyPartnerContent: func(t *testing.T, partners []models.PartnerV2Response) {
 				// Partners should use PartnerCode as PartnerID
 				for _, partner := range partners {
-					assert.True(t, partner.IsServiceable, "Partner %s should be serviceable", partner.PartnerCode)
+					assert.True(t, len(partner.Services) > 0, "Partner %s should be serviceable", partner.PartnerCode)
 					assert.Equal(t, partner.PartnerCode, partner.PartnerID, "PartnerID should be same as PartnerCode when no database info")
 				}
 			},
@@ -613,7 +613,7 @@ func TestReturnOnlyServiceablePartners(t *testing.T) {
 				// Should only return serviceable partners
 				assert.Len(t, partners, 1, "Should return only serviceable partners")
 				assert.Equal(t, "dhl", partners[0].PartnerCode, "Should return only DHL")
-				assert.True(t, partners[0].IsServiceable, "Returned partner should be serviceable")
+				assert.True(t, len(partners[0].Services) > 0, "Returned partner should be serviceable")
 				assert.Nil(t, partners[0].Error, "Serviceable partner should not have error")
 			},
 			description: "When returnOnlyServiceable=true and serviceable partners exist with no errors, return only serviceable ones",
@@ -740,7 +740,7 @@ func TestReturnOnlyServiceablePartners(t *testing.T) {
 				// Should return all partners including validation errors and non-serviceable ones
 				assert.Len(t, partners, 2, "Should return all partners when returnOnlyServiceable=false")
 				for _, partner := range partners {
-					assert.False(t, partner.IsServiceable, "All partners should be non-serviceable")
+					assert.False(t, len(partner.Services) > 0, "All partners should be non-serviceable")
 				}
 				// Find DHL partner and verify it has error
 				var dhlPartner *models.PartnerV2Response
@@ -785,7 +785,7 @@ func TestReturnOnlyServiceablePartners(t *testing.T) {
 				// Should return all serviceable partners
 				assert.Len(t, partners, 2, "Should return all serviceable partners")
 				for _, partner := range partners {
-					assert.True(t, partner.IsServiceable, "All returned partners should be serviceable")
+					assert.True(t, len(partner.Services) > 0, "All returned partners should be serviceable")
 					assert.Nil(t, partner.Error, "Serviceable partners should not have errors")
 				}
 			},
