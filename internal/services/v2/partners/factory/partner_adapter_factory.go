@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
@@ -14,7 +15,6 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/shared/config"
-	"prayog-serviceability-service/internal/services/v1/data"
 )
 
 // PartnerAdapterFactory defines the interface for creating partner adapters in v2
@@ -81,16 +81,18 @@ type partnerAdapterFactory struct {
 	httpClient         *http.Client
 	db                 *sql.DB
 	geolocationService services.GeolocationService
+	hubLocationService services.HubLocationService
 	implementations    map[string]common.PartnerAdapter // Implementation code -> adapter instance
 }
 
 // NewPartnerAdapterFactory creates a new partner adapter factory
-func NewPartnerAdapterFactory(cfg config.PartnerAdaptersConfig, httpClient *http.Client, db *sql.DB, geolocationService services.GeolocationService) PartnerAdapterFactory {
+func NewPartnerAdapterFactory(cfg config.PartnerAdaptersConfig, httpClient *http.Client, db *sql.DB, geolocationService services.GeolocationService, hubLocationService services.HubLocationService) PartnerAdapterFactory {
 	factory := &partnerAdapterFactory{
 		config:             cfg,
 		httpClient:         httpClient,
 		db:                 db,
 		geolocationService: geolocationService,
+		hubLocationService: hubLocationService,
 		implementations:    make(map[string]common.PartnerAdapter),
 	}
 
@@ -110,7 +112,7 @@ func (f *partnerAdapterFactory) CreateAdapter(dbPartnerCode string) (common.Part
 		// For mapped codes (like smile_ecomm -> smile_ecom), we need to return an adapter
 		// that reports the database partner code, not the implementation code
 		if dbPartnerCode != implCode {
-			return common.NewPartnerCodeAdapter(dbPartnerCode, adapter), nil
+			return common.NewPartnerCodeAdapter(common.PartnerInfo{PartnerCode: dbPartnerCode}, adapter), nil
 		}
 		return adapter, nil
 	}
@@ -171,7 +173,7 @@ func (f *partnerAdapterFactory) GetAllAdapters() map[string]common.PartnerAdapte
 	// Include any mapped database codes
 	for dbCode, implCode := range adapterImplementationMap {
 		if adapter, exists := f.implementations[implCode]; exists && dbCode != implCode {
-			result[dbCode] = common.NewPartnerCodeAdapter(dbCode, adapter)
+			result[dbCode] = common.NewPartnerCodeAdapter(common.PartnerInfo{PartnerCode: dbCode}, adapter)
 		}
 	}
 
@@ -240,7 +242,7 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 
 	// Initialize DHL adapter with real implementation and geolocation service
 	if f.config.DHL.Enabled {
-		f.implementations["dhl"] = dhl.NewAdapter(f.config.DHL, f.geolocationService)
+		f.implementations["dhl"] = dhl.NewAdapter(f.config.DHL, f.geolocationService, f.hubLocationService)
 	}
 
 	// Enable Smile Cargo adapter when configuration is available

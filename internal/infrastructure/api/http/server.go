@@ -477,8 +477,8 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 		db := s.dbManager.GetDB()
 		if db != nil {
 			repoFactory := repositories.NewRepositoryFactory(db)
-			postalCodeRepo := repoFactory.GetPostalCodeRepository()
-			geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
+			geoLocationRepo := repoFactory.GetGeoLocationRepository()
+			geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
 		}
 	}
 

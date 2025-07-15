@@ -20,6 +20,7 @@ type DBConfig struct {
 	MaxOpenConns    int           `mapstructure:"DB_MAX_OPEN_CONNS"`
 	MaxIdleConns    int           `mapstructure:"DB_MAX_IDLE_CONNS"`
 	ConnMaxLifetime time.Duration `mapstructure:"DB_CONN_MAX_LIFETIME"`
+	QueryTimeout    time.Duration `mapstructure:"DB_QUERY_TIMEOUT"`
 }
 
 // LogConfig contains logging configuration
@@ -70,6 +71,7 @@ func (db *DBConfig) GetConnectionInfo() map[string]interface{} {
 		"max_open_conns":    db.MaxOpenConns,
 		"max_idle_conns":    db.MaxIdleConns,
 		"conn_max_lifetime": db.ConnMaxLifetime.String(),
+		"query_timeout":     db.QueryTimeout.String(),
 	}
 }
 
@@ -113,6 +115,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 0),    // 0 = unlimited
 			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 1000), // High idle pool
 			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+			QueryTimeout:    getEnvAsDurationOrDefault("DB_QUERY_TIMEOUT", 30*time.Second),
 		},
 		Log: LogConfig{
 			Level:      getEnvOrDefault("LOG_LEVEL", "info"),

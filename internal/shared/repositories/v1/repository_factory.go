@@ -22,6 +22,7 @@ type RepositoryFactory struct {
 	attributeRepository               AttributeRepository
 	partnerAttributeMapRepository     PartnerAttributeMapRepository
 	geoLocationRepository             GeoLocationRepository
+	nearestHubLocationRepository      NearestHubLocationRepository
 	locationRepository                LocationRepository
 	locationSearchRepository          LocationSearchRepository
 }
@@ -48,6 +49,7 @@ func NewRepositoryFactory(db *gorm.DB) *RepositoryFactory {
 	factory.attributeRepository = NewAttributeRepository(db)
 	factory.partnerAttributeMapRepository = NewPartnerAttributeMapRepository(db)
 	factory.geoLocationRepository = NewGeoLocationRepository(db)
+	factory.nearestHubLocationRepository = NewNearestHubLocationRepository(db)
 	factory.locationRepository = NewLocationRepository(factory)
 	factory.locationSearchRepository = NewLocationSearchRepository(db)
 
@@ -112,6 +114,11 @@ func (f *RepositoryFactory) GetPartnerLocationCoverageRepository() PartnerLocati
 // GetGeoLocationRepository returns the geo location repository
 func (f *RepositoryFactory) GetGeoLocationRepository() GeoLocationRepository {
 	return f.geoLocationRepository
+}
+
+// GetNearestHubLocationRepository returns the nearest hub location repository
+func (f *RepositoryFactory) GetNearestHubLocationRepository() NearestHubLocationRepository {
+	return f.nearestHubLocationRepository
 }
 
 // GetLocationRepository returns the unified location repository

@@ -168,10 +168,9 @@ func (h *ServiceabilityV2Handler) GetHealthStatus(c *fiber.Ctx) error {
 		Success: true,
 		Partners: []modelsv1.PartnerV2Response{
 			{
-				PartnerID:     "system",
-				PartnerName:   "V2 System Health",
-				Rating:        5.0,
-				IsServiceable: true,
+				PartnerID:   "system",
+				PartnerName: "V2 System Health",
+				Rating:      5.0,
 				Services: []modelsv1.ServiceV2{
 					{
 						ServiceName: "health-check",

@@ -386,6 +386,12 @@ func (dm *DatabaseManager) createPerformanceIndexes() error {
 		{"postal_code", []string{"country_code", "region_code", "city_code", "area_code"}, "idx_postal_hierarchy"},
 		{"postal_code", []string{"location_scope"}, "idx_postal_scope"},
 
+		// Geo locations indexes for performance optimization
+		{"geo_locations", []string{"postal_code"}, "idx_geo_locations_postal_code"},
+		{"geo_locations", []string{"country_code"}, "idx_geo_locations_country_code"},
+		{"geo_locations", []string{"postal_code", "country_code"}, "idx_geo_locations_postal_country"},
+		{"geo_locations", []string{"deleted_at"}, "idx_geo_locations_deleted_at"},
+
 		// Hub indexes
 		{"hub", []string{"code"}, "idx_hub_code"},
 		{"hub_location_coverage", []string{"hub_code", "location_scope"}, "idx_hub_coverage"},

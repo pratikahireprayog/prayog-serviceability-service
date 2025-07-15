@@ -54,8 +54,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				// DHL supports international
 				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
 				dhlAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "dhl",
-					IsServiceable: true,
+					PartnerCode: "dhl",
 					Services: []models.ServiceV2{
 						{ServiceCode: "EXPRESS", ServiceName: "DHL Express"},
 						{ServiceCode: "ECONOMY", ServiceName: "DHL Economy"},
@@ -72,7 +71,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
 				shipyaariAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "shipyaari",
-					IsServiceable: false,
+					
 					Services:      []models.ServiceV2{},
 					Capabilities: map[string]interface{}{
 						"international": false,
@@ -87,7 +86,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 
 				dhlPartner := response.Partners[0]
 				assert.Equal(t, "dhl", dhlPartner.PartnerCode)
-				assert.True(t, dhlPartner.IsServiceable)
+				assert.True(t, len(dhlPartner.Services) > 0)
 				assert.Len(t, dhlPartner.Services, 2)
 				assert.NotEmpty(t, dhlPartner.Capabilities)
 
@@ -113,7 +112,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
 				dhlAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 					PartnerCode:   "dhl",
-					IsServiceable: true,
+					
 					Services: []models.ServiceV2{
 						{ServiceCode: "EXPRESS", ServiceName: "DHL Express"},
 					},
@@ -129,7 +128,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				assert.True(t, response.Success)
 				assert.Len(t, response.Partners, 1)
 				assert.Equal(t, "dhl", response.Partners[0].PartnerCode)
-				assert.True(t, response.Partners[0].IsServiceable)
+				assert.True(t, len(response.Partners[0].Services) > 0)
 			},
 		},
 		{
@@ -148,7 +147,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 					adapter := mocks.NewMockPartnerAdapter(partnerCode)
 					adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 						PartnerCode:   partnerCode,
-						IsServiceable: false,
+						
 						Services:      []models.ServiceV2{},
 						Capabilities: map[string]interface{}{
 							"international":       false,
@@ -164,7 +163,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				assert.Len(t, response.Partners, 2) // All partners returned when success=false
 
 				for _, partner := range response.Partners {
-					assert.False(t, partner.IsServiceable)
+					assert.False(t, len(partner.Services) > 0)
 				}
 
 				assert.NotNil(t, response.Metadata)
@@ -224,7 +223,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
 	dhlAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "dhl",
-		IsServiceable: true,
+		
 		Services: []models.ServiceV2{
 			{ServiceCode: "EXPRESS", ServiceName: "DHL Express"},
 			{ServiceCode: "ECONOMY", ServiceName: "DHL Economy"},
@@ -243,7 +242,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
 	shipyaariAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "shipyaari",
-		IsServiceable: true,
+		
 		Services: []models.ServiceV2{
 			{ServiceCode: "SDD", ServiceName: "Same Day Delivery"},
 			{ServiceCode: "NDD", ServiceName: "Next Day Delivery"},
@@ -261,7 +260,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	smileEcomAdapter := mocks.NewMockPartnerAdapter("smile_ecom")
 	smileEcomAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "smile_ecom",
-		IsServiceable: true,
+		
 		Services: []models.ServiceV2{
 			{ServiceCode: "STANDARD", ServiceName: "Standard Delivery"},
 			{ServiceCode: "EXPRESS", ServiceName: "Express Delivery"},
@@ -279,7 +278,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	smileCourierAdapter := mocks.NewMockPartnerAdapter("smile_courier")
 	smileCourierAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "smile_courier",
-		IsServiceable: true,
+		
 		Services: []models.ServiceV2{
 			{ServiceCode: "REGULAR", ServiceName: "Regular Delivery"},
 		},
@@ -346,7 +345,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	partnerCodes := make(map[string]bool)
 	for _, partner := range response.Partners {
 		partnerCodes[partner.PartnerCode] = true
-		assert.True(t, partner.IsServiceable)
+		assert.True(t, len(partner.Services) > 0)
 		assert.NotEmpty(t, partner.Services)
 		assert.NotEmpty(t, partner.Capabilities)
 		assert.Greater(t, partner.ResponseTime, time.Duration(0))
@@ -376,7 +375,7 @@ func TestIntegration_ErrorRecoveryAndResilience(t *testing.T) {
 	workingAdapter := mocks.NewMockPartnerAdapter("working_partner")
 	workingAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "working_partner",
-		IsServiceable: true,
+		
 		Services:      []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
 	})
 	mockFactory.SetAdapter("working_partner", workingAdapter)
@@ -390,7 +389,7 @@ func TestIntegration_ErrorRecoveryAndResilience(t *testing.T) {
 	slowAdapter := mocks.NewMockPartnerAdapter("slow_partner")
 	slowAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 		PartnerCode:   "slow_partner",
-		IsServiceable: true,
+		
 		Services:      []models.ServiceV2{{ServiceCode: "SLOW", ServiceName: "Slow Service"}},
 		ResponseTime:  10 * time.Second, // Very slow
 	})
@@ -425,7 +424,7 @@ func TestIntegration_ErrorRecoveryAndResilience(t *testing.T) {
 	// Verify that at least the working partner is included
 	workingPartnerFound := false
 	for _, partner := range response.Partners {
-		if partner.PartnerCode == "working_partner" && partner.IsServiceable {
+		if partner.PartnerCode == "working_partner" && len(partner.Services) > 0 {
 			workingPartnerFound = true
 			break
 		}
@@ -448,7 +447,7 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 		adapter := mocks.NewMockPartnerAdapter(partnerCode)
 		adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
 			PartnerCode:   partnerCode,
-			IsServiceable: true,
+			
 			Services:      []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
 		})
 		mockFactory.SetAdapter(partnerCode, adapter)
@@ -638,7 +637,7 @@ func TestIntegration_ReturnOnlyServiceablePartners_EndToEnd(t *testing.T) {
 			// Verify partner responses when present
 			if tt.expectedPartnersCount > 0 {
 				for _, partner := range response.Partners {
-					assert.True(t, partner.IsServiceable, "All returned partners should be serviceable when returnOnlyServiceable=true")
+					assert.True(t, len(partner.Services) > 0, "All returned partners should be serviceable when returnOnlyServiceable=true")
 					assert.Nil(t, partner.Error, "Serviceable partners should not have errors")
 					assert.NotEmpty(t, partner.PartnerCode, "Partner code should be present")
 				}

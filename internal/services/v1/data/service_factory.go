@@ -11,6 +11,7 @@ import (
 type ServiceFactory struct {
 	locationService    LocationService
 	geoLocationService GeoLocationService
+	hubLocationService HubLocationService
 }
 
 // NewServiceFactory creates a new service factory with all services
@@ -20,6 +21,7 @@ func NewServiceFactory(repoFactory *repositories.RepositoryFactory, logger *logr
 	return &ServiceFactory{
 		locationService:    NewLocationService(locationRepo, logger),
 		geoLocationService: NewGeoLocationService(repoFactory.GetGeoLocationRepository(), validator),
+		hubLocationService: NewHubLocationService(repoFactory.GetNearestHubLocationRepository(), logger),
 	}
 }
 
@@ -31,6 +33,11 @@ func (f *ServiceFactory) GetLocationService() LocationService {
 // GetGeoLocationService returns the geo location service
 func (f *ServiceFactory) GetGeoLocationService() GeoLocationService {
 	return f.geoLocationService
+}
+
+// GetHubLocationService returns the hub location service
+func (f *ServiceFactory) GetHubLocationService() HubLocationService {
+	return f.hubLocationService
 }
 
 // locationService implements the LocationService interface

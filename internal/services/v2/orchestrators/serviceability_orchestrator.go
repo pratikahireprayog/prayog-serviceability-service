@@ -163,7 +163,7 @@ func (s *serviceabilityOrchestrator) checkWithPartners(ctx context.Context, req 
 		wg.Add(1)
 		go func(index int, info DatabasePartnerInfo) {
 			defer wg.Done()
-			result := s.checkWithPartner(ctx, req, info.PartnerCode)
+			result := s.checkWithPartner(ctx, req, info)
 			// Store partner database info in result for later use
 			result.PartnerInfo = &info
 			results[index] = result
@@ -175,34 +175,34 @@ func (s *serviceabilityOrchestrator) checkWithPartners(ctx context.Context, req 
 }
 
 // checkWithPartner checks serviceability with a single partner
-func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *models.ServiceabilityV2Request, partnerCode string) partnerResult {
-	adapter, exists := s.partnerFactory.GetAdapter(partnerCode)
+func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *models.ServiceabilityV2Request, info DatabasePartnerInfo) partnerResult {
+	adapter, exists := s.partnerFactory.GetAdapter(info.PartnerCode)
 	if !exists {
 		return partnerResult{
-			PartnerCode: partnerCode,
-			Error:       errors.ErrPartnerNotFound(partnerCode),
+			PartnerCode: info.PartnerCode,
+			Error:       errors.ErrPartnerNotFound(info.PartnerCode),
 		}
 	}
 
 	// Check if adapter is healthy
 	if !adapter.IsHealthy(ctx) {
 		return partnerResult{
-			PartnerCode: partnerCode,
-			Error:       errors.ErrPartnerUnavailable(partnerCode),
+			PartnerCode: info.PartnerCode,
+			Error:       errors.ErrPartnerUnavailable(info.PartnerCode),
 		}
 	}
 
 	// Call the adapter
-	result, err := adapter.CheckServiceability(ctx, req)
+	result, err := adapter.CheckServiceability(ctx, req, common.PartnerInfo{PartnerID: info.PartnerID, PartnerCode: info.PartnerCode})
 	if err != nil {
 		return partnerResult{
-			PartnerCode: partnerCode,
+			PartnerCode: info.PartnerCode, // No longer needed since adapter sets it
 			Error:       err,
 		}
 	}
 
 	return partnerResult{
-		PartnerCode: partnerCode,
+		PartnerCode: info.PartnerCode,
 		Result:      result,
 	}
 }
@@ -219,22 +219,24 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			// Add error partner response using database info
 			errorMsg := result.Error.Error()
 
-			// Use partner info from database if available
-			partnerID := result.PartnerCode // Default to partner code
+			// Use partner info from database (should always be available)
+			partnerID := ""
 			if result.PartnerInfo != nil && result.PartnerInfo.PartnerID != nil {
 				partnerID = result.PartnerInfo.PartnerID.String()
+			} else {
+				partnerID = "unknown"
 			}
+			partnerCode := result.PartnerInfo.PartnerCode
 
 			errorPartnerResponse := models.PartnerV2Response{
-				PartnerID:     partnerID,
-				PartnerCode:   result.PartnerCode,
-				PartnerName:   "",  // No partner name in database
-				Rating:        0.0, // No rating in database
-				IsServiceable: false,
-				Services:      []models.ServiceV2{},
-				Capabilities:  make(map[string]interface{}),
-				Error:         &errorMsg,
-				ResponseTime:  0,
+				PartnerID:    partnerID,
+				PartnerCode:  partnerCode,
+				PartnerName:  "",  // No partner name in database
+				Rating:       0.0, // No rating in database
+				Services:     []models.ServiceV2{},
+				Capabilities: make(map[string]interface{}),
+				Error:        &errorMsg,
+				ResponseTime: 0,
 			}
 
 			// Always add to all partners list
@@ -242,20 +244,24 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 
 		} else if result.Result != nil {
 			// Convert partner result to V2 response using database info
-			partnerID := result.Result.PartnerCode // Default to partner code
-			if result.PartnerInfo != nil && result.PartnerInfo.PartnerID != nil {
+			partnerID := ""
+			if result.Result != nil && result.Result.PartnerID != nil {
+				partnerID = result.Result.PartnerID.String()
+			} else if result.PartnerInfo != nil && result.PartnerInfo.PartnerID != nil {
 				partnerID = result.PartnerInfo.PartnerID.String()
+			} else {
+				partnerID = "unknown"
 			}
+			partnerCode := result.PartnerInfo.PartnerCode
 
 			partnerResponse := models.PartnerV2Response{
-				PartnerID:     partnerID,
-				PartnerCode:   result.Result.PartnerCode,
-				PartnerName:   "",  // No partner name in database
-				Rating:        0.0, // No rating in database
-				IsServiceable: result.Result.IsServiceable,
-				Services:      result.Result.Services,
-				Capabilities:  result.Result.Capabilities,
-				ResponseTime:  result.Result.ResponseTime,
+				PartnerID:    partnerID,
+				PartnerCode:  partnerCode,
+				PartnerName:  "",  // No partner name in database
+				Rating:       0.0, // No rating in database
+				Services:     result.Result.Services,
+				Capabilities: result.Result.Capabilities,
+				ResponseTime: result.Result.ResponseTime,
 			}
 
 			// Add error if present
@@ -266,8 +272,9 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			// Always add to all partners list
 			allPartners = append(allPartners, partnerResponse)
 
-			// Add to serviceable partners only if serviceable
-			if result.Result.IsServiceable {
+			// Add to serviceable partners only if serviceable (determined by having services or capabilities)
+			isServiceable := len(result.Result.Services) > 0 || len(result.Result.Capabilities) > 0
+			if isServiceable {
 				serviceablePartners = append(serviceablePartners, partnerResponse)
 				serviceableCount++
 			}
@@ -465,6 +472,13 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	var eligiblePartnersByCategory []models.PartnerAttributeMap
 	var err error
 
+	// Log the start of the database query
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"parcel_category": *req.ParcelCategory,
+		"total_partners":  len(allSupportedPartners),
+	}).Info("Starting database query for partners by attribute")
+
 	// Attempt to call the repository method with error recovery
 	func() {
 		defer func() {
@@ -479,7 +493,18 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 				err = fmt.Errorf("repository unavailable due to panic: %v", r)
 			}
 		}()
+
+		// Add timing measurement
+		start := time.Now()
 		eligiblePartnersByCategory, err = s.partnerAttributeMapRepo.GetPartnerInfoByAttribute(ctx, *req.ParcelCategory)
+		duration := time.Since(start)
+
+		s.logger.WithFields(logrus.Fields{
+			"component":       "serviceability_orchestrator",
+			"parcel_category": *req.ParcelCategory,
+			"query_duration":  duration,
+			"partners_found":  len(eligiblePartnersByCategory),
+		}).Info("Database query completed")
 	}()
 	if err != nil {
 		// If error getting partners by attribute, log but continue with all partners

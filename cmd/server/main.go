@@ -15,8 +15,8 @@ import (
 
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
-	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	businessServices "prayog-serviceability-service/internal/services/v1/business"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/config"
@@ -24,8 +24,8 @@ import (
 
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
-	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 	dataServices "prayog-serviceability-service/internal/services/v1/data"
+	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 )
 
 func main() {
@@ -246,14 +246,20 @@ func initV2Orchestrator(
 
 	// Create geolocation service for partner adapters
 	var geolocationService dataServices.GeolocationService
+	var hubLocationService dataServices.HubLocationService
 	if gormDB != nil {
 		// Create repository factory from database connection
 		repoFactory := repositories.NewRepositoryFactory(gormDB)
-		postalCodeRepo := repoFactory.GetPostalCodeRepository()
-		geolocationService = dataServices.NewGeolocationService(postalCodeRepo)
+		geoLocationRepo := repoFactory.GetGeoLocationRepository()
+		geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
+
+		// Create hub location service for partner adapters
+		hubLocationRepo := repoFactory.GetNearestHubLocationRepository()
+		hubLocationService = dataServices.NewHubLocationService(hubLocationRepo, logger)
 	} else {
 		// Create a dummy geolocation service for graceful degradation
 		geolocationService = dataServices.NewGeolocationService(nil)
+		hubLocationService = dataServices.NewHubLocationService(nil, logger)
 	}
 
 	// Create partner adapter factory using v2 factory
@@ -262,6 +268,7 @@ func initV2Orchestrator(
 		httpClient,
 		sqlDB,
 		geolocationService,
+		hubLocationService,
 	)
 
 	// Get partner attribute mapping repository for filtering
@@ -279,7 +286,7 @@ func initV2Orchestrator(
 	v2Orchestrator := orchestrators.NewServiceabilityOrchestrator(
 		partnerAdapterFactory,
 		partnerAttributeRepo,
-		30*time.Second, // timeout for partner requests
+		60*time.Second, // timeout for partner requests - increased for database queries
 		configManager.App.Serviceability.ReturnOnlyServiceablePartners,
 	)
 

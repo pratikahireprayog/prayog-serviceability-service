@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"prayog-serviceability-service/internal/shared/models/v1"
 
@@ -346,7 +347,12 @@ func (r *partnerAttributeMapRepository) GetPartnerCodesByAttribute(ctx context.C
 // GetPartnerInfoByAttribute retrieves partner information (including UUID) for partners that have a specific attribute
 func (r *partnerAttributeMapRepository) GetPartnerInfoByAttribute(ctx context.Context, attributeCode string) ([]models.PartnerAttributeMap, error) {
 	var mappings []models.PartnerAttributeMap
-	err := r.db.WithContext(ctx).Model(&models.PartnerAttributeMap{}).
+	
+	// Create a query timeout context (45 seconds) to prevent hanging queries
+	queryCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	
+	err := r.db.WithContext(queryCtx).Model(&models.PartnerAttributeMap{}).
 		Joins("JOIN attribute ON partner_attribute_map.attribute_id = attribute.id").
 		Where("attribute.code = ? AND partner_attribute_map.is_active = ? AND partner_attribute_map.is_deleted = ?", attributeCode, true, false).
 		Select("DISTINCT ON (partner_code) partner_attribute_map.*").

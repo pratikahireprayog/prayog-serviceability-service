@@ -49,13 +49,18 @@ func NewSmileEcomAdapter(cfg config.SmileEcomConfig, db *sql.DB) common.PartnerA
 }
 
 // CheckServiceability implements the main serviceability check for Smile Ecom
-func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
 	// Validate request
 	if err := common.ValidateServiceabilityRequest(req); err != nil {
 		s.RecordRequest(time.Since(startTime), false)
-		return nil, err
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+		}, nil
 	}
 
 	// Check cache first if enabled
@@ -72,10 +77,10 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
@@ -84,15 +89,15 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, req *models.
 	if err != nil {
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   s.GetPartnerCode(),
-			IsServiceable: false,
-			ResponseTime:  time.Since(startTime),
-			Error:         err,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			Error:        err,
 		}, nil
 	}
 
 	// Transform response to standard format
-	result := s.transformDatabaseResult(dbResult)
+	result := s.transformDatabaseResult(dbResult, partnerInfo)
 	result.ResponseTime = time.Since(startTime)
 
 	// Cache result if enabled
@@ -149,16 +154,16 @@ func (s *SmileEcomAdapter) transformRequestToQuery(req *models.ServiceabilityV2R
 }
 
 // transformDatabaseResult converts database result to standard format
-func (s *SmileEcomAdapter) transformDatabaseResult(dbResult *ServiceabilityData) *common.PartnerServiceabilityResult {
+func (s *SmileEcomAdapter) transformDatabaseResult(dbResult *ServiceabilityData, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	// TODO: Update response structure when Smile Ecom API integration is finalized
 	// Current implementation is database-based - may need to match final payload format
 
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:   s.GetPartnerCode(),
-		IsServiceable: dbResult.IsServiceable,
-		Services:      make([]models.ServiceV2, 0),
-		Capabilities:  make(map[string]interface{}),
-		Metadata:      make(map[string]interface{}),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
+		Metadata:     make(map[string]interface{}),
 	}
 
 	// Add services if available

@@ -59,13 +59,13 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 }
 
 // CheckServiceability checks serviceability for the request
-func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request) (*common.PartnerServiceabilityResult, error) {
+func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	if !a.SupportsRequest(ctx, request) {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			ResponseTime:  0,
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: 0,
 			Metadata: map[string]interface{}{
 				"reason": "Request not supported by Smile Cargo (not a cargo request or missing pincodes)",
 			},
@@ -79,17 +79,17 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	response, err := a.client.CheckServiceAvailability(ctx, smileCargoRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
-			PartnerCode:   a.GetPartnerCode(),
-			IsServiceable: false,
-			Services:      make([]models.ServiceV2, 0),
-			Error:         err,
-			ErrorMessage:  &[]string{fmt.Sprintf("Smile Cargo API call failed: %v", err)}[0],
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("Smile Cargo API call failed: %v", err)}[0],
 		}, nil
 	}
 
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
-	return a.convertServiceAvailabilityResponse(response), nil
+	return a.convertServiceAvailabilityResponse(response, partnerInfo), nil
 }
 
 // convertToServiceAvailabilityRequest converts v2 request to Smile Cargo format
@@ -115,9 +115,10 @@ func (a *Adapter) convertToServiceAvailabilityRequest(request *models.Serviceabi
 }
 
 // convertServiceAvailabilityResponse converts Smile Cargo response to common format
-func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse) *common.PartnerServiceabilityResult {
+func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
-		PartnerCode:  a.GetPartnerCode(),
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
 		Services:     make([]models.ServiceV2, 0),
 		Capabilities: make(map[string]interface{}),
 		Metadata:     make(map[string]interface{}),
@@ -147,7 +148,6 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 
 	// Service is only available if BOTH from and to have valid SmilePartners
 	if !hasFromPartner || !hasToPartner {
-		result.IsServiceable = false
 		reason := "SmilePartner missing in "
 		if !hasFromPartner && !hasToPartner {
 			reason += "both 'from' and 'to' objects"
@@ -170,7 +170,6 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 	}
 
 	// Both SmilePartners found and active
-	result.IsServiceable = true
 
 	// Create the new capabilities structure based on the final payload format
 	capabilities := map[string]interface{}{
