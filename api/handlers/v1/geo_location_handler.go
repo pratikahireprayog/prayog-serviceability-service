@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/shared/dtos/v1"
-	"prayog-serviceability-service/internal/services/v1/data"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -97,19 +97,19 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 		filters.CountryCode = &countryCode
 	}
 
-	// Parse multiple postal codes from query parameters
-	queryArgs := c.Request().URI().QueryArgs()
-	var postalCodes []string
-	queryArgs.VisitAll(func(key, value []byte) {
-		if string(key) == "postal_code" {
-			postalCode := strings.TrimSpace(string(value))
+	// Parse multiple postal codes from comma-separated values (best practice)
+	if postalCodesParam := c.Query("postal_codes"); postalCodesParam != "" {
+		var postalCodes []string
+		// Split by comma and clean each postal code
+		for _, postalCode := range strings.Split(postalCodesParam, ",") {
+			postalCode = strings.TrimSpace(postalCode)
 			if postalCode != "" {
 				postalCodes = append(postalCodes, postalCode)
 			}
 		}
-	})
-	if len(postalCodes) > 0 {
-		filters.PostalCodes = postalCodes
+		if len(postalCodes) > 0 {
+			filters.PostalCodes = postalCodes
+		}
 	}
 
 	if name := c.Query("name"); name != "" {
