@@ -158,31 +158,67 @@ func (h *NearestHubLocationHandler) Delete(c *fiber.Ctx) error {
 // --- Helpers ---
 func createNearestHubLocationModelFromDTO(req *dtos.CreateNearestHubLocationRequest) *models.NearestHubLocation {
 	return &models.NearestHubLocation{
-		PostalCode:                  req.PostalCode,
-		Address:                     req.Address,
-		CentroidLat:                 req.CentroidLat,
-		CentroidLng:                 req.CentroidLng,
-		InternationalHubPostalCode:  req.InternationalHubPostalCode,
-		InternationalHubAddress:     req.InternationalHubAddress,
-		InternationalHubCentroidLat: req.InternationalHubCentroidLat,
-		InternationalHubCentroidLng: req.InternationalHubCentroidLng,
-		InternationalHubCityCode:    req.InternationalHubCityCode,
-		HubCityCode:                 req.HubCityCode,
+		PostalCode:  req.PostalCode,
+		Address:     req.Address,
+		CentroidLat: req.CentroidLat,
+		CentroidLng: req.CentroidLng,
+
+		// Original city code field (renamed from hub_city_code)
+		CityCode: req.CityCode,
+
+		// Hub location fields (renamed from international_hub_*)
+		HubPostalCode:  req.HubPostalCode,
+		HubCentroidLat: req.HubCentroidLat,
+		HubCentroidLng: req.HubCentroidLng,
+		HubCityCode:    req.HubCityCode,
+
+		// International hub flag
+		IsInternationalHub: req.IsInternationalHub,
+
+		// Hub contact and location fields
+		HubContactPersonName:  req.HubContactPersonName,
+		HubContactPersonPhone: req.HubContactPersonPhone,
+		HubContactPersonEmail: req.HubContactPersonEmail,
+		HubStreet:             req.HubStreet,
+		HubLandmark:           req.HubLandmark,
+		HubCity:               req.HubCity,
+		HubState:              req.HubState,
+		HubCountry:            req.HubCountry,
+		HubLat:                req.HubLat,
+		HubLng:                req.HubLng,
 	}
 }
 
 func modelToNearestHubLocationResponse(m *models.NearestHubLocation) *dtos.NearestHubLocationResponse {
 	return &dtos.NearestHubLocationResponse{
-		PostalCode:                  m.PostalCode,
-		Address:                     m.Address,
-		CentroidLat:                 m.CentroidLat,
-		CentroidLng:                 m.CentroidLng,
-		InternationalHubPostalCode:  m.InternationalHubPostalCode,
-		InternationalHubAddress:     m.InternationalHubAddress,
-		InternationalHubCentroidLat: m.InternationalHubCentroidLat,
-		InternationalHubCentroidLng: m.InternationalHubCentroidLng,
-		InternationalHubCityCode:    m.InternationalHubCityCode,
-		HubCityCode:                 m.HubCityCode,
+		PostalCode:  m.PostalCode,
+		Address:     m.Address,
+		CentroidLat: m.CentroidLat,
+		CentroidLng: m.CentroidLng,
+
+		// Original city code field (renamed from hub_city_code)
+		CityCode: m.CityCode,
+
+		// Hub location fields (renamed from international_hub_*)
+		HubPostalCode:  m.HubPostalCode,
+		HubCentroidLat: m.HubCentroidLat,
+		HubCentroidLng: m.HubCentroidLng,
+		HubCityCode:    m.HubCityCode,
+
+		// International hub flag
+		IsInternationalHub: m.IsInternationalHub,
+
+		// Hub contact and location fields
+		HubContactPersonName:  m.HubContactPersonName,
+		HubContactPersonPhone: m.HubContactPersonPhone,
+		HubContactPersonEmail: m.HubContactPersonEmail,
+		HubStreet:             m.HubStreet,
+		HubLandmark:           m.HubLandmark,
+		HubCity:               m.HubCity,
+		HubState:              m.HubState,
+		HubCountry:            m.HubCountry,
+		HubLat:                m.HubLat,
+		HubLng:                m.HubLng,
 	}
 }
 
@@ -197,29 +233,64 @@ func updateNearestHubLocationModelFromDTO(model *models.NearestHubLocation, req 
 	if req.CentroidLng != nil {
 		model.CentroidLng = req.CentroidLng
 	}
-	if req.InternationalHubPostalCode != nil {
-		model.InternationalHubPostalCode = req.InternationalHubPostalCode
+	// Original city code field (renamed from hub_city_code)
+	if req.CityCode != nil {
+		model.CityCode = req.CityCode
 	}
-	if req.InternationalHubAddress != nil {
-		model.InternationalHubAddress = req.InternationalHubAddress
+	// Hub location fields (renamed from international_hub_*)
+	if req.HubPostalCode != nil {
+		model.HubPostalCode = req.HubPostalCode
 	}
-	if req.InternationalHubCentroidLat != nil {
-		model.InternationalHubCentroidLat = req.InternationalHubCentroidLat
+	if req.HubCentroidLat != nil {
+		model.HubCentroidLat = req.HubCentroidLat
 	}
-	if req.InternationalHubCentroidLng != nil {
-		model.InternationalHubCentroidLng = req.InternationalHubCentroidLng
-	}
-	if req.InternationalHubCityCode != nil {
-		model.InternationalHubCityCode = req.InternationalHubCityCode
+	if req.HubCentroidLng != nil {
+		model.HubCentroidLng = req.HubCentroidLng
 	}
 	if req.HubCityCode != nil {
 		model.HubCityCode = req.HubCityCode
+	}
+	// International hub flag
+	if req.IsInternationalHub != nil {
+		model.IsInternationalHub = req.IsInternationalHub
+	}
+	// Update new hub contact and location fields
+	if req.HubContactPersonName != nil {
+		model.HubContactPersonName = req.HubContactPersonName
+	}
+	if req.HubContactPersonPhone != nil {
+		model.HubContactPersonPhone = req.HubContactPersonPhone
+	}
+	if req.HubContactPersonEmail != nil {
+		model.HubContactPersonEmail = req.HubContactPersonEmail
+	}
+	if req.HubStreet != nil {
+		model.HubStreet = req.HubStreet
+	}
+	if req.HubLandmark != nil {
+		model.HubLandmark = req.HubLandmark
+	}
+	if req.HubCity != nil {
+		model.HubCity = req.HubCity
+	}
+	if req.HubState != nil {
+		model.HubState = req.HubState
+	}
+	if req.HubCountry != nil {
+		model.HubCountry = req.HubCountry
+	}
+	if req.HubLat != nil {
+		model.HubLat = req.HubLat
+	}
+	if req.HubLng != nil {
+		model.HubLng = req.HubLng
 	}
 }
 
 func parseNearestHubLocationFiltersFromQuery(c *fiber.Ctx) *dtos.NearestHubLocationFilters {
 	var filters dtos.NearestHubLocationFilters
 	queryArgs := c.Request().URI().QueryArgs()
+
 	// Parse multiple postal_code
 	postalCodes := queryArgs.PeekMulti("postal_code")
 	for _, v := range postalCodes {
@@ -227,17 +298,51 @@ func parseNearestHubLocationFiltersFromQuery(c *fiber.Ctx) *dtos.NearestHubLocat
 			filters.PostalCodes = append(filters.PostalCodes, code)
 		}
 	}
-	// Parse multiple international_hub_postal_code
-	ihpCodes := queryArgs.PeekMulti("international_hub_postal_code")
-	for _, v := range ihpCodes {
+
+	// Parse multiple city_code
+	cityCodes := queryArgs.PeekMulti("city_code")
+	for _, v := range cityCodes {
+		filters.CityCodes = append(filters.CityCodes, string(v))
+	}
+
+	// Parse multiple hub_postal_code
+	hubPostalCodes := queryArgs.PeekMulti("hub_postal_code")
+	for _, v := range hubPostalCodes {
 		if code, err := strconv.Atoi(string(v)); err == nil {
-			filters.InternationalHubPostalCodes = append(filters.InternationalHubPostalCodes, code)
+			filters.HubPostalCodes = append(filters.HubPostalCodes, code)
 		}
 	}
-	// Parse multiple international_hub_city_code
-	ihcCodes := queryArgs.PeekMulti("international_hub_city_code")
-	for _, v := range ihcCodes {
-		filters.InternationalHubCityCodes = append(filters.InternationalHubCityCodes, string(v))
+
+	// Parse multiple hub_city_code
+	hubCityCodes := queryArgs.PeekMulti("hub_city_code")
+	for _, v := range hubCityCodes {
+		filters.HubCityCodes = append(filters.HubCityCodes, string(v))
 	}
+
+	// Parse is_international_hub boolean
+	if isIntlHub := queryArgs.Peek("is_international_hub"); len(isIntlHub) > 0 {
+		if boolVal, err := strconv.ParseBool(string(isIntlHub)); err == nil {
+			filters.IsInternationalHub = &boolVal
+		}
+	}
+
+	// Parse multiple hub_city
+	hubCities := queryArgs.PeekMulti("hub_city")
+	for _, v := range hubCities {
+		filters.HubCities = append(filters.HubCities, string(v))
+	}
+
+	// Parse multiple hub_state
+	hubStates := queryArgs.PeekMulti("hub_state")
+	for _, v := range hubStates {
+		filters.HubStates = append(filters.HubStates, string(v))
+	}
+
+	// Parse multiple hub_country
+	hubCountries := queryArgs.PeekMulti("hub_country")
+	for _, v := range hubCountries {
+		filters.HubCountries = append(filters.HubCountries, string(v))
+	}
+
 	return &filters
 }

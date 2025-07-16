@@ -118,6 +118,7 @@ func (dm *DatabaseManager) migrateLocationManagementModels() error {
 		&models.LocationType{},
 		&models.LocationAlias{},
 		&models.PartnerLocationCoverage{},
+		&models.NearestHubLocation{},
 	}
 
 	for _, model := range models {

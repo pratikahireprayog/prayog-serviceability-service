@@ -17,9 +17,8 @@ type NearestHubLocationRepository interface {
 	GetByPostalCodeString(ctx context.Context, postalCode string) (*models.NearestHubLocation, error)
 	GetAll(ctx context.Context, offset, limit int) ([]models.NearestHubLocation, int64, error)
 	GetByFilters(ctx context.Context, filters *dtos.NearestHubLocationFilters) ([]models.NearestHubLocation, error)
-	GetByInternationalHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error)
+	GetByHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error)
 	GetByHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error)
-	GetByInternationalHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error)
 	GetNearbyHubLocations(ctx context.Context, latitude, longitude float64, radiusKm int, limit int) ([]models.NearestHubLocation, error)
 	Create(ctx context.Context, hubLocation *models.NearestHubLocation) error
 	Update(ctx context.Context, postalCode int, hubLocation *models.NearestHubLocation) error
@@ -73,14 +72,39 @@ func (r *nearestHubLocationRepository) GetByFilters(ctx context.Context, filters
 		query = query.Where("postal_code IN ?", filters.PostalCodes)
 	}
 
-	// Apply international hub postal code filters if provided
-	if len(filters.InternationalHubPostalCodes) > 0 {
-		query = query.Where("international_hub_postal_code IN ?", filters.InternationalHubPostalCodes)
+	// Apply city code filters if provided
+	if len(filters.CityCodes) > 0 {
+		query = query.Where("city_code IN ?", filters.CityCodes)
 	}
 
-	// Apply international hub city code filters if provided
-	if len(filters.InternationalHubCityCodes) > 0 {
-		query = query.Where("international_hub_city_code IN ?", filters.InternationalHubCityCodes)
+	// Apply hub postal code filters if provided
+	if len(filters.HubPostalCodes) > 0 {
+		query = query.Where("hub_postal_code IN ?", filters.HubPostalCodes)
+	}
+
+	// Apply hub city code filters if provided
+	if len(filters.HubCityCodes) > 0 {
+		query = query.Where("hub_city_code IN ?", filters.HubCityCodes)
+	}
+
+	// Apply international hub filter if provided
+	if filters.IsInternationalHub != nil {
+		query = query.Where("is_international_hub = ?", *filters.IsInternationalHub)
+	}
+
+	// Apply hub city filters if provided
+	if len(filters.HubCities) > 0 {
+		query = query.Where("hub_city IN ?", filters.HubCities)
+	}
+
+	// Apply hub state filters if provided
+	if len(filters.HubStates) > 0 {
+		query = query.Where("hub_state IN ?", filters.HubStates)
+	}
+
+	// Apply hub country filters if provided
+	if len(filters.HubCountries) > 0 {
+		query = query.Where("hub_country IN ?", filters.HubCountries)
 	}
 
 	err := query.Find(&hubLocations).Error
@@ -114,14 +138,14 @@ func (r *nearestHubLocationRepository) GetAll(ctx context.Context, offset, limit
 	return hubLocations, total, nil
 }
 
-// GetByInternationalHubPostalCode retrieves all locations served by a specific international hub
-func (r *nearestHubLocationRepository) GetByInternationalHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error) {
+// GetByHubPostalCode retrieves all locations served by a specific hub
+func (r *nearestHubLocationRepository) GetByHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error) {
 	var hubLocations []models.NearestHubLocation
 	err := r.db.WithContext(ctx).
-		Where("international_hub_postal_code = ?", hubPostalCode).
+		Where("hub_postal_code = ?", hubPostalCode).
 		Find(&hubLocations).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to get hub locations by international hub postal code: %w", err)
+		return nil, fmt.Errorf("failed to get hub locations by hub postal code: %w", err)
 	}
 	return hubLocations, nil
 }
@@ -134,18 +158,6 @@ func (r *nearestHubLocationRepository) GetByHubCityCode(ctx context.Context, hub
 		Find(&hubLocations).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hub locations by hub city code: %w", err)
-	}
-	return hubLocations, nil
-}
-
-// GetByInternationalHubCityCode retrieves all locations by international hub city code
-func (r *nearestHubLocationRepository) GetByInternationalHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error) {
-	var hubLocations []models.NearestHubLocation
-	err := r.db.WithContext(ctx).
-		Where("international_hub_city_code = ?", hubCityCode).
-		Find(&hubLocations).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hub locations by international hub city code: %w", err)
 	}
 	return hubLocations, nil
 }

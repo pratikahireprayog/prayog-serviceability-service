@@ -28,21 +28,47 @@ type Package struct {
 
 // ServiceabilityV2Request represents the request structure for v2 serviceability checks
 type ServiceabilityV2Request struct {
-	PostalCode            *string  `json:"postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	SourcePostalCode      *string  `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	DestinationPostalCode *string  `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	CountryCode           *string  `json:"country_code,omitempty" validate:"omitempty,len=2"`
+	PostalCode            *string   `json:"postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	SourcePostalCode      *string   `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	DestinationPostalCode *string   `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	CountryCode           *string   `json:"country_code,omitempty" validate:"omitempty,len=2"`
 	ParcelCategory        *string   `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
 	ProductType           *string   `json:"product_type,omitempty"`
 	Packages              []Package `json:"packages,omitempty" validate:"omitempty,dive"`
 }
 
+// AddressInfo represents address information in the V2 response
+type AddressInfo struct {
+	PostalCode  string `json:"postal_code"`
+	CountryCode string `json:"country_code"`
+}
+
+// DetailedAddress represents detailed address information for hubs
+type DetailedAddress struct {
+	Type        string   `json:"type"` // e.g., "INTERNATIONAL_HUB_ADDRESS"
+	Zip         string   `json:"zip"`
+	Name        string   `json:"name"`
+	Phone       string   `json:"phone"`
+	Email       string   `json:"email"`
+	Street      string   `json:"street"`
+	Landmark    string   `json:"landmark"`
+	City        string   `json:"city"`
+	State       string   `json:"state"`
+	Country     string   `json:"country"`
+	Latitude    *float64 `json:"latitude,omitempty"`
+	Longitude   *float64 `json:"longitude,omitempty"`
+	AddressName string   `json:"addressName"` // e.g., "WAREHOUSE"
+}
+
 // ServiceabilityV2Response represents the aggregated response structure for v2
 type ServiceabilityV2Response struct {
-	Success  bool                `json:"success"`
-	Partners []PartnerV2Response `json:"partners"` // Remove omitempty to always include partners array
-	Error    *ErrorResponse      `json:"error,omitempty"`
-	Metadata *V2ResponseMetadata `json:"metadata,omitempty"`
+	Success            bool                `json:"success"`
+	SourceAddress      *AddressInfo        `json:"source_address,omitempty"`
+	DestinationAddress *AddressInfo        `json:"destination_address,omitempty"`
+	Addresses          []DetailedAddress   `json:"addresses,omitempty"`
+	Partners           []PartnerV2Response `json:"partners"` // Remove omitempty to always include partners array
+	Error              *ErrorResponse      `json:"error,omitempty"`
+	Metadata           *V2ResponseMetadata `json:"metadata,omitempty"`
 }
 
 // PartnerV2Response represents individual partner response in v2 format

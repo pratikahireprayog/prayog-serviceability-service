@@ -18,7 +18,7 @@ type HubLocationService interface {
 	GetNearestHubByPostalCode(ctx context.Context, postalCode string) (*models.HubLocationInfo, error)
 	GetNearestHubByPostalCodeInt(ctx context.Context, postalCode int) (*models.HubLocationInfo, error)
 	ValidateHubAvailability(ctx context.Context, postalCode string) (bool, error)
-	GetInternationalHubInfo(ctx context.Context, postalCode string) (*models.InternationalHubInfo, error)
+	GetHubInfo(ctx context.Context, postalCode string) (*models.HubInfo, error)
 	GetHubLocationsByCity(ctx context.Context, hubCityCode string) ([]models.HubLocationInfo, error)
 	GetNearbyHubLocations(ctx context.Context, latitude, longitude float64, radiusKm int) ([]models.HubLocationInfo, error)
 }
@@ -74,11 +74,12 @@ func (h *hubLocationService) GetNearestHubByPostalCode(ctx context.Context, post
 	}
 
 	h.logger.WithFields(logrus.Fields{
-		"service":                       "HubLocationService",
-		"postal_code":                   postalCode,
-		"international_hub_postal_code": hubLocation.InternationalHubPostalCode,
-		"international_hub_city_code":   hubLocation.InternationalHubCityCode,
-		"hub_city_code":                 hubLocation.HubCityCode,
+		"service":              "HubLocationService",
+		"postal_code":          postalCode,
+		"city_code":            hubLocation.CityCode,
+		"hub_postal_code":      hubLocation.HubPostalCode,
+		"hub_city_code":        hubLocation.HubCityCode,
+		"is_international_hub": hubLocation.IsInternationalHub,
 	}).Info("Successfully found nearest hub location")
 
 	return hubLocation.ToHubLocationInfo(), nil
@@ -118,11 +119,12 @@ func (h *hubLocationService) GetNearestHubByPostalCodeInt(ctx context.Context, p
 	}
 
 	h.logger.WithFields(logrus.Fields{
-		"service":                       "HubLocationService",
-		"postal_code":                   postalCode,
-		"international_hub_postal_code": hubLocation.InternationalHubPostalCode,
-		"international_hub_city_code":   hubLocation.InternationalHubCityCode,
-		"hub_city_code":                 hubLocation.HubCityCode,
+		"service":              "HubLocationService",
+		"postal_code":          postalCode,
+		"city_code":            hubLocation.CityCode,
+		"hub_postal_code":      hubLocation.HubPostalCode,
+		"hub_city_code":        hubLocation.HubCityCode,
+		"is_international_hub": hubLocation.IsInternationalHub,
 	}).Info("Successfully found nearest hub location")
 
 	return hubLocation.ToHubLocationInfo(), nil
@@ -171,31 +173,31 @@ func (h *hubLocationService) ValidateHubAvailability(ctx context.Context, postal
 	return exists, nil
 }
 
-// GetInternationalHubInfo retrieves international hub information for a given postal code
-func (h *hubLocationService) GetInternationalHubInfo(ctx context.Context, postalCode string) (*models.InternationalHubInfo, error) {
+// GetHubInfo retrieves hub information for a given postal code
+func (h *hubLocationService) GetHubInfo(ctx context.Context, postalCode string) (*models.HubInfo, error) {
 	if strings.TrimSpace(postalCode) == "" {
 		return nil, errors.ErrValidationFailed("postal_code", "cannot be empty")
 	}
 
 	h.logger.WithFields(logrus.Fields{
 		"service":     "HubLocationService",
-		"method":      "GetInternationalHubInfo",
+		"method":      "GetHubInfo",
 		"postal_code": postalCode,
-	}).Debug("Getting international hub info for postal code")
+	}).Debug("Getting hub info for postal code")
 
 	// Get hub location info
-	hubInfo, err := h.GetNearestHubByPostalCode(ctx, postalCode)
+	hubLocationInfo, err := h.GetNearestHubByPostalCode(ctx, postalCode)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return international hub info if available
-	if hubInfo.InternationalHub != nil {
-		return hubInfo.InternationalHub, nil
+	// Return hub info if available
+	if hubLocationInfo.HubInfo != nil {
+		return hubLocationInfo.HubInfo, nil
 	}
 
-	// If no international hub is found, return an error
-	return nil, errors.ErrNotFound("international hub", fmt.Sprintf("postal code %s", postalCode))
+	// If no hub is found, return an error
+	return nil, errors.ErrNotFound("hub", fmt.Sprintf("postal code %s", postalCode))
 }
 
 // GetHubLocationsByCity retrieves all hub locations for a given city code
