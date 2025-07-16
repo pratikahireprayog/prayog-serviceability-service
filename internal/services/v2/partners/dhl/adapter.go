@@ -606,13 +606,40 @@ func (a *Adapter) extractFuelSurcharge(breakdowns []DetailedPriceBreakdown) floa
 
 // getPlannedShippingDateTime gets the planned shipping date and time
 func (a *Adapter) getPlannedShippingDateTime() string {
-	// Use current time, formatted as "YYYY-MM-DDTHH:MM:SSGMT+05:30"
+	// Use next business day at 1 PM IST to ensure DHL services are available
 	loc, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		loc = time.FixedZone("GMT+05:30", 5*60*60+30*60)
 	}
-	plannedTime := time.Now().In(loc)
+
+	now := time.Now().In(loc)
+
+	// Calculate next business day
+	nextBusinessDay := a.getNextBusinessDay(now)
+
+	// Set time to 1 PM (13:00) to match working curl example
+	plannedTime := time.Date(
+		nextBusinessDay.Year(),
+		nextBusinessDay.Month(),
+		nextBusinessDay.Day(),
+		13, 0, 0, 0, // 1 PM
+		loc,
+	)
+
 	return plannedTime.Format("2006-01-02T15:04:05") + "GMT+05:30"
+}
+
+// getNextBusinessDay calculates the next business day (Monday-Friday)
+func (a *Adapter) getNextBusinessDay(from time.Time) time.Time {
+	nextDay := from.Add(24 * time.Hour)
+
+	// If it's Saturday (6), add 2 days to get Monday
+	// If it's Sunday (0), add 1 day to get Monday
+	for nextDay.Weekday() == time.Saturday || nextDay.Weekday() == time.Sunday {
+		nextDay = nextDay.Add(24 * time.Hour)
+	}
+
+	return nextDay
 }
 
 // getPackages creates packages from request
