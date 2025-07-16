@@ -49,17 +49,12 @@ func (m *MockNearestHubLocationRepository) GetByFilters(ctx context.Context, fil
 	return args.Get(0).([]models.NearestHubLocation), args.Error(1)
 }
 
-func (m *MockNearestHubLocationRepository) GetByInternationalHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error) {
+func (m *MockNearestHubLocationRepository) GetByHubPostalCode(ctx context.Context, hubPostalCode int) ([]models.NearestHubLocation, error) {
 	args := m.Called(ctx, hubPostalCode)
 	return args.Get(0).([]models.NearestHubLocation), args.Error(1)
 }
 
 func (m *MockNearestHubLocationRepository) GetByHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error) {
-	args := m.Called(ctx, hubCityCode)
-	return args.Get(0).([]models.NearestHubLocation), args.Error(1)
-}
-
-func (m *MockNearestHubLocationRepository) GetByInternationalHubCityCode(ctx context.Context, hubCityCode string) ([]models.NearestHubLocation, error) {
 	args := m.Called(ctx, hubCityCode)
 	return args.Get(0).([]models.NearestHubLocation), args.Error(1)
 }
@@ -103,11 +98,12 @@ func createTestNearestHubLocation() *models.NearestHubLocation {
 	address := "Test Address"
 	lat := 19.1197
 	lng := 72.8696
-	intHubPostalCode := 400093
-	intHubLat := 19.1197
-	intHubLng := 72.8696
-	intHubCityCode := "MUM"
-	hubCityCode := "MUM"
+	hubPostalCode := 400093
+	hubLat := 19.1197
+	hubLng := 72.8696
+	cityCode := "BOM"    // Original city code
+	hubCityCode := "MUM" // Hub city code
+	isInternationalHub := true
 	hubContactName := "Test Contact"
 	hubContactPhone := "+91-9876543210"
 	hubContactEmail := "test@example.com"
@@ -116,29 +112,38 @@ func createTestNearestHubLocation() *models.NearestHubLocation {
 	hubCity := "Mumbai"
 	hubState := "Maharashtra"
 	hubCountry := "India"
-	hubLat := 19.1197
-	hubLng := 72.8696
+	hubLocationLat := 19.1197
+	hubLocationLng := 72.8696
 
 	return &models.NearestHubLocation{
-		PostalCode:                  400001,
-		Address:                     &address,
-		CentroidLat:                 &lat,
-		CentroidLng:                 &lng,
-		InternationalHubPostalCode:  &intHubPostalCode,
-		InternationalHubCentroidLat: &intHubLat,
-		InternationalHubCentroidLng: &intHubLng,
-		InternationalHubCityCode:    &intHubCityCode,
-		HubCityCode:                 &hubCityCode,
-		HubContactPersonName:        &hubContactName,
-		HubContactPersonPhone:       &hubContactPhone,
-		HubContactPersonEmail:       &hubContactEmail,
-		HubStreet:                   &hubStreet,
-		HubLandmark:                 &hubLandmark,
-		HubCity:                     &hubCity,
-		HubState:                    &hubState,
-		HubCountry:                  &hubCountry,
-		HubLat:                      &hubLat,
-		HubLng:                      &hubLng,
+		PostalCode:  400001,
+		Address:     &address,
+		CentroidLat: &lat,
+		CentroidLng: &lng,
+
+		// Original city code field (renamed from hub_city_code)
+		CityCode: &cityCode,
+
+		// Hub location fields (renamed from international_hub_*)
+		HubPostalCode:  &hubPostalCode,
+		HubCentroidLat: &hubLat,
+		HubCentroidLng: &hubLng,
+		HubCityCode:    &hubCityCode,
+
+		// International hub flag
+		IsInternationalHub: &isInternationalHub,
+
+		// Hub contact and location fields
+		HubContactPersonName:  &hubContactName,
+		HubContactPersonPhone: &hubContactPhone,
+		HubContactPersonEmail: &hubContactEmail,
+		HubStreet:             &hubStreet,
+		HubLandmark:           &hubLandmark,
+		HubCity:               &hubCity,
+		HubState:              &hubState,
+		HubCountry:            &hubCountry,
+		HubLat:                &hubLocationLat,
+		HubLng:                &hubLocationLng,
 	}
 }
 
@@ -414,17 +419,24 @@ func TestNearestHubLocationModelValidation(t *testing.T) {
 }
 
 func TestHubLocationInfoConversion(t *testing.T) {
-	t.Run("conversion includes hub info", func(t *testing.T) {
+	t.Run("conversion includes hub info and contact info", func(t *testing.T) {
 		model := createTestNearestHubLocation()
 		hubLocationInfo := model.ToHubLocationInfo()
 
+		// Test HubInfo (basic hub information)
 		assert.NotNil(t, hubLocationInfo.HubInfo)
-		assert.Equal(t, "Test Contact", *hubLocationInfo.HubInfo.ContactPersonName)
-		assert.Equal(t, "Mumbai", *hubLocationInfo.HubInfo.City)
-		assert.Equal(t, "Maharashtra", *hubLocationInfo.HubInfo.State)
-		assert.Equal(t, "India", *hubLocationInfo.HubInfo.Country)
-		assert.Equal(t, 19.1197, *hubLocationInfo.HubInfo.Lat)
-		assert.Equal(t, 72.8696, *hubLocationInfo.HubInfo.Lng)
+		assert.Equal(t, 400093, *hubLocationInfo.HubInfo.PostalCode)
+		assert.Equal(t, "MUM", *hubLocationInfo.HubInfo.CityCode)
+		assert.Equal(t, true, *hubLocationInfo.HubInfo.IsInternationalHub)
+
+		// Test HubContactInfo (contact and location details)
+		assert.NotNil(t, hubLocationInfo.HubContactInfo)
+		assert.Equal(t, "Test Contact", *hubLocationInfo.HubContactInfo.ContactPersonName)
+		assert.Equal(t, "Mumbai", *hubLocationInfo.HubContactInfo.City)
+		assert.Equal(t, "Maharashtra", *hubLocationInfo.HubContactInfo.State)
+		assert.Equal(t, "India", *hubLocationInfo.HubContactInfo.Country)
+		assert.Equal(t, 19.1197, *hubLocationInfo.HubContactInfo.Lat)
+		assert.Equal(t, 72.8696, *hubLocationInfo.HubContactInfo.Lng)
 	})
 
 	t.Run("conversion without hub info", func(t *testing.T) {
@@ -434,6 +446,7 @@ func TestHubLocationInfoConversion(t *testing.T) {
 		hubLocationInfo := model.ToHubLocationInfo()
 
 		assert.Nil(t, hubLocationInfo.HubInfo)
+		assert.Nil(t, hubLocationInfo.HubContactInfo)
 	})
 }
 

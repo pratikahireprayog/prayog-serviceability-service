@@ -213,8 +213,35 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 	serviceablePartners := make([]models.PartnerV2Response, 0)
 	serviceableCount := 0
 
+	// Collect address information
+	var hubLocationInfo *models.HubLocationInfo
+	var sourceCountryCode, destinationCountryCode string
+	// TODO: Remove the other/common operations from the partner specific code (DHL) and keep it out of that so that can be used for any workflows not only for the international
+	//TODO: Remove the international code out from the partner specific code (DHL) and structure the code or files in such a way so that other workflows can be also writtern and can consume multiple partner as well
 	// Process each partner result
 	for _, result := range partnerResults {
+		// Extract address information from partner metadata if available
+		if result.Result != nil && result.Result.Metadata != nil {
+			// Extract hub location info if available
+			if hubInfo, exists := result.Result.Metadata["hub_info"]; exists {
+				if hubLocationData, ok := hubInfo.(*models.HubLocationInfo); ok {
+					hubLocationInfo = hubLocationData
+				}
+			}
+
+			// Extract country codes if available
+			if sourceCC, exists := result.Result.Metadata["source_country_code"]; exists {
+				if ccStr, ok := sourceCC.(string); ok {
+					sourceCountryCode = ccStr
+				}
+			}
+			if destCC, exists := result.Result.Metadata["destination_country_code"]; exists {
+				if ccStr, ok := destCC.(string); ok {
+					destinationCountryCode = ccStr
+				}
+			}
+		}
+
 		if result.Error != nil {
 			// Add error partner response using database info
 			errorMsg := result.Error.Error()
@@ -346,6 +373,9 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			},
 		},
 	}
+
+	// Add address information if available
+	s.populateAddressInformation(response, req, hubLocationInfo, sourceCountryCode, destinationCountryCode)
 
 	// Add error message when returnOnlyServiceable=true and there are errors or no serviceable partners
 	if s.returnOnlyServiceable && (!isSuccess || hasErrors) && len(partnerResults) > 0 {
@@ -562,4 +592,90 @@ type partnerResult struct {
 type DatabasePartnerInfo struct {
 	PartnerID   *uuid.UUID `json:"partner_id"`
 	PartnerCode string     `json:"partner_code"`
+}
+
+// populateAddressInformation populates address-related fields in the response
+func (s *serviceabilityOrchestrator) populateAddressInformation(
+	response *models.ServiceabilityV2Response,
+	req *models.ServiceabilityV2Request,
+	hubLocationInfo *models.HubLocationInfo,
+	sourceCountryCode, destinationCountryCode string,
+) {
+	// Populate source address
+	if req.SourcePostalCode != nil && sourceCountryCode != "" {
+		response.SourceAddress = &models.AddressInfo{
+			PostalCode:  *req.SourcePostalCode,
+			CountryCode: sourceCountryCode,
+		}
+	}
+
+	// Populate destination address
+	if req.DestinationPostalCode != nil && destinationCountryCode != "" {
+		response.DestinationAddress = &models.AddressInfo{
+			PostalCode:  *req.DestinationPostalCode,
+			CountryCode: destinationCountryCode,
+		}
+	}
+
+	// Populate detailed addresses array with hub information
+	if hubLocationInfo != nil && hubLocationInfo.HubContactInfo != nil {
+		hubAddress := s.buildHubDetailedAddress(hubLocationInfo)
+		if hubAddress != nil {
+			response.Addresses = []models.DetailedAddress{*hubAddress}
+		}
+	}
+}
+
+// buildHubDetailedAddress builds a DetailedAddress from hub location information
+func (s *serviceabilityOrchestrator) buildHubDetailedAddress(hubLocationInfo *models.HubLocationInfo) *models.DetailedAddress {
+	if hubLocationInfo == nil || hubLocationInfo.HubContactInfo == nil {
+		return nil
+	}
+
+	hubContact := hubLocationInfo.HubContactInfo
+	
+	// Build the detailed address with hub information
+	address := &models.DetailedAddress{
+		Type:        "INTERNATIONAL_HUB_ADDRESS",
+		AddressName: "WAREHOUSE",
+	}
+
+	// Set postal code from hub info
+	if hubLocationInfo.HubInfo != nil && hubLocationInfo.HubInfo.PostalCode != nil {
+		address.Zip = fmt.Sprintf("%d", *hubLocationInfo.HubInfo.PostalCode)
+	}
+
+	// Set contact information with safe string handling
+	if hubContact.ContactPersonName != nil {
+		address.Name = *hubContact.ContactPersonName
+	}
+	if hubContact.ContactPersonPhone != nil {
+		address.Phone = *hubContact.ContactPersonPhone
+	}
+	if hubContact.ContactPersonEmail != nil {
+		address.Email = *hubContact.ContactPersonEmail
+	}
+
+	// Set address information with safe string handling
+	if hubContact.Street != nil {
+		address.Street = *hubContact.Street
+	}
+	if hubContact.Landmark != nil {
+		address.Landmark = *hubContact.Landmark
+	}
+	if hubContact.City != nil {
+		address.City = *hubContact.City
+	}
+	if hubContact.State != nil {
+		address.State = *hubContact.State
+	}
+	if hubContact.Country != nil {
+		address.Country = *hubContact.Country
+	}
+
+	// Set coordinates
+	address.Latitude = hubContact.Lat
+	address.Longitude = hubContact.Lng
+
+	return address
 }

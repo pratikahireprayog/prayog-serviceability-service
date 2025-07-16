@@ -6,19 +6,26 @@ import (
 	"gorm.io/gorm"
 )
 
-// NearestHubLocation represents the mapping between postal codes and their nearest international hub
+// NearestHubLocation represents the mapping between postal codes and their nearest hub
 type NearestHubLocation struct {
-	PostalCode                  int      `json:"postal_code" gorm:"primaryKey;column:postal_code"`
-	Address                     *string  `json:"address,omitempty" gorm:"type:text;column:address"`
-	CentroidLat                 *float64 `json:"centroid_lat,omitempty" gorm:"type:decimal(9,6);column:centroid_lat"`
-	CentroidLng                 *float64 `json:"centroid_lng,omitempty" gorm:"type:decimal(9,6);column:centroid_lng"`
-	InternationalHubPostalCode  *int     `json:"international_hub_postal_code,omitempty" gorm:"column:international_hub_postal_code"`
-	InternationalHubCentroidLat *float64 `json:"international_hub_centroid_lat,omitempty" gorm:"type:decimal(9,6);column:international_hub_centroid_lat"`
-	InternationalHubCentroidLng *float64 `json:"international_hub_centroid_lng,omitempty" gorm:"type:decimal(9,6);column:international_hub_centroid_lng"`
-	InternationalHubCityCode    *string  `json:"international_hub_city_code,omitempty" gorm:"type:text;column:international_hub_city_code"`
-	HubCityCode                 *string  `json:"hub_city_code,omitempty" gorm:"type:text;column:hub_city_code"`
+	PostalCode  int      `json:"postal_code" gorm:"primaryKey;column:postal_code"`
+	Address     *string  `json:"address,omitempty" gorm:"type:text;column:address"`
+	CentroidLat *float64 `json:"centroid_lat,omitempty" gorm:"type:decimal(9,6);column:centroid_lat"`
+	CentroidLng *float64 `json:"centroid_lng,omitempty" gorm:"type:decimal(9,6);column:centroid_lng"`
 
-	// New hub contact and location fields
+	// Original city code field (renamed from hub_city_code)
+	CityCode *string `json:"city_code,omitempty" gorm:"type:text;column:city_code"`
+
+	// Hub location fields (renamed from international_hub_*)
+	HubPostalCode  *int     `json:"hub_postal_code,omitempty" gorm:"column:hub_postal_code"`
+	HubCentroidLat *float64 `json:"hub_centroid_lat,omitempty" gorm:"type:decimal(9,6);column:hub_centroid_lat"`
+	HubCentroidLng *float64 `json:"hub_centroid_lng,omitempty" gorm:"type:decimal(9,6);column:hub_centroid_lng"`
+	HubCityCode    *string  `json:"hub_city_code,omitempty" gorm:"type:text;column:hub_city_code"`
+
+	// International hub flag
+	IsInternationalHub *bool `json:"is_international_hub,omitempty" gorm:"column:is_international_hub;default:false"`
+
+	// Hub contact and location fields
 	HubContactPersonName  *string  `json:"hub_contact_person_name,omitempty" gorm:"type:text;column:hub_contact_person_name"`
 	HubContactPersonPhone *string  `json:"hub_contact_person_phone,omitempty" gorm:"type:text;column:hub_contact_person_phone"`
 	HubContactPersonEmail *string  `json:"hub_contact_person_email,omitempty" gorm:"type:text;column:hub_contact_person_email"`
@@ -53,14 +60,14 @@ func (n *NearestHubLocation) ValidateBusinessRules() error {
 		return fmt.Errorf("centroid longitude must be between -180 and 180")
 	}
 
-	// Validate international hub latitude range if provided
-	if n.InternationalHubCentroidLat != nil && (*n.InternationalHubCentroidLat < -90 || *n.InternationalHubCentroidLat > 90) {
-		return fmt.Errorf("international hub centroid latitude must be between -90 and 90")
+	// Validate hub centroid latitude range if provided
+	if n.HubCentroidLat != nil && (*n.HubCentroidLat < -90 || *n.HubCentroidLat > 90) {
+		return fmt.Errorf("hub centroid latitude must be between -90 and 90")
 	}
 
-	// Validate international hub longitude range if provided
-	if n.InternationalHubCentroidLng != nil && (*n.InternationalHubCentroidLng < -180 || *n.InternationalHubCentroidLng > 180) {
-		return fmt.Errorf("international hub centroid longitude must be between -180 and 180")
+	// Validate hub centroid longitude range if provided
+	if n.HubCentroidLng != nil && (*n.HubCentroidLng < -180 || *n.HubCentroidLng > 180) {
+		return fmt.Errorf("hub centroid longitude must be between -180 and 180")
 	}
 
 	// Validate hub latitude range if provided
@@ -73,9 +80,9 @@ func (n *NearestHubLocation) ValidateBusinessRules() error {
 		return fmt.Errorf("hub longitude must be between -180 and 180")
 	}
 
-	// Validate international hub postal code is positive if provided
-	if n.InternationalHubPostalCode != nil && *n.InternationalHubPostalCode <= 0 {
-		return fmt.Errorf("international hub postal code must be positive")
+	// Validate hub postal code is positive if provided
+	if n.HubPostalCode != nil && *n.HubPostalCode <= 0 {
+		return fmt.Errorf("hub postal code must be positive")
 	}
 
 	// Validate email format if provided
@@ -116,21 +123,22 @@ type HubLocationInfo struct {
 	Address     *string  `json:"address,omitempty"`
 	CentroidLat *float64 `json:"centroid_lat,omitempty"`
 	CentroidLng *float64 `json:"centroid_lng,omitempty"`
-	HubCityCode *string  `json:"hub_city_code,omitempty"`
+	CityCode    *string  `json:"city_code,omitempty"`
 
-	// International hub information
-	InternationalHub *InternationalHubInfo `json:"international_hub,omitempty"`
+	// Hub information
+	HubInfo *HubInfo `json:"hub_info,omitempty"`
 
 	// Hub contact and location information
-	HubInfo *HubContactInfo `json:"hub_info,omitempty"`
+	HubContactInfo *HubContactInfo `json:"hub_contact_info,omitempty"`
 }
 
-// InternationalHubInfo represents international hub information
-type InternationalHubInfo struct {
-	PostalCode  *int     `json:"postal_code,omitempty"`
-	CentroidLat *float64 `json:"centroid_lat,omitempty"`
-	CentroidLng *float64 `json:"centroid_lng,omitempty"`
-	CityCode    *string  `json:"city_code,omitempty"`
+// HubInfo represents hub information
+type HubInfo struct {
+	PostalCode         *int     `json:"postal_code,omitempty"`
+	CentroidLat        *float64 `json:"centroid_lat,omitempty"`
+	CentroidLng        *float64 `json:"centroid_lng,omitempty"`
+	CityCode           *string  `json:"city_code,omitempty"`
+	IsInternationalHub *bool    `json:"is_international_hub,omitempty"`
 }
 
 // HubContactInfo represents hub contact and location information
@@ -149,27 +157,28 @@ type HubContactInfo struct {
 
 // ToHubLocationInfo converts NearestHubLocation to HubLocationInfo
 func (n *NearestHubLocation) ToHubLocationInfo() *HubLocationInfo {
-	hubInfo := &HubLocationInfo{
+	hubLocationInfo := &HubLocationInfo{
 		PostalCode:  n.PostalCode,
 		Address:     n.Address,
 		CentroidLat: n.CentroidLat,
 		CentroidLng: n.CentroidLng,
-		HubCityCode: n.HubCityCode,
+		CityCode:    n.CityCode,
 	}
 
-	// Add international hub info if available
-	if n.InternationalHubPostalCode != nil {
-		hubInfo.InternationalHub = &InternationalHubInfo{
-			PostalCode:  n.InternationalHubPostalCode,
-			CentroidLat: n.InternationalHubCentroidLat,
-			CentroidLng: n.InternationalHubCentroidLng,
-			CityCode:    n.InternationalHubCityCode,
+	// Add hub info if available
+	if n.HubPostalCode != nil {
+		hubLocationInfo.HubInfo = &HubInfo{
+			PostalCode:         n.HubPostalCode,
+			CentroidLat:        n.HubCentroidLat,
+			CentroidLng:        n.HubCentroidLng,
+			CityCode:           n.HubCityCode,
+			IsInternationalHub: n.IsInternationalHub,
 		}
 	}
 
 	// Add hub contact info if available
 	if n.HubContactPersonName != nil || n.HubCity != nil || n.HubLat != nil {
-		hubInfo.HubInfo = &HubContactInfo{
+		hubLocationInfo.HubContactInfo = &HubContactInfo{
 			ContactPersonName:  n.HubContactPersonName,
 			ContactPersonPhone: n.HubContactPersonPhone,
 			ContactPersonEmail: n.HubContactPersonEmail,
@@ -183,5 +192,5 @@ func (n *NearestHubLocation) ToHubLocationInfo() *HubLocationInfo {
 		}
 	}
 
-	return hubInfo
+	return hubLocationInfo
 }

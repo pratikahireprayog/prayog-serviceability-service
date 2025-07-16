@@ -124,11 +124,11 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	}
 
 	a.logger.WithFields(logrus.Fields{
-		"partner":                       "DHL",
-		"source_pincode":                sourcePincode,
-		"hub_postal_code":               hubLocation.PostalCode,
-		"international_hub_postal_code": hubLocation.InternationalHub.PostalCode,
-		"international_hub_city_code":   hubLocation.InternationalHub.CityCode,
+		"partner":              "DHL",
+		"source_pincode":       sourcePincode,
+		"hub_postal_code":      hubLocation.PostalCode,
+		"hub_info_postal_code": hubLocation.HubInfo.PostalCode,
+		"hub_city_code":        hubLocation.HubInfo.CityCode,
 	}).Info("Found nearest hub for source postal code")
 
 	// Step 3: Get country codes for source and destination
@@ -237,17 +237,17 @@ func (a *Adapter) findNearestHub(ctx context.Context, postalCode string) (*model
 		return nil, fmt.Errorf("failed to find nearest hub for postal code %s: %w", postalCode, err)
 	}
 
-	// Validate that international hub information is available
-	if hubLocation.InternationalHub == nil {
-		return nil, fmt.Errorf("no international hub found for postal code %s", postalCode)
+	// Validate that hub information is available
+	if hubLocation.HubInfo == nil {
+		return nil, fmt.Errorf("no hub found for postal code %s", postalCode)
 	}
 
 	a.logger.WithFields(logrus.Fields{
-		"partner":                       "DHL",
-		"postal_code":                   postalCode,
-		"hub_postal_code":               hubLocation.PostalCode,
-		"international_hub_postal_code": hubLocation.InternationalHub.PostalCode,
-		"international_hub_city_code":   hubLocation.InternationalHub.CityCode,
+		"partner":              "DHL",
+		"postal_code":          postalCode,
+		"hub_postal_code":      hubLocation.PostalCode,
+		"hub_info_postal_code": hubLocation.HubInfo.PostalCode,
+		"hub_city_code":        hubLocation.HubInfo.CityCode,
 	}).Debug("Successfully found nearest hub")
 
 	return hubLocation, nil
@@ -300,8 +300,8 @@ func (a *Adapter) resolveCountryCodes(ctx context.Context, sourcePincode, destin
 
 // getShipperCityName gets the shipper city name from hub location info
 func (a *Adapter) getShipperCityName(hubLocation *models.HubLocationInfo) string {
-	if hubLocation != nil && hubLocation.InternationalHub != nil && hubLocation.InternationalHub.CityCode != nil {
-		return *hubLocation.InternationalHub.CityCode
+	if hubLocation != nil && hubLocation.HubInfo != nil && hubLocation.HubInfo.CityCode != nil {
+		return *hubLocation.HubInfo.CityCode
 	}
 	return "Unknown City" // Fallback if hub info is not available
 }
@@ -435,10 +435,10 @@ func (a *Adapter) createInternationalRatesRequest(ctx context.Context, request *
 	shipperCityName := a.getShipperCityName(hubLocation)
 	receiverCityName := a.getReceiverCityName(ctx, destinationPincode)
 
-	// Get international hub postal code for shipper details
+	// Get hub postal code for shipper details
 	shipperPostalCode := sourcePincode // fallback to source if hub info not available
-	if hubLocation != nil && hubLocation.InternationalHub != nil && hubLocation.InternationalHub.PostalCode != nil {
-		shipperPostalCode = strconv.Itoa(*hubLocation.InternationalHub.PostalCode)
+	if hubLocation != nil && hubLocation.HubInfo != nil && hubLocation.HubInfo.PostalCode != nil {
+		shipperPostalCode = strconv.Itoa(*hubLocation.HubInfo.PostalCode)
 	}
 
 	// Create rates request with dynamic values
