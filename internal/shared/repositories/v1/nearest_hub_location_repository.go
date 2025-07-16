@@ -83,6 +83,21 @@ func (r *nearestHubLocationRepository) GetByFilters(ctx context.Context, filters
 		query = query.Where("international_hub_city_code IN ?", filters.InternationalHubCityCodes)
 	}
 
+	// Apply hub city filters if provided
+	if len(filters.HubCities) > 0 {
+		query = query.Where("hub_city IN ?", filters.HubCities)
+	}
+
+	// Apply hub state filters if provided
+	if len(filters.HubStates) > 0 {
+		query = query.Where("hub_state IN ?", filters.HubStates)
+	}
+
+	// Apply hub country filters if provided
+	if len(filters.HubCountries) > 0 {
+		query = query.Where("hub_country IN ?", filters.HubCountries)
+	}
+
 	err := query.Find(&hubLocations).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nearest hub locations by filters: %w", err)
