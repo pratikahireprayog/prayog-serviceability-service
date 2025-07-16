@@ -6,6 +6,8 @@ import (
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/models/v1"
+
+	"github.com/google/uuid"
 )
 
 // MockPartnerAdapter implements the common.PartnerAdapter interface for testing
@@ -34,8 +36,9 @@ type MockPartnerAdapter struct {
 	GetMetricsCalled          bool
 
 	// Last call parameters
-	LastContext context.Context
-	LastRequest *models.ServiceabilityV2Request
+	LastContext     context.Context
+	LastRequest     *models.ServiceabilityV2Request
+	LastPartnerInfo common.PartnerInfo
 }
 
 // NewMockPartnerAdapter creates a new mock partner adapter
@@ -74,31 +77,29 @@ func (m *MockPartnerAdapter) GetAdapterType() common.AdapterType {
 }
 
 // CheckServiceability mocks the serviceability check
-func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+func (m *MockPartnerAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	m.CheckServiceabilityCalled = true
 	m.LastContext = ctx
-	m.LastRequest = req
+	m.LastRequest = request
+	m.LastPartnerInfo = partnerInfo
 
 	if m.ServiceabilityError != nil {
 		return nil, m.ServiceabilityError
 	}
 
 	if m.ServiceabilityResult != nil {
-		return m.ServiceabilityResult, nil
+		// Copy the result and update with actual partnerInfo
+		result := *m.ServiceabilityResult
+		result.PartnerID = partnerInfo.PartnerID
+		result.PartnerCode = partnerInfo.PartnerCode
+		if partnerInfo.PartnerCode != "" {
+			result.PartnerName = "Mock " + partnerInfo.PartnerCode
+		}
+		return &result, nil
 	}
 
 	// Default response
-	return &common.PartnerServiceabilityResult{
-		PartnerID:     partnerInfo.PartnerID,
-		PartnerCode:   partnerInfo.PartnerCode,
-		
-		Services:      []models.ServiceV2{},
-		Capabilities:  make(map[string]interface{}),
-		ResponseTime:  50 * time.Millisecond,
-		Metadata: map[string]interface{}{
-			"mock": true,
-		},
-	}, nil
+	return m.CreateServiceableResult(), nil
 }
 
 // IsHealthy returns the health status
@@ -128,12 +129,12 @@ func (m *MockPartnerAdapter) Shutdown(ctx context.Context) error {
 	return m.ShutdownError
 }
 
-// SetServiceabilityResult sets the result to return from CheckServiceability
+// SetServiceabilityResult sets the serviceability result to return
 func (m *MockPartnerAdapter) SetServiceabilityResult(result *common.PartnerServiceabilityResult) {
 	m.ServiceabilityResult = result
 }
 
-// SetServiceabilityError sets the error to return from CheckServiceability
+// SetServiceabilityError sets the serviceability error to return
 func (m *MockPartnerAdapter) SetServiceabilityError(err error) {
 	m.ServiceabilityError = err
 }
@@ -141,6 +142,11 @@ func (m *MockPartnerAdapter) SetServiceabilityError(err error) {
 // SetHealthy sets the health status
 func (m *MockPartnerAdapter) SetHealthy(healthy bool) {
 	m.Healthy = healthy
+	if healthy {
+		m.Metrics.HealthStatus = "healthy"
+	} else {
+		m.Metrics.HealthStatus = "unhealthy"
+	}
 }
 
 // Reset resets all call tracking
@@ -156,9 +162,13 @@ func (m *MockPartnerAdapter) Reset() {
 
 // CreateServiceableResult creates a serviceable result for testing
 func (m *MockPartnerAdapter) CreateServiceableResult() *common.PartnerServiceabilityResult {
+	// Create a mock UUID for testing
+	partnerID := uuid.New()
+
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   m.PartnerCode,
-		
+		PartnerID:   &partnerID,
+		PartnerCode: m.PartnerCode,
+		PartnerName: m.PartnerName,
 		Services: []models.ServiceV2{
 			{
 				ServiceCode: "express",
@@ -193,16 +203,80 @@ func (m *MockPartnerAdapter) CreateServiceableResult() *common.PartnerServiceabi
 
 // CreateNonServiceableResult creates a non-serviceable result for testing
 func (m *MockPartnerAdapter) CreateNonServiceableResult() *common.PartnerServiceabilityResult {
+	partnerID := uuid.New()
 	errorMsg := "Not serviceable in this location"
+
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   m.PartnerCode,
-		
-		Services:      []models.ServiceV2{},
-		Capabilities:  make(map[string]interface{}),
-		ErrorMessage:  &errorMsg,
-		ResponseTime:  50 * time.Millisecond,
+		PartnerID:    &partnerID,
+		PartnerCode:  m.PartnerCode,
+		PartnerName:  m.PartnerName,
+		Services:     []models.ServiceV2{},
+		Capabilities: make(map[string]interface{}),
+		ErrorMessage: &errorMsg,
+		ResponseTime: 50 * time.Millisecond,
 		Metadata: map[string]interface{}{
 			"mock": true,
+		},
+	}
+}
+
+// CreateDHLServiceableResult creates a DHL-specific serviceable result with flattened capabilities
+func (m *MockPartnerAdapter) CreateDHLServiceableResult() *common.PartnerServiceabilityResult {
+	partnerID := uuid.New()
+
+	return &common.PartnerServiceabilityResult{
+		PartnerID:   &partnerID,
+		PartnerCode: m.PartnerCode,
+		PartnerName: m.PartnerName,
+		Services:    []models.ServiceV2{}, // DHL doesn't return detailed services in serviceability check
+		// Flattened DHL capabilities structure
+		Capabilities: map[string]interface{}{
+			// Pickup capabilities (flattened)
+			"next_business_day":                          true,
+			"local_cutoff_date_and_time":                 "2024-01-15T12:00:00GMT+05:30",
+			"pickup_earliest":                            "2024-01-15T09:00:00GMT+05:30",
+			"pickup_latest":                              "2024-01-15T17:00:00GMT+05:30",
+			"pickup_cutoff_same_day_outbound_processing": "2024-01-15T12:00:00GMT+05:30",
+			"origin_service_area_code":                   "DEL",
+			"origin_facility_area_code":                  "DEL01",
+			"pickup_additional_days":                     0,
+			"pickup_day_of_week":                         2,
+			// Delivery capabilities (flattened)
+			"delivery_type_code":               "QDDC",
+			"estimated_delivery_date_and_time": "2024-01-17T10:00:00GMT+05:30",
+			"destination_service_area_code":    "BOM",
+			"destination_facility_area_code":   "BOM01",
+			"delivery_additional_days":         0,
+			"delivery_day_of_week":             4,
+			"total_transit_days":               2,
+		},
+		ResponseTime: 150 * time.Millisecond,
+		Metadata: map[string]interface{}{
+			"mock":          true,
+			"partner":       "DHL",
+			"product_count": 1,
+			"flow":          "international",
+		},
+	}
+}
+
+// CreateDHLNonServiceableResult creates a DHL-specific non-serviceable result
+func (m *MockPartnerAdapter) CreateDHLNonServiceableResult() *common.PartnerServiceabilityResult {
+	partnerID := uuid.New()
+	errorMsg := "DHL validation failed: destination postal code is required for DHL shipments"
+
+	return &common.PartnerServiceabilityResult{
+		PartnerID:    &partnerID,
+		PartnerCode:  m.PartnerCode,
+		PartnerName:  m.PartnerName,
+		Services:     []models.ServiceV2{},
+		Capabilities: make(map[string]interface{}),
+		ErrorMessage: &errorMsg,
+		ResponseTime: 50 * time.Millisecond,
+		Metadata: map[string]interface{}{
+			"mock":   true,
+			"reason": "DHL validation failed",
+			"step":   "validation",
 		},
 	}
 }
@@ -210,12 +284,12 @@ func (m *MockPartnerAdapter) CreateNonServiceableResult() *common.PartnerService
 // CreateCleanNonServiceableResult creates a non-serviceable result without error messages for testing
 func (m *MockPartnerAdapter) CreateCleanNonServiceableResult() *common.PartnerServiceabilityResult {
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   m.PartnerCode,
-		
-		Services:      []models.ServiceV2{},
-		Capabilities:  make(map[string]interface{}),
-		ErrorMessage:  nil, // No error message - truly non-serviceable without validation errors
-		ResponseTime:  50 * time.Millisecond,
+		PartnerCode: m.PartnerCode,
+
+		Services:     []models.ServiceV2{},
+		Capabilities: make(map[string]interface{}),
+		ErrorMessage: nil, // No error message - truly non-serviceable without validation errors
+		ResponseTime: 50 * time.Millisecond,
 		Metadata: map[string]interface{}{
 			"mock": true,
 		},
@@ -226,13 +300,13 @@ func (m *MockPartnerAdapter) CreateCleanNonServiceableResult() *common.PartnerSe
 func (m *MockPartnerAdapter) CreateErrorResult(err error) *common.PartnerServiceabilityResult {
 	errorMsg := err.Error()
 	return &common.PartnerServiceabilityResult{
-		PartnerCode:   m.PartnerCode,
-		
-		Services:      []models.ServiceV2{},
-		Capabilities:  make(map[string]interface{}),
-		Error:         err,
-		ErrorMessage:  &errorMsg,
-		ResponseTime:  25 * time.Millisecond,
+		PartnerCode: m.PartnerCode,
+
+		Services:     []models.ServiceV2{},
+		Capabilities: make(map[string]interface{}),
+		Error:        err,
+		ErrorMessage: &errorMsg,
+		ResponseTime: 25 * time.Millisecond,
 		Metadata: map[string]interface{}{
 			"mock": true,
 		},

@@ -169,16 +169,18 @@ func TestValidateV2Request(t *testing.T) {
 				PostalCode:     stringPtr("110001"),
 				ParcelCategory: stringPtr("international"),
 				CountryCode:    stringPtr("US"),
-				Package: &models.Package{
-					Weight: &models.Weight{
-						Value: 1.0,
-						Unit:  "kg",
-					},
-					Dimensions: &models.Dimensions{
-						Length: 10.0,
-						Width:  10.0,
-						Height: 10.0,
-						Unit:   "cm",
+				Packages: []models.Package{
+					{
+						Weight: &models.Weight{
+							Value: 1.0,
+							Unit:  "kg",
+						},
+						Dimensions: &models.Dimensions{
+							Length: 10.0,
+							Width:  10.0,
+							Height: 10.0,
+							Unit:   "cm",
+						},
 					},
 				},
 			},
@@ -389,6 +391,3 @@ func TestValidateV2RequestNilValues(t *testing.T) {
 }
 
 // Helper function to create string pointers
-func stringPtr(s string) *string {
-	return &s
-}

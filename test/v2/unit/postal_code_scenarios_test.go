@@ -144,9 +144,9 @@ func TestPostalCodeScenarios(t *testing.T) {
 				mockFactory.SetSupportedPartners([]string{"shipyaari"})
 				adapter := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "shipyaari",
-					
-					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+					PartnerCode: "shipyaari",
+
+					Services: []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				mockFactory.SetAdapter("shipyaari", adapter)
 			}
@@ -194,16 +194,18 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			request: &models.ServiceabilityV2Request{
 				CountryCode: stringPtr("IN"),
 				PostalCode:  stringPtr("110001"),
-				Package: &models.Package{
-					Weight: &models.Weight{
-						Value: 1.5,
-						Unit:  "kg",
-					},
-					Dimensions: &models.Dimensions{
-						Length: 10.0,
-						Width:  8.0,
-						Height: 5.0,
-						Unit:   "cm",
+				Packages: []models.Package{
+					{
+						Weight: &models.Weight{
+							Value: 1.5,
+							Unit:  "kg",
+						},
+						Dimensions: &models.Dimensions{
+							Length: 10.0,
+							Width:  8.0,
+							Height: 5.0,
+							Unit:   "cm",
+						},
 					},
 				},
 			},
@@ -219,12 +221,12 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 				CountryCode:           stringPtr("IN"),
 				SourcePostalCode:      stringPtr("110001"),
 				DestinationPostalCode: stringPtr("110002"),
-				Package: &models.Package{
+				Packages: []models.Package{{
 					Weight: &models.Weight{
 						Value: 2.0,
 						Unit:  "kg",
 					},
-				},
+				}},
 			},
 			verify: func(t *testing.T, response *models.ServiceabilityV2Response) {
 				assert.True(t, response.Success)
@@ -238,14 +240,14 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 				CountryCode:      stringPtr("IN"),
 				PostalCode:       stringPtr("110002"),
 				SourcePostalCode: stringPtr("110001"),
-				Package: &models.Package{
+				Packages: []models.Package{{
 					Dimensions: &models.Dimensions{
 						Length: 15.0,
 						Width:  12.0,
 						Height: 8.0,
 						Unit:   "cm",
 					},
-				},
+				}},
 			},
 			verify: func(t *testing.T, response *models.ServiceabilityV2Response) {
 				assert.True(t, response.Success)
@@ -268,9 +270,9 @@ func TestPostalCodeWithPackageInformation(t *testing.T) {
 			mockFactory.SetSupportedPartners([]string{"shipyaari"})
 			adapter := mocks.NewMockPartnerAdapter("shipyaari")
 			adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-				PartnerCode:   "shipyaari",
-				
-				Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+				PartnerCode: "shipyaari",
+
+				Services: []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 			})
 			mockFactory.SetAdapter("shipyaari", adapter)
 
@@ -317,17 +319,17 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 				// Setup serviceable partners
 				adapter1 := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter1.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "shipyaari",
-					
-					Services:      []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
+					PartnerCode: "shipyaari",
+
+					Services: []models.ServiceV2{{ServiceCode: "SDD", ServiceName: "Same Day Delivery"}},
 				})
 				factory.SetAdapter("shipyaari", adapter1)
 
 				adapter2 := mocks.NewMockPartnerAdapter("smile_ecom")
 				adapter2.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "smile_ecom",
-					
-					Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
+					PartnerCode: "smile_ecom",
+
+					Services: []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 				})
 				factory.SetAdapter("smile_ecom", adapter2)
 			},
@@ -347,9 +349,9 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 
 				adapter := mocks.NewMockPartnerAdapter("smile_courier")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "smile_courier",
-					
-					Services:      []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
+					PartnerCode: "smile_courier",
+
+					Services: []models.ServiceV2{{ServiceCode: "NDD", ServiceName: "Next Day Delivery"}},
 				})
 				factory.SetAdapter("smile_courier", adapter)
 			},
@@ -368,9 +370,9 @@ func TestPostalCodeWithParcelCategory(t *testing.T) {
 
 				adapter := mocks.NewMockPartnerAdapter("shipyaari")
 				adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "shipyaari",
-					
-					Services:      []models.ServiceV2{},
+					PartnerCode: "shipyaari",
+
+					Services: []models.ServiceV2{},
 				})
 				factory.SetAdapter("shipyaari", adapter)
 			},

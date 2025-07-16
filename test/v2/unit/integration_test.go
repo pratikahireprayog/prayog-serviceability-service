@@ -35,7 +35,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				SourcePostalCode:      stringPtr("10001"),
 				DestinationPostalCode: stringPtr("90210"),
 				ParcelCategory:        stringPtr("international"),
-				Package: &models.Package{
+				Packages: []models.Package{{
 					Weight: &models.Weight{
 						Value: 2.5,
 						Unit:  "kg",
@@ -46,7 +46,7 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 						Height: 15.0,
 						Unit:   "cm",
 					},
-				},
+				}},
 			},
 			setupMocks: func(factory *mocks.MockPartnerAdapterFactory, repo *mocks.MockPartnerAttributeMapRepository) {
 				factory.SetSupportedPartners([]string{"dhl", "shipyaari"})
@@ -70,9 +70,9 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				// Shipyaari doesn't support international
 				shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
 				shipyaariAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "shipyaari",
-					
-					Services:      []models.ServiceV2{},
+					PartnerCode: "shipyaari",
+
+					Services: []models.ServiceV2{},
 					Capabilities: map[string]interface{}{
 						"international": false,
 					},
@@ -111,8 +111,8 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 
 				dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
 				dhlAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-					PartnerCode:   "dhl",
-					
+					PartnerCode: "dhl",
+
 					Services: []models.ServiceV2{
 						{ServiceCode: "EXPRESS", ServiceName: "DHL Express"},
 					},
@@ -146,9 +146,9 @@ func TestIntegration_EndToEndFlow_InternationalRequest(t *testing.T) {
 				for _, partnerCode := range []string{"shipyaari", "smile_ecom"} {
 					adapter := mocks.NewMockPartnerAdapter(partnerCode)
 					adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-						PartnerCode:   partnerCode,
-						
-						Services:      []models.ServiceV2{},
+						PartnerCode: partnerCode,
+
+						Services: []models.ServiceV2{},
 						Capabilities: map[string]interface{}{
 							"international":       false,
 							"unsupported_country": "ZZ",
@@ -222,8 +222,8 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	// DHL - International specialist
 	dhlAdapter := mocks.NewMockPartnerAdapter("dhl")
 	dhlAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "dhl",
-		
+		PartnerCode: "dhl",
+
 		Services: []models.ServiceV2{
 			{ServiceCode: "EXPRESS", ServiceName: "DHL Express"},
 			{ServiceCode: "ECONOMY", ServiceName: "DHL Economy"},
@@ -241,8 +241,8 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	// Shipyaari - Domestic specialist
 	shipyaariAdapter := mocks.NewMockPartnerAdapter("shipyaari")
 	shipyaariAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "shipyaari",
-		
+		PartnerCode: "shipyaari",
+
 		Services: []models.ServiceV2{
 			{ServiceCode: "SDD", ServiceName: "Same Day Delivery"},
 			{ServiceCode: "NDD", ServiceName: "Next Day Delivery"},
@@ -259,8 +259,8 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	// Smile Ecom - E-commerce focused
 	smileEcomAdapter := mocks.NewMockPartnerAdapter("smile_ecom")
 	smileEcomAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "smile_ecom",
-		
+		PartnerCode: "smile_ecom",
+
 		Services: []models.ServiceV2{
 			{ServiceCode: "STANDARD", ServiceName: "Standard Delivery"},
 			{ServiceCode: "EXPRESS", ServiceName: "Express Delivery"},
@@ -277,8 +277,8 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 	// Smile Courier - General courier
 	smileCourierAdapter := mocks.NewMockPartnerAdapter("smile_courier")
 	smileCourierAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "smile_courier",
-		
+		PartnerCode: "smile_courier",
+
 		Services: []models.ServiceV2{
 			{ServiceCode: "REGULAR", ServiceName: "Regular Delivery"},
 		},
@@ -305,7 +305,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 		DestinationPostalCode: stringPtr("400001"),
 		ParcelCategory:        stringPtr("ecomm"),
 		ProductType:           stringPtr("electronics"),
-		Package: &models.Package{
+		Packages: []models.Package{{
 			Weight: &models.Weight{
 				Value: 1.5,
 				Unit:  "kg",
@@ -316,7 +316,7 @@ func TestIntegration_CompleteWorkflow(t *testing.T) {
 				Height: 10.0,
 				Unit:   "cm",
 			},
-		},
+		}},
 	}
 
 	// Execute
@@ -374,9 +374,9 @@ func TestIntegration_ErrorRecoveryAndResilience(t *testing.T) {
 	// Working partner
 	workingAdapter := mocks.NewMockPartnerAdapter("working_partner")
 	workingAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "working_partner",
-		
-		Services:      []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
+		PartnerCode: "working_partner",
+
+		Services: []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
 	})
 	mockFactory.SetAdapter("working_partner", workingAdapter)
 
@@ -388,10 +388,10 @@ func TestIntegration_ErrorRecoveryAndResilience(t *testing.T) {
 	// Slow partner (will be handled by timeout)
 	slowAdapter := mocks.NewMockPartnerAdapter("slow_partner")
 	slowAdapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-		PartnerCode:   "slow_partner",
-		
-		Services:      []models.ServiceV2{{ServiceCode: "SLOW", ServiceName: "Slow Service"}},
-		ResponseTime:  10 * time.Second, // Very slow
+		PartnerCode: "slow_partner",
+
+		Services:     []models.ServiceV2{{ServiceCode: "SLOW", ServiceName: "Slow Service"}},
+		ResponseTime: 10 * time.Second, // Very slow
 	})
 	mockFactory.SetAdapter("slow_partner", slowAdapter)
 
@@ -446,9 +446,9 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 	for _, partnerCode := range []string{"partner1", "partner2"} {
 		adapter := mocks.NewMockPartnerAdapter(partnerCode)
 		adapter.SetServiceabilityResult(&common.PartnerServiceabilityResult{
-			PartnerCode:   partnerCode,
-			
-			Services:      []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
+			PartnerCode: partnerCode,
+
+			Services: []models.ServiceV2{{ServiceCode: "STANDARD", ServiceName: "Standard"}},
 		})
 		mockFactory.SetAdapter(partnerCode, adapter)
 	}
@@ -590,7 +590,7 @@ func TestIntegration_ReturnOnlyServiceablePartners_EndToEnd(t *testing.T) {
 				PostalCode:     stringPtr("266001"),
 				CountryCode:    stringPtr("IN"),
 				ParcelCategory: stringPtr("international"),
-				Package: &models.Package{
+				Packages: []models.Package{{
 					Weight: &models.Weight{
 						Value: 1.5,
 						Unit:  "kg",
@@ -601,7 +601,7 @@ func TestIntegration_ReturnOnlyServiceablePartners_EndToEnd(t *testing.T) {
 						Height: 10.0,
 						Unit:   "cm",
 					},
-				},
+				}},
 			}
 
 			// Execute the complete workflow

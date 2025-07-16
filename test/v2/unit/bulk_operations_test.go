@@ -376,12 +376,12 @@ func TestBulkCheckServiceability_MixedRequestTypes(t *testing.T) {
 			{
 				CountryCode: stringPtr("IN"),
 				PostalCode:  stringPtr("110005"),
-				Package: &models.Package{
+				Packages: []models.Package{{
 					Weight: &models.Weight{
 						Value: 1.5,
 						Unit:  "kg",
 					},
-				},
+				}},
 			},
 		},
 	}
