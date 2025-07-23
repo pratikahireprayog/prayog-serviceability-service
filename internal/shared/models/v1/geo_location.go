@@ -27,6 +27,7 @@ type GeoLocation struct {
 	Elevation        *int       `json:"elevation,omitempty" gorm:"column:elevation"`
 	DEM              *int       `json:"dem,omitempty" gorm:"column:dem"`
 	Timezone         *string    `json:"timezone,omitempty" gorm:"size:40;column:timezone"`
+	IsActive         bool       `json:"is_active" gorm:"column:is_active;default:false;index"`
 	ModificationDate time.Time  `json:"modification_date" gorm:"column:modification_date;default:CURRENT_TIMESTAMP"`
 	CreatedAt        time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UpdatedAt        time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
@@ -38,9 +39,9 @@ func (GeoLocation) TableName() string {
 	return "geo_locations"
 }
 
-// DefaultScope applies default query conditions to filter out soft-deleted records
+// DefaultScope applies default query conditions to filter out soft-deleted and inactive records
 func (GeoLocation) DefaultScope(db *gorm.DB) *gorm.DB {
-	return db.Where("deleted_at IS NULL")
+	return db.Where("deleted_at IS NULL AND is_active = ?", true)
 }
 
 // SoftDelete marks the geo location as deleted without removing it from database
