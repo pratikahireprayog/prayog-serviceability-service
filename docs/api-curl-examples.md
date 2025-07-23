@@ -16,6 +16,7 @@ This document provides comprehensive curl examples for all Prayog Serviceability
 - [Location Aliases (Nested)](#location-aliases-nested)
 - [Location Aliases (Standalone)](#location-aliases-standalone)
 - [Partner Location Coverage](#partner-location-coverage)
+- [Partner Attributes](#partner-attributes)
 - [Serviceability](#serviceability)
 - [Common Query Parameters](#common-query-parameters)
 
@@ -39,7 +40,7 @@ export BASE_URL="http://localhost:8080"
 ```bash
 # Health check (no authentication required)
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/ping" \
+  "${{serviceability_base_url}}/serviceability/ping" \
   -H "Content-Type: application/json"
 ```
 
@@ -67,7 +68,7 @@ curl -X GET \
 ```bash
 # Get all countries with pagination
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries?limit=10&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/countries?limit=10&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -77,7 +78,7 @@ curl -X GET \
 ```bash
 # Create a new country
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries" \
+  "${{serviceability_base_url}}/serviceability/v1/countries" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -92,7 +93,7 @@ curl -X POST \
 ```bash
 # Get specific country by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -102,7 +103,7 @@ curl -X GET \
 ```bash
 # Get country by country code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/code/US" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/code/US" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -112,7 +113,7 @@ curl -X GET \
 ```bash
 # Update existing country
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -127,7 +128,7 @@ curl -X PUT \
 ```bash
 # Soft delete country
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -138,7 +139,7 @@ curl -X DELETE \
 ```bash
 # Get all region types
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/region-types?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -148,7 +149,7 @@ curl -X GET \
 ```bash
 # Create a new region type
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types" \
+  "${{serviceability_base_url}}/serviceability/v1/region-types" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -164,7 +165,7 @@ curl -X POST \
 ```bash
 # Get region type by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
+  "${{serviceability_base_url}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -174,7 +175,7 @@ curl -X GET \
 ```bash
 # Update existing region type
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
+  "${{serviceability_base_url}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -189,7 +190,7 @@ curl -X PUT \
 ```bash
 # Soft delete region type
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/region-types/state" \
+  "${{serviceability_base_url}}/serviceability/v1/region-types/state" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -200,7 +201,7 @@ curl -X DELETE \
 ```bash
 # Get all regions
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/regions?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -210,7 +211,7 @@ curl -X GET \
 ```bash
 # Create a new region
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions" \
+  "${{serviceability_base_url}}/serviceability/v1/regions" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -227,7 +228,7 @@ curl -X POST \
 ```bash
 # Get specific region by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -237,7 +238,7 @@ curl -X GET \
 ```bash
 # Get region by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/code/CA" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/code/CA" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -247,7 +248,7 @@ curl -X GET \
 ```bash
 # Get all regions for a specific country
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/country/123e4567-e89b-12d3-a456-426614174000" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/country/123e4567-e89b-12d3-a456-426614174000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -257,7 +258,7 @@ curl -X GET \
 ```bash
 # Update existing region
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/US-CA" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/US-CA" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -273,7 +274,7 @@ curl -X PUT \
 ```bash
 # Soft delete region
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -284,7 +285,7 @@ curl -X DELETE \
 ```bash
 # Get all districts
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/districts?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -294,7 +295,7 @@ curl -X GET \
 ```bash
 # Create a new district
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts" \
+  "${{serviceability_base_url}}/serviceability/v1/districts" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -311,7 +312,7 @@ curl -X POST \
 ```bash
 # Get specific district by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -321,7 +322,7 @@ curl -X GET \
 ```bash
 # Get district by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/code/LA" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/code/LA" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -331,7 +332,7 @@ curl -X GET \
 ```bash
 # Get all districts for a specific region
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/region/456e7890-e89b-12d3-a456-426614174001" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/region/456e7890-e89b-12d3-a456-426614174001" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -341,7 +342,7 @@ curl -X GET \
 ```bash
 # Update existing district
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -357,7 +358,7 @@ curl -X PUT \
 ```bash
 # Soft delete district
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -368,7 +369,7 @@ curl -X DELETE \
 ```bash
 # Get all cities
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/cities?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -378,7 +379,7 @@ curl -X GET \
 ```bash
 # Create a new city
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities" \
+  "${{serviceability_base_url}}/serviceability/v1/cities" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -396,7 +397,7 @@ curl -X POST \
 ```bash
 # Get specific city by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -406,7 +407,7 @@ curl -X GET \
 ```bash
 # Get city by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/code/LA_CITY" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/code/LA_CITY" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -416,7 +417,7 @@ curl -X GET \
 ```bash
 # Get all cities for a specific region
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/region/456e7890-e89b-12d3-a456-426614174001" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/region/456e7890-e89b-12d3-a456-426614174001" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -426,7 +427,7 @@ curl -X GET \
 ```bash
 # Update existing city
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -442,7 +443,7 @@ curl -X PUT \
 ```bash
 # Soft delete city
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -453,7 +454,7 @@ curl -X DELETE \
 ```bash
 # Get all areas
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/areas?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -463,7 +464,7 @@ curl -X GET \
 ```bash
 # Create a new area
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas" \
+  "${{serviceability_base_url}}/serviceability/v1/areas" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -479,7 +480,7 @@ curl -X POST \
 ```bash
 # Get specific area by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -489,7 +490,7 @@ curl -X GET \
 ```bash
 # Get area by code
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/code/HOLLYWOOD" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/code/HOLLYWOOD" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -499,7 +500,7 @@ curl -X GET \
 ```bash
 # Get all areas for a specific city
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/city/012e3456-e89b-12d3-a456-426614174003" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/city/012e3456-e89b-12d3-a456-426614174003" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -509,7 +510,7 @@ curl -X GET \
 ```bash
 # Update existing area
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -525,7 +526,7 @@ curl -X PUT \
 ```bash
 # Soft delete area
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -536,7 +537,7 @@ curl -X DELETE \
 ```bash
 # Get all postal codes with pagination
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -546,7 +547,7 @@ curl -X GET \
 ```bash
 # Create a new postal code
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -569,7 +570,7 @@ curl -X POST \
 ```bash
 # Get specific postal code by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -579,19 +580,19 @@ curl -X GET \
 ```bash
 # Get postal codes by country
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/location?country_code=US" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 
 # Get postal codes by country and region
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 
 # Get postal codes by multiple location parameters
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA&city_code=BEVERLY_HILLS&area_code=BEVERLY_HILLS_CENTRAL" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/location?country_code=US&region_code=US-CA&city_code=BEVERLY_HILLS&area_code=BEVERLY_HILLS_CENTRAL" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -648,7 +649,7 @@ curl -X GET \
 ```bash
 # Update existing postal code
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -664,7 +665,7 @@ curl -X PUT \
 ```bash
 # Soft delete postal code
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -682,7 +683,7 @@ curl -X DELETE \
 ```bash
 # Create Indian postal code
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -697,7 +698,7 @@ curl -X POST \
 
 # Get Indian postal codes by region
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/postal-codes/location?country_code=IN&region_code=IN-DL" \
+  "${{serviceability_base_url}}/serviceability/v1/postal-codes/location?country_code=IN&region_code=IN-DL" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -709,7 +710,7 @@ curl -X GET \
 ```bash
 # Create alias for a country
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -726,7 +727,7 @@ curl -X POST \
 ```bash
 # Get all aliases for a country
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/123e4567-e89b-12d3-a456-426614174000/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -736,7 +737,7 @@ curl -X GET \
 ```bash
 # Create alias for a region
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -753,7 +754,7 @@ curl -X POST \
 ```bash
 # Get all aliases for a region
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/regions/456e7890-e89b-12d3-a456-426614174001/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -763,7 +764,7 @@ curl -X GET \
 ```bash
 # Create alias for a district
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -780,7 +781,7 @@ curl -X POST \
 ```bash
 # Get all aliases for a district
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/districts/789e0123-e89b-12d3-a456-426614174002/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -790,7 +791,7 @@ curl -X GET \
 ```bash
 # Create alias for a city
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -807,7 +808,7 @@ curl -X POST \
 ```bash
 # Get all aliases for a city
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/cities/012e3456-e89b-12d3-a456-426614174003/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -817,7 +818,7 @@ curl -X GET \
 ```bash
 # Create alias for an area
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -834,7 +835,7 @@ curl -X POST \
 ```bash
 # Get all aliases for an area
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/areas/345e6789-e89b-12d3-a456-426614174004/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -844,7 +845,7 @@ curl -X GET \
 ```bash
 # Create alias using generic location endpoint
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/locations/123e4567-e89b-12d3-a456-426614174000/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/locations/123e4567-e89b-12d3-a456-426614174000/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -857,7 +858,7 @@ curl -X POST \
 
 # Get aliases using generic location endpoint
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/locations/123e4567-e89b-12d3-a456-426614174000/aliases" \
+  "${{serviceability_base_url}}/serviceability/v1/locations/123e4567-e89b-12d3-a456-426614174000/aliases" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -869,7 +870,7 @@ curl -X GET \
 ```bash
 # Get all location aliases with pagination
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/location-aliases?limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/location-aliases?limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -879,7 +880,7 @@ curl -X GET \
 ```bash
 # Get specific location alias by UUID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -889,7 +890,7 @@ curl -X GET \
 ```bash
 # Update existing location alias
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -904,7 +905,7 @@ curl -X PUT \
 ```bash
 # Soft delete location alias
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
+  "${{serviceability_base_url}}/serviceability/v1/location-aliases/678e9012-e89b-12d3-a456-426614174005" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -915,13 +916,13 @@ curl -X DELETE \
 ```bash
 # Get all location coverages for a partner
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 
 # With filtering and pagination
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages?postal_code=10001&zone_type=PRIMARY&limit=20&offset=0" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages?postal_code=10001&zone_type=PRIMARY&limit=20&offset=0" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -961,7 +962,7 @@ curl -X GET \
 ```bash
 # Create a new location coverage for a partner using postal code ID
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -972,7 +973,7 @@ curl -X POST \
 
 # Using postal code instead of postal code ID
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -987,7 +988,7 @@ curl -X POST \
 ```bash
 # Get specific location coverage by ID
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -997,7 +998,7 @@ curl -X GET \
 ```bash
 # Update existing location coverage
 curl -X PUT \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1012,7 +1013,7 @@ curl -X PUT \
 ```bash
 # Delete location coverage
 curl -X DELETE \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/789e0123-e89b-12d3-a456-426655440000" \
   -H "Authorization: Bearer ${API_TOKEN}"
 ```
 
@@ -1021,7 +1022,7 @@ curl -X DELETE \
 ```bash
 # Create multiple location coverages in one request
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/bulk" \
+  "${{serviceability_base_url}}/serviceability/v1/partners/550e8400-e29b-41d4-a716-446655440000/location-coverages/bulk" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1090,6 +1091,301 @@ curl -X POST \
 }
 ```
 
+## Partner Attributes
+
+### List All Attribute Categories
+
+```bash
+# Get all attribute categories with pagination
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories?offset=0&limit=10" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Create Attribute Category
+
+```bash
+# Create a new attribute category
+curl -X POST \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "parcel_category",
+    "name": "Parcel Category",
+    "is_active": true
+  }'
+```
+
+### Get Attribute Category by ID
+
+```bash
+# Get specific attribute category by UUID
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories/123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Get Attribute Category by Code
+
+```bash
+# Get attribute category by code
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories/code/parcel_category" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Update Attribute Category
+
+```bash
+# Update existing attribute category
+curl -X PUT \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories/123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Parcel Category",
+    "is_active": false
+  }'
+```
+
+### Delete Attribute Category
+
+```bash
+# Soft delete attribute category
+curl -X DELETE \
+  "${{serviceability_base_url}}/serviceability/v1/attribute-categories/123e4567-e89b-12d3-a456-426614174000" \
+  -H "Authorization: Bearer ${API_TOKEN}"
+```
+
+### List All Attributes
+
+```bash
+# Get all attributes with pagination
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attributes?offset=0&limit=10" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Create Attribute
+
+```bash
+# Create a new attribute within a category
+curl -X POST \
+  "${{serviceability_base_url}}/serviceability/v1/attributes" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category_id": "123e4567-e89b-12d3-a456-426614174000",
+    "code": "ecommerce",
+    "name": "E-commerce",
+    "is_active": true
+  }'
+```
+
+### Get Attribute by ID
+
+```bash
+# Get specific attribute by UUID
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/456e7890-e89b-12d3-a456-426614174001" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Get Attribute by Code
+
+```bash
+# Get attribute by code
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/code/ecommerce" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Update Attribute
+
+```bash
+# Update existing attribute
+curl -X PUT \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/456e7890-e89b-12d3-a456-426614174001" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated E-commerce",
+    "is_active": false
+  }'
+```
+
+### Delete Attribute
+
+```bash
+# Soft delete attribute
+curl -X DELETE \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/456e7890-e89b-12d3-a456-426614174001" \
+  -H "Authorization: Bearer ${API_TOKEN}"
+```
+
+### List All Partner Attribute Mappings
+
+```bash
+# Get all partner-attribute mappings with pagination
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps?offset=0&limit=10" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Create Partner Attribute Mapping
+
+```bash
+# Map an attribute to a partner
+curl -X POST \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partner_code": "PARTNER_001",
+    "attribute_id": "456e7890-e89b-12d3-a456-426614174001",
+    "attribute_code": "ecommerce",
+    "is_active": true
+  }'
+```
+
+### Get Partner Attribute Mapping by ID
+
+```bash
+# Get specific partner-attribute mapping by UUID
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/789e0123-e89b-12d3-a456-426614174002" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Update Partner Attribute Mapping
+
+```bash
+# Update existing partner-attribute mapping
+curl -X PUT \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/789e0123-e89b-12d3-a456-426614174002" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "is_active": false
+  }'
+```
+
+### Delete Partner Attribute Mapping
+
+```bash
+# Soft delete partner-attribute mapping
+curl -X DELETE \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/789e0123-e89b-12d3-a456-426614174002" \
+  -H "Authorization: Bearer ${API_TOKEN}"
+```
+
+### Get Partner Attributes
+
+```bash
+# Get all attributes mapped to a specific partner
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/partners/PARTNER_001/attributes" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Get Partners by Attribute
+
+```bash
+# Get all partners that have a specific attribute
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/code/ecommerce/partners" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Get Partner Codes by Attribute
+
+```bash
+# Get only partner codes for a specific attribute (most commonly used)
+curl -X GET \
+  "${{serviceability_base_url}}/serviceability/v1/attributes/code/ecommerce/partner-codes" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Partner codes retrieved successfully",
+  "data": {
+    "attribute_code": "ecommerce",
+    "partner_codes": ["PARTNER_001", "PARTNER_002", "PARTNER_003"],
+    "total_count": 3
+  }
+}
+```
+
+### Search Partner Attribute Mappings
+
+```bash
+# Search mappings with filters
+curl -X POST \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/search" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partner_codes": ["PARTNER_001", "PARTNER_002"],
+    "attribute_codes": ["ecommerce", "express"],
+    "is_active": true,
+    "pagination": {
+      "offset": 0,
+      "limit": 10
+    }
+  }'
+```
+
+### Bulk Create Partner Attribute Mappings
+
+```bash
+# Create multiple mappings at once
+curl -X POST \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/bulk" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mappings": [
+      {
+        "partner_code": "PARTNER_001",
+        "attribute_code": "ecommerce"
+      },
+      {
+        "partner_code": "PARTNER_002",
+        "attribute_code": "express"
+      }
+    ]
+  }'
+```
+
+### Bulk Delete Partner Attribute Mappings
+
+```bash
+# Delete multiple mappings at once
+curl -X DELETE \
+  "${{serviceability_base_url}}/serviceability/v1/partner-attribute-maps/bulk" \
+  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ids": ["789e0123-e89b-12d3-a456-426614174002", "012e3456-e89b-12d3-a456-426614174003"]
+  }'
+```
+
 ## Serviceability
 
 ### Check Serviceability by Postal Code
@@ -1097,7 +1393,7 @@ curl -X POST \
 ```bash
 # Check if a postal code is serviceable
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/check/110001" \
+  "${{serviceability_base_url}}/serviceability/v1/check/110001" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -1136,7 +1432,7 @@ curl -X GET \
 ```bash
 # Check multiple postal codes at once
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/bulk-check" \
+  "${{serviceability_base_url}}/serviceability/v1/bulk-check" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1189,7 +1485,7 @@ curl -X POST \
 ```bash
 # Using pagination parameters
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries?limit=50&offset=100" \
+  "${{serviceability_base_url}}/serviceability/v1/countries?limit=50&offset=100" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -1199,7 +1495,7 @@ curl -X GET \
 ```bash
 # Filter by active status (if supported)
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries?is_active=true&limit=20" \
+  "${{serviceability_base_url}}/serviceability/v1/countries?is_active=true&limit=20" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -1209,7 +1505,7 @@ curl -X GET \
 ```bash
 # Search by name (if supported)
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries?search=united&limit=10" \
+  "${{serviceability_base_url}}/serviceability/v1/countries?search=united&limit=10" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -1221,7 +1517,7 @@ curl -X GET \
 ```bash
 # This will return a validation error (missing required field)
 curl -X POST \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries" \
+  "${{serviceability_base_url}}/serviceability/v1/countries" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1244,7 +1540,7 @@ curl -X POST \
 ```bash
 # This will return a not found error
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries/00000000-0000-0000-0000-000000000000" \
+  "${{serviceability_base_url}}/serviceability/v1/countries/00000000-0000-0000-0000-000000000000" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```
@@ -1264,7 +1560,7 @@ curl -X GET \
 ```bash
 # This will return an authentication error (missing token)
 curl -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries" \
+  "${{serviceability_base_url}}/serviceability/v1/countries" \
   -H "Content-Type: application/json"
 ```
 
@@ -1285,7 +1581,7 @@ When you hit rate limits, you'll receive headers indicating your usage:
 ```bash
 # Check rate limit headers in response
 curl -i -X GET \
-  "${{serviceabilityBaseURL}}/serviceability/v1/countries" \
+  "${{serviceability_base_url}}/serviceability/v1/countries" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json"
 ```

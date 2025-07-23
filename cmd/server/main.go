@@ -2,21 +2,30 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
-	"prayog-serviceability-service/internal/services/v1"
+	businessServices "prayog-serviceability-service/internal/services/v1/business"
+	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
+	"prayog-serviceability-service/internal/services/v2/orchestrators"
+	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/interfaces/v1"
+
 	// NOTE: gRPC server imports are commented out for now
 	// grpcServer "prayog-serviceability-service/internal/infrastructure/api/grpc"
+	dataServices "prayog-serviceability-service/internal/services/v1/data"
+	repositories "prayog-serviceability-service/internal/shared/repositories/v1"
 )
 
 func main() {
@@ -49,9 +58,16 @@ func main() {
 		logger.WithError(err).Fatal("Failed to initialize orchestrator")
 	}
 
+	// Initialize V2 orchestrator
+	v2Orchestrator, err := initV2Orchestrator(appConfig, dbManager, integrationFactory, logger)
+	if err != nil {
+		logger.WithError(err).Warn("⚠️ Failed to initialize V2 orchestrator - V2 features will be disabled")
+		v2Orchestrator = nil
+	}
+
 	// Create HTTP server with all dependencies
 	// NOTE: Only HTTP server is initialized - gRPC server setup is commented out
-	server, err := initHTTPServer(appConfig, dbManager, integrationFactory, orchestrator, logger)
+	server, err := initHTTPServer(appConfig, dbManager, integrationFactory, orchestrator, v2Orchestrator, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize HTTP server")
 	}
@@ -147,10 +163,10 @@ func initDatabase(appConfig *config.AppConfig, logger *logrus.Logger) (*db.Datab
 }
 
 // initIntegrationFactory initializes the integration factory for external services
-func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (*services.IntegrationFactory, error) {
+func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) (*integrationServices.IntegrationFactory, error) {
 	logger.Info("🔌 Initializing integration factory...")
 
-	factory, err := services.NewIntegrationFactory(appConfig, logger)
+	factory, err := integrationServices.NewIntegrationFactory(appConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create integration factory: %w", err)
 	}
@@ -160,7 +176,7 @@ func initIntegrationFactory(appConfig *config.AppConfig, logger *logrus.Logger) 
 }
 
 // initOrchestrator initializes the serviceability orchestrator with all dependencies
-func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
+func initOrchestrator(integrationFactory *integrationServices.IntegrationFactory, logger *logrus.Logger) (interfaces.ServiceabilityOrchestrator, error) {
 	logger.Info("⚙️ Initializing serviceability orchestrator with real service integrations...")
 
 	// Create external service clients
@@ -175,13 +191,13 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 	}
 
 	// Create core services with real implementations
-	locationResolver := services.NewLocationResolver(partnerService)
+	locationResolver := businessServices.NewLocationResolver(partnerService)
 
 	// Create serviceability calculator
-	serviceabilityCalculator := services.NewServiceabilityCalculator()
+	serviceabilityCalculator := businessServices.NewServiceabilityCalculator()
 
 	// Create and return the real orchestrator
-	orchestrator := services.NewOptimizedServiceabilityOrchestrator(
+	orchestrator := businessServices.NewOptimizedServiceabilityOrchestrator(
 		locationResolver,
 		partnerService,
 		specService,
@@ -192,12 +208,99 @@ func initOrchestrator(integrationFactory *services.IntegrationFactory, logger *l
 	return orchestrator, nil
 }
 
+// initV2Orchestrator initializes the V2 serviceability orchestrator with partner adapters
+func initV2Orchestrator(
+	appConfig *config.AppConfig,
+	dbManager *db.DatabaseManager,
+	integrationFactory *integrationServices.IntegrationFactory,
+	logger *logrus.Logger,
+) (orchestrators.ServiceabilityOrchestrator, error) {
+	logger.Info("⚙️ Initializing V2 serviceability orchestrator with partner adapters...")
+
+	// Create a proper config manager for integration config
+	configManager, err := config.NewConfigManager()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config manager for V2 orchestrator: %w", err)
+	}
+
+	// Create HTTP client for partner adapters
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Get database connections
+	var gormDB *gorm.DB
+	var sqlDB *sql.DB
+	if dbManager != nil {
+		gormDB = dbManager.GetDB()
+		if gormDB != nil {
+			// Get underlying *sql.DB from GORM
+			var err error
+			sqlDB, err = gormDB.DB()
+			if err != nil {
+				logger.WithError(err).Warn("⚠️ Failed to get underlying SQL DB from GORM")
+				sqlDB = nil
+			}
+		}
+	}
+
+	// Create geolocation service for partner adapters
+	var geolocationService dataServices.GeolocationService
+	var hubLocationService dataServices.HubLocationService
+	if gormDB != nil {
+		// Create repository factory from database connection
+		repoFactory := repositories.NewRepositoryFactory(gormDB)
+		geoLocationRepo := repoFactory.GetGeoLocationRepository()
+		geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
+
+		// Create hub location service for partner adapters
+		hubLocationRepo := repoFactory.GetNearestHubLocationRepository()
+		hubLocationService = dataServices.NewHubLocationService(hubLocationRepo, logger)
+	} else {
+		// Create a dummy geolocation service for graceful degradation
+		geolocationService = dataServices.NewGeolocationService(nil)
+		hubLocationService = dataServices.NewHubLocationService(nil, logger)
+	}
+
+	// Create partner adapter factory using v2 factory
+	partnerAdapterFactory := factory.NewPartnerAdapterFactory(
+		configManager.Integration.PartnerAdapters,
+		httpClient,
+		sqlDB,
+		geolocationService,
+		hubLocationService,
+	)
+
+	// Get partner attribute mapping repository for filtering
+	var partnerAttributeRepo repositories.PartnerAttributeMapRepository
+	if gormDB != nil {
+		// Create repository factory to get partner attribute mapping repo
+		repoFactory := repositories.NewRepositoryFactory(gormDB)
+		partnerAttributeRepo = repoFactory.GetPartnerAttributeMapRepository()
+	} else {
+		// For now, we'll pass nil and the orchestrator should handle it gracefully
+		partnerAttributeRepo = nil
+	}
+
+	// Create V2 orchestrator using v2 orchestrator
+	v2Orchestrator := orchestrators.NewServiceabilityOrchestrator(
+		partnerAdapterFactory,
+		partnerAttributeRepo,
+		60*time.Second, // timeout for partner requests - increased for database queries
+		configManager.App.Serviceability.ReturnOnlyServiceablePartners,
+	)
+
+	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")
+	return v2Orchestrator, nil
+}
+
 // initHTTPServer initializes the HTTP server with dependency injection
 func initHTTPServer(
 	appConfig *config.AppConfig,
 	dbManager *db.DatabaseManager,
-	integrationFactory *services.IntegrationFactory,
+	integrationFactory *integrationServices.IntegrationFactory,
 	orchestrator interfaces.ServiceabilityOrchestrator,
+	v2Orchestrator orchestrators.ServiceabilityOrchestrator,
 	logger *logrus.Logger,
 ) (*httpServer.Server, error) {
 	logger.Info("🌐 Initializing HTTP server...")
@@ -213,16 +316,15 @@ func initHTTPServer(
 		}
 	}
 
-	// Create server dependencies
-	deps := &httpServer.ServerDependencies{
+	// Create server with all dependencies
+	server, err := httpServer.NewServer(&httpServer.ServerDependencies{
 		Config:             configManager,
 		DBManager:          dbManager,
 		IntegrationFactory: integrationFactory,
 		Orchestrator:       orchestrator,
+		V2Orchestrator:     v2Orchestrator,
 		Logger:             logger,
-	}
-
-	server, err := httpServer.NewServer(deps)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP server: %w", err)
 	}

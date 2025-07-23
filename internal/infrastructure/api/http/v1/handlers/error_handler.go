@@ -252,10 +252,10 @@ func (eh *ErrorHandler) getJSONFieldName(fieldName string) string {
 	switch fieldName {
 	case "PostalCode":
 		return "postal_code"
-	case "PickupPostalCode":
-		return "pickup_postal_code"
-	case "DeliveryPostalCode":
-		return "delivery_postal_code"
+	case "SourcePostalCode":
+		return "source_postal_code"
+	case "DestinationPostalCode":
+		return "destination_postal_code"
 	case "CountryCode":
 		return "country_code"
 	case "ServiceTypes":

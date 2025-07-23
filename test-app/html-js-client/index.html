@@ -100,7 +100,7 @@
         }
         .test-buttons {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 10px;
             margin-top: 20px;
         }
@@ -115,7 +115,19 @@
         
         <div class="api-info">
             <strong>API Endpoint:</strong> <span id="api-endpoint">https://sandbox-apis.prayog.io/serviceability/v1/check</span><br>
-            <strong>Server Status:</strong> <span id="server-status">Checking...</span>
+            <strong>Server Status:</strong> <span id="server-status">Checking...</span><br><br>
+            <strong>🔧 Headers Sent (matching curl request):</strong><br>
+            <small>
+                ✅ Content-Type: application/json<br>
+                ✅ Authorization: Bearer [your-token]<br>
+                ✅ tenantid: [your-tenant-id]<br>
+                ✅ X-Tenant-ID: [your-tenant-id]<br>
+                ✅ Referer: [current-page]<br>
+                ✅ sec-ch-ua-platform: "macOS"<br>
+                ✅ sec-ch-ua: [chrome-version]<br>
+                ✅ sec-ch-ua-mobile: ?0<br>
+                ✅ User-Agent: [browser-user-agent]
+            </small>
         </div>
 
         <form id="serviceabilityForm">
@@ -125,20 +137,30 @@
             </div>
 
             <div class="form-group">
+                <label for="authToken">Authorization Token:</label>
+                <input type="text" id="authToken" value="eyJraWQiOiJ0cG1nNlc3ZnZJUFhYQXNydUVqcm1jRzJyNzZYaDdtVXZXWlpCMVRDR1JNPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTMzMWQ3YS1hMDgxLTcwZWMtNmM5ZC1hOGQ5NjIwM2MzNzciLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaXNzIjoiaHR0cHM6XC9cL2NvZ25pdG8taWRwLmFwLXNvdXRoLTEuYW1hem9uYXdzLmNvbVwvYXAtc291dGgtMV9EaE1lTWh0SzAiLCJjb2duaXRvOnVzZXJuYW1lIjoiYjEzMzFkN2EtYTA4MS03MGVjLTZjOWQtYThkOTYyMDNjMzc3Iiwib3JpZ2luX2p0aSI6IjdlYThiNzNkLTJhNTUtNGJmYy1hYWU4LTQxM2NmOGFjZjQxMyIsImF1ZCI6IjFwaWd1OGJ0OHMxYzF1ZjE2cWtlZmZhajZjIiwiZXZlbnRfaWQiOiJkYWRlNmVmNy03YzUzLTRmMDktYTk3OS0xOTlmY2I4YTRmNjMiLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc1MDMyOTAzOSwibmFtZSI6IlF1aWNrIENvdXJpZXIgVGVzdCBBZG1pbiIsImV4cCI6MTc1MDQxNTQzOSwiaWF0IjoxNzUwMzI5MDM5LCJqdGkiOiI3YTZkMjE2Yi1hOGQxLTQ0OTQtOWQ0Ni0zODUwNzliMGJlNjUiLCJlbWFpbCI6ImNhYm9iMjE0MzhAaGF6aGFiLmNvbSJ9.VU032ho3SMd9vllXYM9HvAURmImol8Kf2w5kV5tvXP2KkeBj8HnFzYSeBMYoettQiSJjlUp5ZGzgkb6zggdJYf5EX4Uu6DG0n3UqWyEvX_-LgL5RCdTzWQtPLeIVNCobsB8vkDY3E1rc35wQMzJmPQqsLGlyxhFiO8kKksOmTIAagEhkEf09cyuOKuiIQbcVc9jnNGqQ0Od9UxmDNGvPHzZt4WjJjvNPgs7uxC5wOGYmQHsDUSkQ1acjbH_QVWBKxFJlkccvPNnWNEZJJonEK4fGEUstptRaqj3zFVZFyYLldBR582Gncba4qq0BTPuIs5EeN70HcyhIICBlV1ohbw" placeholder="Bearer token (without 'Bearer ' prefix)">
+            </div>
+
+            <div class="form-group">
+                <label for="tenantId">Tenant ID:</label>
+                <input type="text" id="tenantId" value="682581255a53dbe3ffb4fe49" placeholder="e.g., 682581255a53dbe3ffb4fe49" required>
+            </div>
+
+            <div class="form-group">
                 <label for="sourcePostalCode">Source Postal Code:</label>
-                <input type="text" id="sourcePostalCode" value="713333" placeholder="e.g., 713333" required>
+                <input type="text" id="sourcePostalCode" value="382481" placeholder="e.g., 382481" required>
             </div>
 
             <div class="form-group">
                 <label for="destinationPostalCode">Destination Postal Code:</label>
-                <input type="text" id="destinationPostalCode" value="385515" placeholder="e.g., 385515" required>
+                <input type="text" id="destinationPostalCode" value="382470" placeholder="e.g., 382470" required>
             </div>
 
             <div class="form-group">
-                <label for="parcelCategory">Parcel Category (Optional):</label>
+                <label for="parcelCategory">Parcel Category:</label>
                 <select id="parcelCategory">
                     <option value="">-- Select Category --</option>
-                    <option value="ecomm">E-commerce</option>
+                    <option value="ecomm" selected>E-commerce</option>
                     <option value="document">Document</option>
                     <option value="parcel">Parcel</option>
                 </select>
@@ -154,12 +176,13 @@
                 </select>
             </div>
 
-            <button type="submit" id="checkServiceabilityBtn">Check Serviceability</button>
+            <button type="submit" id="checkServiceabilityBtn">🚀 Check Serviceability (with All Headers)</button>
         </form>
 
         <div class="test-buttons">
             <button type="button" onclick="testServerStatus()">Test Server Status</button>
             <button type="button" onclick="testHealth()">Test Health Check</button>
+            <button type="button" onclick="testExactCurl()">🎯 Test Exact Curl Request</button>
         </div>
 
         <div id="result" class="result" style="display: none;"></div>
@@ -198,13 +221,29 @@
                 console.log('Making request to:', url);
                 console.log('Request options:', options);
                 
+                // Extract custom headers if provided in options
+                const customHeaders = options.headers || {};
+                
+                // Default headers (matching curl request)
+                const defaultHeaders = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Referer': window.location.href,
+                    'sec-ch-ua': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"macOS"',
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
+                };
+
+                // Merge headers (custom headers override defaults)
+                const finalHeaders = {
+                    ...defaultHeaders,
+                    ...customHeaders
+                };
+
                 const response = await fetch(url, {
                     ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        ...options.headers
-                    }
+                    headers: finalHeaders
                 });
 
                 console.log('Response status:', response.status);
@@ -305,10 +344,65 @@
             }
         }
 
+        async function testExactCurl() {
+            const baseUrl = document.getElementById('baseUrl').value || 'https://sandbox-apis.prayog.io';
+            showLoading();
+            
+            try {
+                const result = await makeRequest(`${baseUrl}/serviceability/v1/check`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        source_postal_code: document.getElementById('sourcePostalCode').value,
+                        destination_postal_code: document.getElementById('destinationPostalCode').value,
+                        parcel_category: document.getElementById('parcelCategory').value,
+                        product_type: document.getElementById('productType').value
+                    }),
+                    headers: {
+                        'tenantid': document.getElementById('tenantId').value,
+                        'X-Tenant-ID': document.getElementById('tenantId').value,
+                        'Authorization': `Bearer ${document.getElementById('authToken').value}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Referer': window.location.href,
+                        'sec-ch-ua': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"macOS"',
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
+                    }
+                });
+
+                if (result.ok) {
+                    showResult(
+                        `✅ Exact Curl Request Successful!\n\n` +
+                        `🔗 URL: ${baseUrl}/serviceability/v1/check\n\n` +
+                        `📋 Request Headers:\n${JSON.stringify(result.headers, null, 2)}\n\n` +
+                        `📝 Request Body:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    showResult(
+                        `❌ Exact Curl Request Failed!\n\n` +
+                        `🔗 URL: ${baseUrl}/serviceability/v1/check\n\n` +
+                        `📋 Request Headers:\n${JSON.stringify(result.headers, null, 2)}\n\n` +
+                        `📝 Request Body:\n${JSON.stringify(result.data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult(
+                    `❌ Exact Curl Request Error!\n\n` +
+                    `Error: ${error.message}`, 
+                    'error'
+                );
+            }
+        }
+
         form.addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const baseUrl = document.getElementById('baseUrl').value || 'https://sandbox-apis.prayog.io';
+            const authToken = document.getElementById('authToken').value;
+            const tenantId = document.getElementById('tenantId').value;
             const sourcePostalCode = document.getElementById('sourcePostalCode').value;
             const destinationPostalCode = document.getElementById('destinationPostalCode').value;
             const parcelCategory = document.getElementById('parcelCategory').value;
@@ -316,6 +410,11 @@
 
             if (!sourcePostalCode || !destinationPostalCode) {
                 showResult('❌ Please fill in both postal codes!', 'error');
+                return;
+            }
+
+            if (!tenantId) {
+                showResult('❌ Please provide a Tenant ID!', 'error');
                 return;
             }
 
@@ -336,34 +435,58 @@
             showLoading();
 
             try {
+                // Prepare headers exactly as in curl request
+                const requestHeaders = {
+                    'tenantid': tenantId,              // Lowercase version from curl
+                    'X-Tenant-ID': tenantId            // Uppercase version from curl
+                };
+
+                // Add Authorization header if token is provided
+                if (authToken && authToken.trim()) {
+                    requestHeaders['Authorization'] = `Bearer ${authToken}`;
+                }
+
+                console.log('🚀 Making request with headers:', requestHeaders);
+                console.log('📝 Request body:', requestBody);
+
                 const result = await makeRequest(`${baseUrl}/serviceability/v1/check`, {
                     method: 'POST',
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    headers: requestHeaders
                 });
 
                 if (result.ok) {
                     showResult(
                         `✅ Serviceability Check Successful!\n\n` +
-                        `Request:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
-                        `Status: ${result.status} ${result.statusText}\n\n` +
-                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        `🔗 URL: ${baseUrl}/serviceability/v1/check\n\n` +
+                        `📋 Request Headers:\n${JSON.stringify(requestHeaders, null, 2)}\n\n` +
+                        `📝 Request Body:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
+                        `📊 Status: ${result.status} ${result.statusText}\n\n` +
+                        `📥 Response:\n${JSON.stringify(result.data, null, 2)}`, 
                         'success'
                     );
                 } else {
                     showResult(
                         `❌ Serviceability Check Failed!\n\n` +
-                        `Request:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
-                        `Status: ${result.status} ${result.statusText}\n\n` +
-                        `Response:\n${JSON.stringify(result.data, null, 2)}`, 
+                        `🔗 URL: ${baseUrl}/serviceability/v1/check\n\n` +
+                        `📋 Request Headers:\n${JSON.stringify(requestHeaders, null, 2)}\n\n` +
+                        `📝 Request Body:\n${JSON.stringify(requestBody, null, 2)}\n\n` +
+                        `📊 Status: ${result.status} ${result.statusText}\n\n` +
+                        `📥 Response:\n${JSON.stringify(result.data, null, 2)}`, 
                         'error'
                     );
                 }
             } catch (error) {
                 showResult(
                     `❌ Request Error!\n\n` +
-                    `Error: ${error.message}\n\n` +
-                    `This could be a CORS issue or network connectivity problem.\n` +
-                    `Check the browser console for more details.`, 
+                    `🚨 Error: ${error.message}\n\n` +
+                    `💡 This could be a CORS issue or network connectivity problem.\n` +
+                    `Check the browser console for more details.\n\n` +
+                    `🔧 Try the following:\n` +
+                    `1. Ensure the server is running\n` +
+                    `2. Check CORS configuration\n` +
+                    `3. Verify the Authorization token is valid\n` +
+                    `4. Check the Tenant ID is correct`, 
                     'error'
                 );
             } finally {

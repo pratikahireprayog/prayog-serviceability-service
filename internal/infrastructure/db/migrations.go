@@ -28,6 +28,10 @@ func (dm *DatabaseManager) RunMigrations() error {
 		return fmt.Errorf("failed to migrate location management models: %w", err)
 	}
 
+	if err := dm.migratePartnerAttributeModels(); err != nil {
+		return fmt.Errorf("failed to migrate partner attribute models: %w", err)
+	}
+
 	// Add soft delete columns to all tables
 	if err := dm.addSoftDeleteColumns(); err != nil {
 		return fmt.Errorf("failed to add soft delete columns: %w", err)
@@ -115,6 +119,7 @@ func (dm *DatabaseManager) migrateLocationManagementModels() error {
 		&models.LocationType{},
 		&models.LocationAlias{},
 		&models.PartnerLocationCoverage{},
+		&models.NearestHubLocation{},
 	}
 
 	for _, model := range models {
@@ -125,6 +130,27 @@ func (dm *DatabaseManager) migrateLocationManagementModels() error {
 	}
 
 	dm.logger.Info("Location management models migrated successfully")
+	return nil
+}
+
+// migratePartnerAttributeModels migrates partner attribute entities
+func (dm *DatabaseManager) migratePartnerAttributeModels() error {
+	dm.logger.Info("Migrating partner attribute models...")
+
+	models := []interface{}{
+		&models.AttributeCategory{},
+		&models.Attribute{},
+		&models.PartnerAttributeMap{},
+	}
+
+	for _, model := range models {
+		if err := dm.db.AutoMigrate(model); err != nil {
+			return fmt.Errorf("failed to migrate model %T: %w", model, err)
+		}
+		dm.logger.Infof("Successfully migrated model: %T", model)
+	}
+
+	dm.logger.Info("Partner attribute models migrated successfully")
 	return nil
 }
 
@@ -147,6 +173,9 @@ func (dm *DatabaseManager) addSoftDeleteColumns() error {
 		"location_type",
 		"location_alias",
 		"partner_location_coverage",
+		"attribute_category",
+		"attribute",
+		"partner_attribute_map",
 	}
 
 	for _, table := range tables {
@@ -359,6 +388,12 @@ func (dm *DatabaseManager) createPerformanceIndexes() error {
 		{"postal_code", []string{"country_code", "region_code", "city_code", "area_code"}, "idx_postal_hierarchy"},
 		{"postal_code", []string{"location_scope"}, "idx_postal_scope"},
 
+		// Geo locations indexes for performance optimization
+		{"geo_locations", []string{"postal_code"}, "idx_geo_locations_postal_code"},
+		{"geo_locations", []string{"country_code"}, "idx_geo_locations_country_code"},
+		{"geo_locations", []string{"postal_code", "country_code"}, "idx_geo_locations_postal_country"},
+		{"geo_locations", []string{"deleted_at"}, "idx_geo_locations_deleted_at"},
+
 		// Hub indexes
 		{"hub", []string{"code"}, "idx_hub_code"},
 		{"hub_location_coverage", []string{"hub_code", "location_scope"}, "idx_hub_coverage"},
@@ -367,6 +402,14 @@ func (dm *DatabaseManager) createPerformanceIndexes() error {
 		// Location management indexes
 		{"location_alias", []string{"entity_type_code", "entity_id"}, "idx_alias_entity"},
 		{"partner_location_coverage", []string{"partner_code", "location_scope"}, "idx_partner_coverage"},
+
+		// Partner attribute indexes
+		{"attribute_category", []string{"code"}, "idx_attribute_category_code"},
+		{"attribute", []string{"category_id", "code"}, "idx_attribute_category_code"},
+		{"attribute", []string{"code"}, "idx_attribute_code"},
+		{"partner_attribute_map", []string{"partner_code", "attribute_id"}, "idx_partner_attr_map"},
+
+		{"partner_attribute_map", []string{"partner_code"}, "idx_partner_attr_partner"},
 	}
 
 	for _, idx := range indexes {
@@ -541,34 +584,92 @@ func (dm *DatabaseManager) addIsActiveColumnToGeoLocations() error {
 // DropAllTables drops all tables in the correct order to handle foreign key constraints
 func (dm *DatabaseManager) DropAllTables() error {
 	dm.logger.Warn("Dropping all tables...")
+	return nil
+}
 
-	// Drop tables in reverse dependency order
-	tables := []string{
-		"partner_location_coverage",
-		"location_alias",
-		"location_type",
-		"hub_specification",
-		"hub_location_coverage",
-		"hub",
-		"postal_code",
-		"area",
-		"city",
-		"district",
-		"region",
-		"region_type",
-		"country",
+// fixSchemaIssues fixes any database schema inconsistencies
+func (dm *DatabaseManager) fixSchemaIssues() error {
+	dm.logger.Info("Fixing database schema issues...")
+
+	// Ensure attribute_code column exists in partner_attribute_map table
+	if err := dm.ensureAttributeCodeColumn(); err != nil {
+		return fmt.Errorf("failed to ensure attribute_code column: %w", err)
 	}
 
-	for _, table := range tables {
-		if err := dm.db.Exec("DROP TABLE IF EXISTS " + table + " CASCADE").Error; err != nil {
-			dm.logger.Errorf("Failed to drop table %s: %v", table, err)
-			// Continue with other tables
-		} else {
-			dm.logger.Infof("Dropped table: %s", table)
+	dm.logger.Info("Database schema issues fixed successfully")
+	return nil
+}
+
+// ensureAttributeCodeColumn ensures the attribute_code column exists in partner_attribute_map table
+func (dm *DatabaseManager) ensureAttributeCodeColumn() error {
+	dm.logger.Info("Checking for attribute_code column in partner_attribute_map table...")
+
+	// Check if column exists
+	var columnExists bool
+	checkQuery := `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'partner_attribute_map' AND column_name = 'attribute_code'
+		)
+	`
+	if err := dm.db.Raw(checkQuery).Scan(&columnExists).Error; err != nil {
+		return fmt.Errorf("failed to check for attribute_code column: %w", err)
+	}
+
+	if !columnExists {
+		dm.logger.Info("attribute_code column missing, adding it...")
+
+		// Add the column
+		addQuery := "ALTER TABLE partner_attribute_map ADD COLUMN IF NOT EXISTS attribute_code VARCHAR(50) NOT NULL DEFAULT ''"
+		if err := dm.db.Exec(addQuery).Error; err != nil {
+			return fmt.Errorf("failed to add attribute_code column: %w", err)
 		}
+
+		// Create index for the new column
+		indexQuery := "CREATE INDEX IF NOT EXISTS idx_partner_attr_code ON partner_attribute_map (attribute_code)"
+		if err := dm.db.Exec(indexQuery).Error; err != nil {
+			dm.logger.Warnf("Failed to create index for attribute_code: %v", err)
+		}
+
+		dm.logger.Info("Successfully added attribute_code column")
+	} else {
+		dm.logger.Info("attribute_code column already exists")
 	}
 
-	dm.logger.Info("All tables dropped successfully")
+	// Populate attribute_code for existing records where it's empty
+	if err := dm.populateAttributeCodeForExistingRecords(); err != nil {
+		return fmt.Errorf("failed to populate attribute_code for existing records: %w", err)
+	}
+
+	// Note: attribute_category_code column has been dropped manually via SQL
+
+	return nil
+}
+
+// populateAttributeCodeForExistingRecords populates the attribute_code field for records where it's empty
+func (dm *DatabaseManager) populateAttributeCodeForExistingRecords() error {
+	dm.logger.Info("Populating attribute_code for existing partner_attribute_map records...")
+
+	// Update records where attribute_code is empty by joining with the attribute table
+	updateQuery := `
+		UPDATE partner_attribute_map 
+		SET attribute_code = attribute.code 
+		FROM attribute 
+		WHERE partner_attribute_map.attribute_id = attribute.id 
+		AND (partner_attribute_map.attribute_code = '' OR partner_attribute_map.attribute_code IS NULL)
+	`
+
+	result := dm.db.Exec(updateQuery)
+	if result.Error != nil {
+		return fmt.Errorf("failed to populate attribute_code: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		dm.logger.Infof("Successfully populated attribute_code for %d records", result.RowsAffected)
+	} else {
+		dm.logger.Info("No records needed attribute_code population")
+	}
+
 	return nil
 }
 

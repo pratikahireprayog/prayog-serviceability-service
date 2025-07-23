@@ -1,10 +1,9 @@
-.PHONY: build clean test run lint db-migrate db-seed db-reset docker-build docker-run
+.PHONY: build clean test run lint docker-build docker-run
 
 # Build variables
 BINARY_NAME=serviceability
 BUILD_DIR=./build
 CMD_DIR=./cmd/api
-MIGRATION_DIR=./cmd/migrations
 
 # Go variables
 GOCMD=go
@@ -41,7 +40,6 @@ all: test build
 build:
 	mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
-	$(GOBUILD) $(BUILD_FLAGS) -o $(BUILD_DIR)/migrate $(MIGRATION_DIR)
 
 # Clean build artifacts
 clean:
@@ -67,17 +65,8 @@ deps:
 lint:
 	$(GOLINT) run
 
-# Database migrations
-db-migrate:
-	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -migrate
-
-# Seed database with initial data
-db-seed:
-	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -seed
-
-# Reset database: run migrations and seed
-db-reset:
-	$(GOCMD) run $(BUILD_FLAGS) $(MIGRATION_DIR) -migrate -seed
+# Database migration functionality has been removed for safety
+# If you need to modify the database schema, use database admin tools directly
 
 # Get version info
 version:
@@ -102,9 +91,6 @@ help:
 	@echo "make tidy         - Tidy go modules"
 	@echo "make deps         - Install dependencies"
 	@echo "make lint         - Run linter"
-	@echo "make db-migrate   - Run database migrations"
-	@echo "make db-seed      - Seed database with initial data"
-	@echo "make db-reset     - Reset database (migrate and seed)"
 	@echo "make version      - Show version information"
 	@echo "make docker-build - Build Docker image"
 	@echo "make docker-run   - Run Docker container"

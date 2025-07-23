@@ -4,8 +4,8 @@ This directory contains the main applications for this project. Each application
 
 ## Structure
 
-* `/migrations` - Database migration tool for creating and seeding the database schema
 * `/serviceability` - Main application entry point for the serviceability service
+* **Note**: Migration tools have been removed for safety - use database admin tools for schema changes
 
 ## Guidelines
 
@@ -21,7 +21,4 @@ To run the main service:
 go run cmd/serviceability/main.go
 ```
 
-To run migrations:
-```
-go run cmd/migrations/main.go
-``` 
+For database schema changes, use database administration tools directly rather than automated migrations for safety. 
