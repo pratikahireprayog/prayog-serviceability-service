@@ -49,7 +49,7 @@ func NewGeoLocationRepository(db *gorm.DB) GeoLocationRepository {
 // GetByID retrieves a geo location by ID
 func (r *geoLocationRepository) GetByID(ctx context.Context, postalCode string) (*models.GeoLocation, error) {
 	var geoLocation models.GeoLocation
-	err := r.db.WithContext(ctx).Where("postal_code = ?", postalCode).First(&geoLocation).Error
+	err := r.db.WithContext(ctx).Scopes(models.GeoLocation{}.DefaultScope).Where("postal_code = ?", postalCode).First(&geoLocation).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("geo location with postal code %s not found", postalCode)
@@ -77,7 +77,7 @@ func (r *geoLocationRepository) GetAll(ctx context.Context, offset, limit int, f
 	var geoLocations []models.GeoLocation
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.GeoLocation{})
+	query := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Scopes(models.GeoLocation{}.DefaultScope)
 
 	// Apply filters if provided
 	if filters != nil {
@@ -150,7 +150,7 @@ func (r *geoLocationRepository) GetOnlyDeleted(ctx context.Context, offset, limi
 	return geoLocations, total, nil
 }
 
-// GetByCountryCode retrieves geo locations by country code with pagination
+// GetByCountryCode retrieves geo locations by country code with pagination (only active records)
 func (r *geoLocationRepository) GetByCountryCode(ctx context.Context, countryCode string, offset, limit int) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
@@ -158,13 +158,13 @@ func (r *geoLocationRepository) GetByCountryCode(ctx context.Context, countryCod
 	countryCode = strings.ToUpper(countryCode)
 
 	// Count total records
-	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("country_code = ?", countryCode).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("country_code = ? AND is_active = ?", countryCode, true).Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count geo locations by country: %w", err)
 	}
 
 	// Get paginated records
-	err = r.db.WithContext(ctx).Where("country_code = ?", countryCode).Offset(offset).Limit(limit).Find(&geoLocations).Error
+	err = r.db.WithContext(ctx).Where("country_code = ? AND is_active = ?", countryCode, true).Offset(offset).Limit(limit).Find(&geoLocations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get geo locations by country: %w", err)
 	}
@@ -194,12 +194,12 @@ func (r *geoLocationRepository) GetByCountryCodeWithDeleted(ctx context.Context,
 	return geoLocations, total, nil
 }
 
-// Search performs advanced search with multiple filters
+// Search performs advanced search with multiple filters (only active records)
 func (r *geoLocationRepository) Search(ctx context.Context, filters *dtos.GeoLocationSearchFilters) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.GeoLocation{})
+	query := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("is_active = ?", true)
 
 	// Apply filters
 	query = r.applySearchFilters(query, filters)
@@ -318,13 +318,13 @@ func (r *geoLocationRepository) applySearchFilters(query *gorm.DB, filters *dtos
 	return query
 }
 
-// GetStats retrieves statistics for geo locations
+// GetStats retrieves statistics for geo locations (only active records)
 func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocationStatsResponse, error) {
 	var stats dtos.GeoLocationStatsResponse
 	var err error
 
 	// Get total count
-	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).Count(&stats.TotalCount).Error
+	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("is_active = ?", true).Count(&stats.TotalCount).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get total count: %w", err)
 	}
@@ -336,6 +336,7 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	}
 	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).
 		Select("country_code, COUNT(*) as count").
+		Where("is_active = ?", true).
 		Group("country_code").
 		Find(&countryStats).Error
 	if err != nil {
@@ -354,6 +355,7 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	}
 	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).
 		Select("feature_class, COUNT(*) as count").
+		Where("is_active = ?", true).
 		Group("feature_class").
 		Find(&featureClassStats).Error
 	if err != nil {
@@ -372,6 +374,7 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	}
 	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).
 		Select("feature_code, COUNT(*) as count").
+		Where("is_active = ?", true).
 		Group("feature_code").
 		Find(&featureCodeStats).Error
 	if err != nil {
@@ -390,7 +393,7 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	}
 	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).
 		Select("timezone, COUNT(*) as count").
-		Where("timezone IS NOT NULL").
+		Where("timezone IS NOT NULL AND is_active = ?", true).
 		Group("timezone").
 		Find(&timezoneStats).Error
 	if err != nil {
@@ -409,6 +412,7 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	}
 	err = r.db.WithContext(ctx).Model(&models.GeoLocation{}).
 		Select("AVG(latitude) as avg_lat, AVG(longitude) as avg_lng").
+		Where("is_active = ?", true).
 		First(&avgCoords).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get average coordinates: %w", err)
@@ -470,19 +474,19 @@ func (r *geoLocationRepository) GetStats(ctx context.Context) (*dtos.GeoLocation
 	return &stats, nil
 }
 
-// GetByFeatureClass retrieves geo locations by feature class
+// GetByFeatureClass retrieves geo locations by feature class (only active records)
 func (r *geoLocationRepository) GetByFeatureClass(ctx context.Context, featureClass string, offset, limit int) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
 
 	// Count total records
-	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("feature_class = ?", featureClass).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("feature_class = ? AND is_active = ?", featureClass, true).Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count geo locations by feature class: %w", err)
 	}
 
 	// Get paginated records
-	err = r.db.WithContext(ctx).Where("feature_class = ?", featureClass).Offset(offset).Limit(limit).Find(&geoLocations).Error
+	err = r.db.WithContext(ctx).Where("feature_class = ? AND is_active = ?", featureClass, true).Offset(offset).Limit(limit).Find(&geoLocations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get geo locations by feature class: %w", err)
 	}
@@ -490,19 +494,19 @@ func (r *geoLocationRepository) GetByFeatureClass(ctx context.Context, featureCl
 	return geoLocations, total, nil
 }
 
-// GetByFeatureCode retrieves geo locations by feature code
+// GetByFeatureCode retrieves geo locations by feature code (only active records)
 func (r *geoLocationRepository) GetByFeatureCode(ctx context.Context, featureCode string, offset, limit int) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
 
 	// Count total records
-	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("feature_code = ?", featureCode).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("feature_code = ? AND is_active = ?", featureCode, true).Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count geo locations by feature code: %w", err)
 	}
 
 	// Get paginated records
-	err = r.db.WithContext(ctx).Where("feature_code = ?", featureCode).Offset(offset).Limit(limit).Find(&geoLocations).Error
+	err = r.db.WithContext(ctx).Where("feature_code = ? AND is_active = ?", featureCode, true).Offset(offset).Limit(limit).Find(&geoLocations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get geo locations by feature code: %w", err)
 	}
@@ -510,19 +514,19 @@ func (r *geoLocationRepository) GetByFeatureCode(ctx context.Context, featureCod
 	return geoLocations, total, nil
 }
 
-// GetByTimezone retrieves geo locations by timezone
+// GetByTimezone retrieves geo locations by timezone (only active records)
 func (r *geoLocationRepository) GetByTimezone(ctx context.Context, timezone string, offset, limit int) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
 
 	// Count total records
-	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("timezone = ?", timezone).Count(&total).Error
+	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).Where("timezone = ? AND is_active = ?", timezone, true).Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count geo locations by timezone: %w", err)
 	}
 
 	// Get paginated records
-	err = r.db.WithContext(ctx).Where("timezone = ?", timezone).Offset(offset).Limit(limit).Find(&geoLocations).Error
+	err = r.db.WithContext(ctx).Where("timezone = ? AND is_active = ?", timezone, true).Offset(offset).Limit(limit).Find(&geoLocations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get geo locations by timezone: %w", err)
 	}
@@ -530,14 +534,14 @@ func (r *geoLocationRepository) GetByTimezone(ctx context.Context, timezone stri
 	return geoLocations, total, nil
 }
 
-// GetInBoundingBox retrieves geo locations within a bounding box
+// GetInBoundingBox retrieves geo locations within a bounding box (only active records)
 func (r *geoLocationRepository) GetInBoundingBox(ctx context.Context, minLat, maxLat, minLng, maxLng float64, offset, limit int) ([]models.GeoLocation, int64, error) {
 	var geoLocations []models.GeoLocation
 	var total int64
 
 	// Count total records
 	err := r.db.WithContext(ctx).Model(&models.GeoLocation{}).
-		Where("latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ?", minLat, maxLat, minLng, maxLng).
+		Where("latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ? AND is_active = ?", minLat, maxLat, minLng, maxLng, true).
 		Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count geo locations in bounding box: %w", err)
@@ -545,7 +549,7 @@ func (r *geoLocationRepository) GetInBoundingBox(ctx context.Context, minLat, ma
 
 	// Get paginated records
 	err = r.db.WithContext(ctx).
-		Where("latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ?", minLat, maxLat, minLng, maxLng).
+		Where("latitude >= ? AND latitude <= ? AND longitude >= ? AND longitude <= ? AND is_active = ?", minLat, maxLat, minLng, maxLng, true).
 		Offset(offset).Limit(limit).Find(&geoLocations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get geo locations in bounding box: %w", err)

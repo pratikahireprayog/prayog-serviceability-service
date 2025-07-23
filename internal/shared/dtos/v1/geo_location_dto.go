@@ -26,6 +26,7 @@ type CreateGeoLocationRequest struct {
 	Elevation        *int       `json:"elevation,omitempty"`
 	DEM              *int       `json:"dem,omitempty"`
 	Timezone         *string    `json:"timezone,omitempty"`
+	IsActive         *bool      `json:"is_active,omitempty"`
 	ModificationDate *time.Time `json:"modification_date,omitempty"`
 }
 
@@ -48,6 +49,7 @@ type UpdateGeoLocationRequest struct {
 	Elevation      *int     `json:"elevation,omitempty"`
 	DEM            *int     `json:"dem,omitempty"`
 	Timezone       *string  `json:"timezone,omitempty"`
+	IsActive       *bool    `json:"is_active,omitempty"`
 }
 
 // GeoLocationResponse represents geo location response

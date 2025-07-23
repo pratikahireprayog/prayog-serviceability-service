@@ -83,6 +83,15 @@ func (s *geoLocationService) Create(ctx context.Context, req *dtos.CreateGeoLoca
 		return nil, err
 	}
 
+	// Determine if the location should be active based on country code
+	isActive := true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	} else {
+		// Default logic: only US and CA are active
+		isActive = req.CountryCode == "US" || req.CountryCode == "CA"
+	}
+
 	// Convert DTO to model
 	geoLocation := &models.GeoLocation{
 		PostalCode:     req.PostalCode,
@@ -103,6 +112,7 @@ func (s *geoLocationService) Create(ctx context.Context, req *dtos.CreateGeoLoca
 		Elevation:      req.Elevation,
 		DEM:            req.DEM,
 		Timezone:       req.Timezone,
+		IsActive:       isActive,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -190,6 +200,9 @@ func (s *geoLocationService) Update(ctx context.Context, postalCode string, req 
 	}
 	if req.Timezone != nil {
 		existingGeoLocation.Timezone = req.Timezone
+	}
+	if req.IsActive != nil {
+		existingGeoLocation.IsActive = *req.IsActive
 	}
 
 	existingGeoLocation.UpdatedAt = time.Now()

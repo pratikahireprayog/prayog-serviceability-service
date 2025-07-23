@@ -38,6 +38,11 @@ func (dm *DatabaseManager) RunMigrations() error {
 		return fmt.Errorf("failed to create performance indexes: %w", err)
 	}
 
+	// Add is_active column to geo_locations table
+	if err := dm.addIsActiveColumnToGeoLocations(); err != nil {
+		return fmt.Errorf("failed to add is_active column to geo_locations: %w", err)
+	}
+
 	dm.logger.Info("Database migrations completed successfully")
 	return nil
 }
@@ -58,7 +63,7 @@ func (dm *DatabaseManager) enableUUIDExtension() error {
 func (dm *DatabaseManager) migrateGeographicalModels() error {
 	dm.logger.Info("Migrating geographical models...")
 
-	// Migrate in dependency order: Country -> RegionType -> Region -> District -> City -> Area -> PostalCode
+	// Migrate in dependency order: Country -> RegionType -> Region -> District -> City -> Area -> PostalCode -> GeoLocation
 	models := []interface{}{
 		&models.Country{},
 		&models.RegionType{},
@@ -67,6 +72,7 @@ func (dm *DatabaseManager) migrateGeographicalModels() error {
 		&models.City{},
 		&models.Area{},
 		&models.PostalCode{},
+		&models.GeoLocation{},
 	}
 
 	for _, model := range models {
@@ -489,6 +495,46 @@ func (dm *DatabaseManager) seedLocationTypes() error {
 	}
 
 	dm.logger.Info("Location types seeded successfully")
+	return nil
+}
+
+// addIsActiveColumnToGeoLocations adds is_active column to geo_locations table
+func (dm *DatabaseManager) addIsActiveColumnToGeoLocations() error {
+	dm.logger.Info("Adding is_active column to geo_locations table...")
+
+	// Check if is_active column already exists
+	var isActiveExists bool
+	isActiveQuery := `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'geo_locations' AND column_name = 'is_active'
+		)
+	`
+	if err := dm.db.Raw(isActiveQuery).Scan(&isActiveExists).Error; err != nil {
+		return fmt.Errorf("failed to check is_active column existence: %w", err)
+	}
+
+	// Add is_active column if it doesn't exist
+	if !isActiveExists {
+		addIsActiveSQL := "ALTER TABLE geo_locations ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"
+		if err := dm.db.Exec(addIsActiveSQL).Error; err != nil {
+			return fmt.Errorf("failed to add is_active column: %w", err)
+		}
+		dm.logger.Info("Added is_active column to geo_locations table")
+
+		// Create index on is_active column
+		createIndexSQL := "CREATE INDEX idx_geo_locations_is_active ON geo_locations(is_active)"
+		if err := dm.db.Exec(createIndexSQL).Error; err != nil {
+			dm.logger.Warnf("Failed to create index on is_active column: %v", err)
+			// Continue execution as index is not critical for functionality
+		} else {
+			dm.logger.Info("Created index on is_active column")
+		}
+	} else {
+		dm.logger.Info("is_active column already exists in geo_locations table")
+	}
+
+	dm.logger.Info("Successfully added is_active column to geo_locations table")
 	return nil
 }
 
