@@ -81,14 +81,11 @@ func (r *geoLocationRepository) GetAll(ctx context.Context, offset, limit int, f
 
 	// Apply filters if provided
 	if filters != nil {
-		if filters.CountryCode != nil {
-			query = query.Where("country_code = ?", strings.ToUpper(*filters.CountryCode))
+		if len(filters.CountryCodes) > 0 {
+			query = query.Where("country_code IN ?", filters.CountryCodes)
 		}
 		if len(filters.PostalCodes) > 0 {
 			query = query.Where("postal_code IN ?", filters.PostalCodes)
-		}
-		if filters.Name != nil {
-			query = query.Where("name ILIKE ?", "%"+*filters.Name+"%")
 		}
 		if filters.FeatureCode != nil {
 			query = query.Where("feature_code = ?", *filters.FeatureCode)

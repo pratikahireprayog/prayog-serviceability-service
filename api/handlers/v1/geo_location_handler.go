@@ -93,11 +93,22 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 	// Parse optional filters from query parameters
 	filters := &dtos.GeoLocationFilters{}
 
-	if countryCode := c.Query("country_code"); countryCode != "" {
-		filters.CountryCode = &countryCode
+	// Parse multiple country codes from comma-separated values
+	if countryCodesParam := c.Query("country_codes"); countryCodesParam != "" {
+		var countryCodes []string
+		// Split by comma and clean each country code
+		for _, countryCode := range strings.Split(countryCodesParam, ",") {
+			countryCode = strings.TrimSpace(strings.ToUpper(countryCode))
+			if countryCode != "" {
+				countryCodes = append(countryCodes, countryCode)
+			}
+		}
+		if len(countryCodes) > 0 {
+			filters.CountryCodes = countryCodes
+		}
 	}
 
-	// Parse multiple postal codes from comma-separated values (best practice)
+	// Parse multiple postal codes from comma-separated values
 	if postalCodesParam := c.Query("postal_codes"); postalCodesParam != "" {
 		var postalCodes []string
 		// Split by comma and clean each postal code
@@ -112,9 +123,7 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 		}
 	}
 
-	if name := c.Query("name"); name != "" {
-		filters.Name = &name
-	}
+
 
 	if featureCode := c.Query("feature_code"); featureCode != "" {
 		filters.FeatureCode = &featureCode
