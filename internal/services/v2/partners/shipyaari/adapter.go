@@ -294,6 +294,13 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	result.Capabilities["reverse_pickup"] = resp.ReversePickup
 	result.Capabilities["insurance_available"] = resp.InsuranceAvailable
 
+	// Add available services to capabilities
+	availableServices := make([]string, 0)
+	for _, service := range resp.Services {
+		availableServices = append(availableServices, service.PartnerServiceName)
+	}
+	result.Capabilities["available_services"] = availableServices
+
 	// Add metadata
 	result.Metadata["api_version"] = "v1"
 	result.Metadata["response_id"] = resp.ResponseID
