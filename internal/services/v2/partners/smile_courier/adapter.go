@@ -131,15 +131,27 @@ func (s *SmileCourierAdapter) IsHealthy(ctx context.Context) bool {
 
 // transformRequest converts standard request to Smile Courier format
 func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Request) (*ServiceabilityRequest, error) {
-	// Convert postal codes to integers
-	fromPincode, err := strconv.Atoi(getSourcePincode(req))
-	if err != nil {
-		return nil, fmt.Errorf("invalid source pincode: %s", getSourcePincode(req))
+	// Get pincodes as strings first
+	sourcePincode := getSourcePincode(req)
+	destPincode := getDestinationPincode(req)
+
+	// Validate pincodes are not empty
+	if sourcePincode == "" {
+		return nil, fmt.Errorf("source pincode is required for Smile Courier")
+	}
+	if destPincode == "" {
+		return nil, fmt.Errorf("destination pincode is required for Smile Courier")
 	}
 
-	toPincode, err := strconv.Atoi(getDestinationPincode(req))
+	// Convert postal codes to integers
+	fromPincode, err := strconv.Atoi(sourcePincode)
 	if err != nil {
-		return nil, fmt.Errorf("invalid destination pincode: %s", getDestinationPincode(req))
+		return nil, fmt.Errorf("invalid source pincode: %s", sourcePincode)
+	}
+
+	toPincode, err := strconv.Atoi(destPincode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination pincode: %s", destPincode)
 	}
 
 	smileCourierReq := &ServiceabilityRequest{

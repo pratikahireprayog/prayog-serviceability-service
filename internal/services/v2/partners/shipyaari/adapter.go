@@ -180,16 +180,9 @@ func (s *ShipyaariAdapter) validateShipyaariRequirements(req *models.Serviceabil
 
 // transformRequest converts standard request to Shipyaari format
 func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request) (*ServiceabilityRequest, error) {
-	// Convert postal codes to integers
-	pickupPincode, err := strconv.Atoi(getSourcePincode(req))
-	if err != nil {
-		return nil, fmt.Errorf("invalid pickup pincode: %s", getSourcePincode(req))
-	}
-
-	deliveryPincode, err := strconv.Atoi(getDestinationPincode(req))
-	if err != nil {
-		return nil, fmt.Errorf("invalid delivery pincode: %s", getDestinationPincode(req))
-	}
+	// Use postal codes as strings (Shipyaari expects strings, not integers)
+	pickupPincode := getSourcePincode(req)
+	deliveryPincode := getDestinationPincode(req)
 
 	shipyaariReq := &ServiceabilityRequest{
 		PickupPincode:   pickupPincode,
@@ -288,7 +281,9 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	result.Metadata["zone"] = resp.Zone
 
 	// Handle errors
-	if resp.ErrorMessage != "" {
+	if !resp.Success && resp.Message != "" {
+		result.ErrorMessage = &resp.Message
+	} else if resp.ErrorMessage != "" {
 		result.ErrorMessage = &resp.ErrorMessage
 	}
 

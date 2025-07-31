@@ -4,8 +4,8 @@ import "time"
 
 // ServiceabilityRequest represents a request to Shipyaari's serviceability API
 type ServiceabilityRequest struct {
-	PickupPincode    int     `json:"pickupPincode"`
-	DeliveryPincode  int     `json:"deliveryPincode"`
+	PickupPincode    string  `json:"pickupPincode"`
+	DeliveryPincode  string  `json:"deliveryPincode"`
 	InvoiceValue     float64 `json:"invoiceValue"`
 	PaymentMode      string  `json:"paymentMode"`
 	Weight           float64 `json:"weight"`
@@ -22,6 +22,9 @@ type Dimension struct {
 
 // ServiceabilityResponse represents a response from Shipyaari's serviceability API
 type ServiceabilityResponse struct {
+	Success              bool               `json:"success"`
+	Data                 []interface{}      `json:"data"`
+	Message              string             `json:"message"`
 	IsServiceable        bool               `json:"is_serviceable"`
 	ResponseID           string             `json:"response_id"`
 	Zone                 string             `json:"zone"`

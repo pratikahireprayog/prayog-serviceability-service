@@ -61,25 +61,19 @@ func (c *Client) CheckServiceability(ctx context.Context, req *ServiceabilityReq
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check for HTTP errors
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse response
+	// Parse response first
 	var serviceabilityResp ServiceabilityResponse
 	if err := json.Unmarshal(body, &serviceabilityResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Check for API-level errors (like 400 with error message)
-	if serviceabilityResp.Status >= 400 {
-		errorMsg := serviceabilityResp.Message
-		if errorMsg == "" {
-			errorMsg = fmt.Sprintf("Smile Courier API error with status %d", serviceabilityResp.Status)
-		}
-		return nil, fmt.Errorf("API error: %s", errorMsg)
+	// Check for HTTP errors (but allow 400 for business logic errors)
+	if resp.StatusCode < 200 || (resp.StatusCode >= 300 && resp.StatusCode != 400) {
+		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(body))
 	}
+
+	// Note: We don't throw an error for status 400 here
+	// The adapter will handle the business logic and set appropriate error messages
 
 	return &serviceabilityResp, nil
 }

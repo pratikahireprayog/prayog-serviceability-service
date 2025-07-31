@@ -75,8 +75,8 @@ func (c *Client) CheckServiceability(ctx context.Context, req *ServiceabilityReq
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check for HTTP errors
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	// Check for HTTP errors (but allow 500 for business logic errors)
+	if resp.StatusCode < 200 || (resp.StatusCode >= 300 && resp.StatusCode != 500) {
 		var errorResp ErrorResponse
 		if json.Unmarshal(body, &errorResp) == nil {
 			return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, errorResp.ErrorMessage)
