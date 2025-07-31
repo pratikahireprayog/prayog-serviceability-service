@@ -2,6 +2,8 @@ package smile_courier
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
@@ -129,10 +131,20 @@ func (s *SmileCourierAdapter) IsHealthy(ctx context.Context) bool {
 
 // transformRequest converts standard request to Smile Courier format
 func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Request) (*ServiceabilityRequest, error) {
+	// Convert postal codes to integers
+	fromPincode, err := strconv.Atoi(getSourcePincode(req))
+	if err != nil {
+		return nil, fmt.Errorf("invalid source pincode: %s", getSourcePincode(req))
+	}
+
+	toPincode, err := strconv.Atoi(getDestinationPincode(req))
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination pincode: %s", getDestinationPincode(req))
+	}
+
 	smileCourierReq := &ServiceabilityRequest{
-		FromPincode: getSourcePincode(req),
-		ToPincode:   getDestinationPincode(req),
-		CountryCode: getCountryCode(req),
+		FromPincode: fromPincode,
+		ToPincode:   toPincode,
 	}
 
 	return smileCourierReq, nil
@@ -151,48 +163,42 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Handle response based on success status
-	if resp.Success && resp.Data != nil {
-		// Add services if available
-		if resp.Data.IsServiceable && len(resp.Data.Services) > 0 {
-			for _, service := range resp.Data.Services {
+	// Handle response based on serviceability status
+	if resp.Data != nil && resp.Data.Serviceable {
+		// Add services based on available services
+		for _, service := range resp.Data.AvailableServices {
+			if service.Serviceable {
 				v2Service := models.ServiceV2{
-					ServiceCode: service.ServiceCode,
+					ServiceCode: service.ServiceName,
 					ServiceName: service.ServiceName,
-					TATDays:     service.DeliveryDays,
-					IsCOD:       service.CODSupported,
-					Pickup:      service.PickupAvailable,
-					Delivery:    service.DeliveryAvailable,
-					Insurance:   service.InsuranceAvailable,
+					TATDays:     3, // Default TAT for courier services
+					IsCOD:       resp.Data.PincodeData.IsCOD,
+					Pickup:      true,
+					Delivery:    true,
+					Insurance:   false, // Default to false
 					ProductTypes: map[string]bool{
 						"general":   true,
-						"documents": service.DocumentsSupported,
+						"documents": true,
 					},
 					DeliveryModes: map[string]bool{
 						"standard": true,
-						"express":  service.ExpressAvailable,
+						"express":  service.ServiceName == "vayuquick" || service.ServiceName == "vayuquick_pro",
 					},
-				}
-
-				// Add pricing if available
-				if service.Pricing != nil {
-					v2Service.Pricing = &models.ServicePricingV2{
-						BaseCost:      service.Pricing.BaseCost,
-						Currency:      service.Pricing.Currency,
-						CODCharges:    service.Pricing.CODCharges,
-						FuelSurcharge: service.Pricing.FuelSurcharge,
-					}
 				}
 
 				result.Services = append(result.Services, v2Service)
 			}
 		}
 
-		// Add capabilities
-		result.Capabilities["delivery_modes"] = resp.Data.AvailableModes
-		result.Capabilities["payment_modes"] = resp.Data.PaymentModes
-		result.Capabilities["max_weight"] = resp.Data.MaxWeight
-		result.Capabilities["service_zones"] = resp.Data.ServiceZones
+		// Add capabilities based on pincode data
+		result.Capabilities["cod_available"] = resp.Data.PincodeData.IsCOD
+		result.Capabilities["pickup_available"] = true
+		result.Capabilities["delivery_available"] = true
+		result.Capabilities["zone"] = resp.Data.PincodeData.Zone
+		result.Capabilities["state"] = resp.Data.PincodeData.StateName
+		result.Capabilities["city"] = resp.Data.PincodeData.City
+		result.Capabilities["serviceability_type"] = resp.Data.PincodeData.Serviceability.Serviceability
+		result.Capabilities["pincode_type"] = resp.Data.PincodeData.PincodeType.PincodeType
 	}
 
 	// Add metadata
@@ -200,8 +206,12 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 	result.Metadata["adapter_type"] = "http_no_auth"
 
 	// Handle errors
-	if !resp.Success && resp.Error != nil {
-		result.ErrorMessage = &resp.Error.Message
+	if resp.Status != 200 {
+		errorMsg := resp.Message
+		if errorMsg == "" {
+			errorMsg = fmt.Sprintf("Smile Courier API returned status %d", resp.Status)
+		}
+		result.ErrorMessage = &errorMsg
 	}
 
 	return result

@@ -89,10 +89,20 @@ func (a *Authenticator) Authenticate(ctx context.Context) error {
 		return fmt.Errorf("authentication failed: %s", authResp.Message)
 	}
 
-	// Store token information
-	a.token = authResp.Token
-	a.tokenExpiry = authResp.ExpiresAt
-	a.refreshToken = authResp.RefreshToken
+	// Check if we have data
+	if len(authResp.Data) == 0 {
+		return fmt.Errorf("no authentication data received")
+	}
+
+	// Get the first auth data (usually there's only one)
+	authData := authResp.Data[0]
+
+	// Store token information (use JWT token)
+	a.token = authData.JWT
+	// Parse JWT to get expiry (simplified - you might want to use a JWT library)
+	// For now, set expiry to 24 hours from now
+	a.tokenExpiry = time.Now().Add(24 * time.Hour)
+	a.refreshToken = authData.Token // Use the regular token as refresh token
 
 	return nil
 }

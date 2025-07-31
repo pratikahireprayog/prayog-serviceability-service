@@ -209,7 +209,6 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 
 // buildV2Response builds the V2 response from partner results
 func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerResult, req *models.ServiceabilityV2Request) *models.ServiceabilityV2Response {
-	allPartners := make([]models.PartnerV2Response, 0)
 	serviceablePartners := make([]models.PartnerV2Response, 0)
 	serviceableCount := 0
 
@@ -243,31 +242,9 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 		}
 
 		if result.Error != nil {
-			// Add error partner response using database info
-			errorMsg := result.Error.Error()
-
-			// Use partner info from database (should always be available)
-			partnerID := ""
-			if result.PartnerInfo != nil && result.PartnerInfo.PartnerID != nil {
-				partnerID = result.PartnerInfo.PartnerID.String()
-			} else {
-				partnerID = "unknown"
-			}
-			partnerCode := result.PartnerInfo.PartnerCode
-
-			errorPartnerResponse := models.PartnerV2Response{
-				PartnerID:    partnerID,
-				PartnerCode:  partnerCode,
-				PartnerName:  "",  // No partner name in database
-				Rating:       0.0, // No rating in database
-				Services:     []models.ServiceV2{},
-				Capabilities: make(map[string]interface{}),
-				Error:        &errorMsg,
-				ResponseTime: 0,
-			}
-
-			// Always add to all partners list
-			allPartners = append(allPartners, errorPartnerResponse)
+			// Handle partner errors (API failures, timeouts, etc.)
+			// Don't add error responses to the partners array
+			// They will be excluded from the final response
 
 		} else if result.Result != nil {
 			// Convert partner result to V2 response using database info
@@ -291,20 +268,16 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				ResponseTime: result.Result.ResponseTime,
 			}
 
-			// Add error if present
-			if result.Result.ErrorMessage != nil {
-				partnerResponse.Error = result.Result.ErrorMessage
-			}
-
-			// Always add to all partners list
-			allPartners = append(allPartners, partnerResponse)
-
 			// Add to serviceable partners only if serviceable (determined by having services or capabilities)
+			// AND no error message (partners with errors are not serviceable)
 			isServiceable := len(result.Result.Services) > 0 || len(result.Result.Capabilities) > 0
-			if isServiceable {
+			hasError := result.Result.ErrorMessage != nil
+			
+			if isServiceable && !hasError {
 				serviceablePartners = append(serviceablePartners, partnerResponse)
 				serviceableCount++
 			}
+			// Non-serviceable partners (with errors or no services) are excluded from the response
 		}
 	}
 
@@ -325,43 +298,17 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 		}
 	}
 
-	// Determine success and which partners to return based on returnOnlyServiceable setting
+	// Determine success and which partners to return
 	isSuccess := serviceableCount > 0
 	var partnersToReturn []models.PartnerV2Response
 
-	if s.returnOnlyServiceable {
-		// When returnOnlyServiceable=true, only return serviceable partners
-		if isSuccess && !hasErrors {
-			// Return only serviceable partners with success=true (no errors)
-			partnersToReturn = serviceablePartners
-		} else {
-			// Any errors or no serviceable partners = empty array
-			partnersToReturn = []models.PartnerV2Response{}
-		}
-	} else {
-		// When returnOnlyServiceable=false, follow old logic
-		if isSuccess {
-			// When success=true, return only serviceable partners
-			partnersToReturn = serviceablePartners
-		} else {
-			// When success=false, return all partners (including non-serviceable ones and errors)
-			partnersToReturn = allPartners
-		}
-	}
-
-	// Determine success based on returnOnlyServiceable setting
-	var success bool
-	if s.returnOnlyServiceable {
-		// When returnOnlyServiceable=true, success only if serviceable partners AND no errors
-		success = isSuccess && !hasErrors
-	} else {
-		// When returnOnlyServiceable=false, success based on serviceable partners only (old behavior)
-		success = isSuccess
-	}
+	// Only return serviceable partners (partners with services or capabilities)
+	// Non-serviceable partners (with errors or no services) are excluded from the response
+	partnersToReturn = serviceablePartners
 
 	// Build response
 	response := &models.ServiceabilityV2Response{
-		Success:  success,
+		Success:  isSuccess,
 		Partners: partnersToReturn,
 		Metadata: &models.V2ResponseMetadata{
 			TotalPartners:    len(partnerResults),

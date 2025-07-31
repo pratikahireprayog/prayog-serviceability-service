@@ -3,6 +3,7 @@ package shipyaari
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
@@ -179,30 +180,29 @@ func (s *ShipyaariAdapter) validateShipyaariRequirements(req *models.Serviceabil
 
 // transformRequest converts standard request to Shipyaari format
 func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request) (*ServiceabilityRequest, error) {
-	shipyaariReq := &ServiceabilityRequest{
-		FromPincode: getSourcePincode(req),
-		ToPincode:   getDestinationPincode(req),
-		OrderValue:  getOrderValue(req),
-		PaymentMode: getPaymentMode(req),
-		ProductType: getProductType(req),
+	// Convert postal codes to integers
+	pickupPincode, err := strconv.Atoi(getSourcePincode(req))
+	if err != nil {
+		return nil, fmt.Errorf("invalid pickup pincode: %s", getSourcePincode(req))
 	}
 
-	// Extract package information from the first package if available
-	// Note: Shipyaari may not support multiple packages, so we use the first one
-	if len(req.Packages) > 0 {
-		pkg := req.Packages[0]
+	deliveryPincode, err := strconv.Atoi(getDestinationPincode(req))
+	if err != nil {
+		return nil, fmt.Errorf("invalid delivery pincode: %s", getDestinationPincode(req))
+	}
 
-		// Extract weight
-		if pkg.Weight != nil {
-			shipyaariReq.Weight = getWeightInKg(pkg.Weight)
-		}
-
-		// Extract dimensions
-		if pkg.Dimensions != nil {
-			shipyaariReq.Length = getDimensionInCm(pkg.Dimensions.Length, pkg.Dimensions.Unit)
-			shipyaariReq.Breadth = getDimensionInCm(pkg.Dimensions.Width, pkg.Dimensions.Unit)
-			shipyaariReq.Height = getDimensionInCm(pkg.Dimensions.Height, pkg.Dimensions.Unit)
-		}
+	shipyaariReq := &ServiceabilityRequest{
+		PickupPincode:   pickupPincode,
+		DeliveryPincode: deliveryPincode,
+		InvoiceValue:    getOrderValue(req),
+		PaymentMode:     getPaymentMode(req),
+		Weight:          getWeightInKg(req.Packages[0].Weight),
+		OrderType:       "B2C", // Default to B2C
+		Dimension: Dimension{
+			Length: getDimensionInCm(req.Packages[0].Dimensions.Length, req.Packages[0].Dimensions.Unit),
+			Width:  getDimensionInCm(req.Packages[0].Dimensions.Width, req.Packages[0].Dimensions.Unit),
+			Height: getDimensionInCm(req.Packages[0].Dimensions.Height, req.Packages[0].Dimensions.Unit),
+		},
 	}
 
 	return shipyaariReq, nil
@@ -251,19 +251,26 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	// Add services if available
 	if resp.IsServiceable && len(resp.Services) > 0 {
 		for _, service := range resp.Services {
+			// Determine delivery mode based on service mode
+			deliveryMode := "standard"
+			if service.ServiceMode == "AIR" {
+				deliveryMode = "express"
+			}
+
 			result.Services = append(result.Services, models.ServiceV2{
-				ServiceCode:   service.ServiceID,
-				ServiceName:   service.ServiceName,
-				TATDays:       1,    // Convert delivery time to TAT days
-				IsCOD:         true, // Default based on capabilities
+				ServiceCode:   service.PartnerServiceID,
+				ServiceName:   service.PartnerServiceName,
+				TATDays:       service.EDT, // Use EDT (Estimated Delivery Time)
+				IsCOD:         service.COD > 0, // Check if COD charges exist
 				Pickup:        true,
 				Delivery:      true,
-				Insurance:     false,
+				Insurance:     service.Insurance > 0,
 				ProductTypes:  map[string]bool{"general": true},
-				DeliveryModes: map[string]bool{"standard": true},
+				DeliveryModes: map[string]bool{deliveryMode: true},
 				Pricing: &models.ServicePricingV2{
-					BaseCost: service.Cost,
-					Currency: service.Currency,
+					BaseCost:   service.Base,
+					Currency:   "INR", // Default to INR
+					CODCharges: service.COD,
 				},
 			})
 		}
