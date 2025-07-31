@@ -50,8 +50,9 @@ func (a *Authenticator) Authenticate(ctx context.Context) error {
 		return fmt.Errorf("failed to marshal auth request: %w", err)
 	}
 
-	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.config.TokenURL, bytes.NewBuffer(reqBody))
+	// Create HTTP request with full URL
+	authURL := a.config.BaseURL + a.config.TokenURL
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", authURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return fmt.Errorf("failed to create auth request: %w", err)
 	}
