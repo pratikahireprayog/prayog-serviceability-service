@@ -3,6 +3,7 @@ package shipyaari
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
@@ -179,9 +180,28 @@ func (s *ShipyaariAdapter) validateShipyaariRequirements(req *models.Serviceabil
 
 // transformRequest converts standard request to Shipyaari format
 func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request) (*ServiceabilityRequest, error) {
-	// Use postal codes as strings (Shipyaari expects strings, not integers)
-	pickupPincode := getSourcePincode(req)
-	deliveryPincode := getDestinationPincode(req)
+	// Get pincodes as strings first
+	sourcePincode := getSourcePincode(req)
+	destPincode := getDestinationPincode(req)
+
+	// Validate pincodes are not empty
+	if sourcePincode == "" {
+		return nil, fmt.Errorf("source pincode is required for Shipyaari")
+	}
+	if destPincode == "" {
+		return nil, fmt.Errorf("destination pincode is required for Shipyaari")
+	}
+
+	// Convert postal codes to integers (Shipyaari expects integers)
+	pickupPincode, err := strconv.Atoi(sourcePincode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source pincode: %s", sourcePincode)
+	}
+
+	deliveryPincode, err := strconv.Atoi(destPincode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination pincode: %s", destPincode)
+	}
 
 	shipyaariReq := &ServiceabilityRequest{
 		PickupPincode:   pickupPincode,

@@ -4,8 +4,8 @@ import "time"
 
 // ServiceabilityRequest represents a request to Shipyaari's serviceability API
 type ServiceabilityRequest struct {
-	PickupPincode    string  `json:"pickupPincode"`
-	DeliveryPincode  string  `json:"deliveryPincode"`
+	PickupPincode    int     `json:"pickupPincode"`
+	DeliveryPincode  int     `json:"deliveryPincode"`
 	InvoiceValue     float64 `json:"invoiceValue"`
 	PaymentMode      string  `json:"paymentMode"`
 	Weight           float64 `json:"weight"`
