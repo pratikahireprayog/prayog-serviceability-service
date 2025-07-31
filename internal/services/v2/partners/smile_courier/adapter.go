@@ -177,31 +177,6 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 
 	// Handle response based on serviceability status
 	if resp.Data != nil && resp.Data.Serviceable {
-		// Add services based on available services
-		for _, service := range resp.Data.AvailableServices {
-			if service.Serviceable {
-				v2Service := models.ServiceV2{
-					ServiceCode: service.ServiceName,
-					ServiceName: service.ServiceName,
-					TATDays:     3, // Default TAT for courier services
-					IsCOD:       resp.Data.PincodeData.IsCOD,
-					Pickup:      true,
-					Delivery:    true,
-					Insurance:   false, // Default to false
-					ProductTypes: map[string]bool{
-						"general":   true,
-						"documents": true,
-					},
-					DeliveryModes: map[string]bool{
-						"standard": true,
-						"express":  service.ServiceName == "vayuquick" || service.ServiceName == "vayuquick_pro",
-					},
-				}
-
-				result.Services = append(result.Services, v2Service)
-			}
-		}
-
 		// Add capabilities based on pincode data
 		result.Capabilities["cod_available"] = resp.Data.PincodeData.IsCOD
 		result.Capabilities["pickup_available"] = true
@@ -211,6 +186,15 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 		result.Capabilities["city"] = resp.Data.PincodeData.City
 		result.Capabilities["serviceability_type"] = resp.Data.PincodeData.Serviceability.Serviceability
 		result.Capabilities["pincode_type"] = resp.Data.PincodeData.PincodeType.PincodeType
+
+		// Add available services to capabilities
+		availableServices := make([]string, 0)
+		for _, service := range resp.Data.AvailableServices {
+			if service.Serviceable {
+				availableServices = append(availableServices, service.ServiceName)
+			}
+		}
+		result.Capabilities["available_services"] = availableServices
 	}
 
 	// Add metadata
