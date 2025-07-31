@@ -46,8 +46,9 @@ func (c *Client) CheckServiceability(ctx context.Context, req *ServiceabilityReq
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.config.CheckServiceURL, bytes.NewBuffer(reqBody))
+	// Create HTTP request with full URL
+	apiURL := c.config.BaseURL + c.config.CheckServiceURL
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -88,6 +89,9 @@ func (c *Client) CheckServiceability(ctx context.Context, req *ServiceabilityReq
 	if err := json.Unmarshal(body, &serviceabilityResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+
+	// Note: We don't throw an error for success: false here
+	// The adapter will handle the business logic and set appropriate error messages
 
 	return &serviceabilityResp, nil
 }
