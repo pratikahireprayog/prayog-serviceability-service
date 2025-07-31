@@ -252,8 +252,8 @@ func LoadIntegrationConfig() IntegrationConfig {
 	partnerAdaptersConfig := PartnerAdaptersConfig{
 		Shipyaari: ShipyaariConfig{
 			BaseURL:           getEnvOrDefault("SHIPYAARI_BASE_URL", "https://api-seller.shipyaari.com"),
-			Email:             getEnvOrDefault("SHIPYAARI_EMAIL", ""),
-			Password:          getEnvOrDefault("SHIPYAARI_PASSWORD", ""),
+			Email:             getEnvOrDefault("SHIPYAARI_EMAIL", "palak.parikh@shreemaruti.com"),
+			Password:          getEnvOrDefault("SHIPYAARI_PASSWORD", "Test@123"),
 			TokenURL:          "/api/v1/seller/signIn",
 			CheckServiceURL:   "/api/v1/order/checkServiceabilityV2",
 			Timeout:           getEnvAsDurationOrDefault("SHIPYAARI_TIMEOUT", 30*time.Second),
