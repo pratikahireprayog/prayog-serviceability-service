@@ -307,8 +307,8 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 		}
 		result.Capabilities["available_services"] = availableServices
 
-		// Add the raw services data from Shipyaari response
-		result.Capabilities["services"] = resp.Data
+		// Add the raw services data from Shipyaari response to partner_services
+		result.PartnerServices = resp.Data
 
 	} else {
 		// Error response - Shipyaari is not serviceable
@@ -319,7 +319,7 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 		result.Capabilities["insurance_available"] = false
 		result.Capabilities["is_serviceable"] = false
 		result.Capabilities["available_services"] = []string{}
-		result.Capabilities["services"] = []interface{}{} // Empty services array
+		result.PartnerServices = []interface{}{} // Empty services array
 
 		// Set error message from Shipyaari response
 		if resp.Message != "" {

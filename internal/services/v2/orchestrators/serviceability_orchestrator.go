@@ -259,13 +259,14 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			partnerCode := result.PartnerInfo.PartnerCode
 
 			partnerResponse := models.PartnerV2Response{
-				PartnerID:    partnerID,
-				PartnerCode:  partnerCode,
-				PartnerName:  "",  // No partner name in database
-				Rating:       0.0, // No rating in database
-				Services:     result.Result.Services,
-				Capabilities: result.Result.Capabilities,
-				ResponseTime: result.Result.ResponseTime,
+				PartnerID:       partnerID,
+				PartnerCode:     partnerCode,
+				PartnerName:     "",  // No partner name in database
+				Rating:          0.0, // No rating in database
+				Services:        result.Result.Services,
+				PartnerServices: result.Result.PartnerServices,
+				Capabilities:    result.Result.Capabilities,
+				ResponseTime:    result.Result.ResponseTime,
 			}
 
 			// Add to serviceable partners only if serviceable (determined by having services or capabilities)
