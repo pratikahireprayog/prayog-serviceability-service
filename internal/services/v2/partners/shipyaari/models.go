@@ -22,20 +22,20 @@ type Dimension struct {
 
 // ServiceabilityResponse represents a response from Shipyaari's serviceability API
 type ServiceabilityResponse struct {
-	Success              bool               `json:"success"`
-	Data                 []interface{}      `json:"data"`
-	Message              string             `json:"message"`
-	IsServiceable        bool               `json:"is_serviceable"`
-	ResponseID           string             `json:"response_id"`
-	Zone                 string             `json:"zone"`
-	Services             []ShipyaariService `json:"services"`
-	CODAvailable         bool               `json:"cod_available"`
-	PickupAvailable      bool               `json:"pickup_available"`
-	ReversePickup        bool               `json:"reverse_pickup"`
-	InsuranceAvailable   bool               `json:"insurance_available"`
-	ErrorMessage         string             `json:"error_message,omitempty"`
-	ExpectedDeliveryDate time.Time          `json:"expected_delivery_date,omitempty"`
-	Charges              *ShipyaariCharges  `json:"charges,omitempty"`
+	Success              bool                 `json:"success"`
+	Data                 []interface{}        `json:"data"`
+	Message              string               `json:"message"`
+	IsServiceable        *bool                `json:"is_serviceable,omitempty"`
+	ResponseID           string               `json:"response_id,omitempty"`
+	Zone                 string               `json:"zone,omitempty"`
+	Services             []ShipyaariService   `json:"services,omitempty"`
+	CODAvailable         *bool                `json:"cod_available,omitempty"`
+	PickupAvailable      *bool                `json:"pickup_available,omitempty"`
+	ReversePickup        *bool                `json:"reverse_pickup,omitempty"`
+	InsuranceAvailable   *bool                `json:"insurance_available,omitempty"`
+	ErrorMessage         string               `json:"error_message,omitempty"`
+	ExpectedDeliveryDate *time.Time           `json:"expected_delivery_date,omitempty"`
+	Charges              *ShipyaariCharges    `json:"charges,omitempty"`
 }
 
 // ShipyaariService represents a shipping service offered by Shipyaari

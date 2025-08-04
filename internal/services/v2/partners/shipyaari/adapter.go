@@ -260,57 +260,80 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Add services if available
-	if resp.IsServiceable && len(resp.Services) > 0 {
-		for _, service := range resp.Services {
-			// Determine delivery mode based on service mode
-			deliveryMode := "standard"
-			if service.ServiceMode == "AIR" {
-				deliveryMode = "express"
-			}
+	// Handle based on success field from Shipyaari response
+	if resp.Success {
+		// Success response - Shipyaari is serviceable
+		// Add services if available
+		if len(resp.Services) > 0 {
+			for _, service := range resp.Services {
+				// Determine delivery mode based on service mode
+				deliveryMode := "standard"
+				if service.ServiceMode == "AIR" {
+					deliveryMode = "express"
+				}
 
-			result.Services = append(result.Services, models.ServiceV2{
-				ServiceCode:   service.PartnerServiceID,
-				ServiceName:   service.PartnerServiceName,
-				TATDays:       service.EDT, // Use EDT (Estimated Delivery Time)
-				IsCOD:         service.COD > 0, // Check if COD charges exist
-				Pickup:        true,
-				Delivery:      true,
-				Insurance:     service.Insurance > 0,
-				ProductTypes:  map[string]bool{"general": true},
-				DeliveryModes: map[string]bool{deliveryMode: true},
-				Pricing: &models.ServicePricingV2{
-					BaseCost:   service.Base,
-					Currency:   "INR", // Default to INR
-					CODCharges: service.COD,
-				},
-			})
+				result.Services = append(result.Services, models.ServiceV2{
+					ServiceCode:   service.PartnerServiceID,
+					ServiceName:   service.PartnerServiceName,
+					TATDays:       service.EDT, // Use EDT (Estimated Delivery Time)
+					IsCOD:         service.COD > 0, // Check if COD charges exist
+					Pickup:        true,
+					Delivery:      true,
+					Insurance:     service.Insurance > 0,
+					ProductTypes:  map[string]bool{"general": true},
+					DeliveryModes: map[string]bool{deliveryMode: true},
+					Pricing: &models.ServicePricingV2{
+						BaseCost:   service.Base,
+						Currency:   "INR", // Default to INR
+						CODCharges: service.COD,
+					},
+				})
+			}
+		}
+
+		// Add capabilities for serviceable response (keeping existing structure)
+		result.Capabilities["cod_available"] = getBoolValue(resp.CODAvailable, true)
+		result.Capabilities["pickup_available"] = getBoolValue(resp.PickupAvailable, true)
+		result.Capabilities["reverse_pickup"] = getBoolValue(resp.ReversePickup, true)
+		result.Capabilities["insurance_available"] = getBoolValue(resp.InsuranceAvailable, true)
+		result.Capabilities["is_serviceable"] = true
+
+		// Add available services to capabilities
+		availableServices := make([]string, 0)
+		if resp.Services != nil {
+			for _, service := range resp.Services {
+				availableServices = append(availableServices, service.PartnerServiceName)
+			}
+		}
+		result.Capabilities["available_services"] = availableServices
+
+		// Add the raw services data from Shipyaari response
+		result.Capabilities["services"] = resp.Data
+
+	} else {
+		// Error response - Shipyaari is not serviceable
+		// Set all capabilities to false for non-serviceable response
+		result.Capabilities["cod_available"] = false
+		result.Capabilities["pickup_available"] = false
+		result.Capabilities["reverse_pickup"] = false
+		result.Capabilities["insurance_available"] = false
+		result.Capabilities["is_serviceable"] = false
+		result.Capabilities["available_services"] = []string{}
+		result.Capabilities["services"] = []interface{}{} // Empty services array
+
+		// Set error message from Shipyaari response
+		if resp.Message != "" {
+			result.ErrorMessage = &resp.Message
 		}
 	}
 
-	// Add capabilities
-	result.Capabilities["cod_available"] = resp.CODAvailable
-	result.Capabilities["pickup_available"] = resp.PickupAvailable
-	result.Capabilities["reverse_pickup"] = resp.ReversePickup
-	result.Capabilities["insurance_available"] = resp.InsuranceAvailable
-
-	// Add available services to capabilities
-	availableServices := make([]string, 0)
-	for _, service := range resp.Services {
-		availableServices = append(availableServices, service.PartnerServiceName)
-	}
-	result.Capabilities["available_services"] = availableServices
-
 	// Add metadata
 	result.Metadata["api_version"] = "v1"
-	result.Metadata["response_id"] = resp.ResponseID
-	result.Metadata["zone"] = resp.Zone
-
-	// Handle errors
-	if !resp.Success && resp.Message != "" {
-		result.ErrorMessage = &resp.Message
-	} else if resp.ErrorMessage != "" {
-		result.ErrorMessage = &resp.ErrorMessage
+	if resp.ResponseID != "" {
+		result.Metadata["response_id"] = resp.ResponseID
+	}
+	if resp.Zone != "" {
+		result.Metadata["zone"] = resp.Zone
 	}
 
 	return result
@@ -385,4 +408,12 @@ func getDimensionInCm(value float64, unit string) float64 {
 	default:
 		return value // Assume cm if unit unknown
 	}
+}
+
+// Helper function to safely get boolean value from pointer
+func getBoolValue(b *bool, defaultValue bool) bool {
+	if b == nil {
+		return defaultValue
+	}
+	return *b
 }
