@@ -77,8 +77,8 @@ type PartnerV2Response struct {
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
 	Rating          float64                `json:"rating"`
-	Services        []ServiceV2            `json:"services,omitempty"`
-	PartnerServices interface{}            `json:"partner_services,omitempty"`
+	Services        []ServiceV2            `json:"standard_services,omitempty"`
+	PartnerServices interface{}            `json:"services,omitempty"`
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           *string                `json:"error,omitempty"`
 	ResponseTime    time.Duration          `json:"response_time"`

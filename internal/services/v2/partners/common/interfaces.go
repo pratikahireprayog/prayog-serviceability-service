@@ -114,8 +114,8 @@ type PartnerServiceabilityResult struct {
 	PartnerID       *uuid.UUID             `json:"partner_id,omitempty"`
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
-	Services        []models.ServiceV2     `json:"services,omitempty"`
-	PartnerServices interface{}            `json:"partner_services,omitempty"`
+	Services        []models.ServiceV2     `json:"standard_services,omitempty"`
+	PartnerServices interface{}            `json:"services,omitempty"`
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           error                  `json:"-"`
 	ErrorMessage    *string                `json:"error,omitempty"`
