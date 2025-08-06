@@ -620,9 +620,26 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 		supportedPartnerSet[partner] = true
 	}
 
+	// Log the supported partners for debugging
+	s.logger.WithFields(logrus.Fields{
+		"component":           "serviceability_orchestrator",
+		"supported_partners":  allSupportedPartners,
+		"supported_partner_set": supportedPartnerSet,
+	}).Info("Factory supported partners")
+
 	// Only include partners that are both supported and have the attribute mapping
 	for _, mapping := range eligiblePartnersByCategory {
-		if supportedPartnerSet[mapping.PartnerCode] {
+		// Check if the database partner code is supported by the factory
+		// We need to map database codes to implementation codes
+		implCode := getImplementationCode(mapping.PartnerCode)
+		s.logger.WithFields(logrus.Fields{
+			"component":           "serviceability_orchestrator",
+			"db_partner_code":     mapping.PartnerCode,
+			"impl_code":           implCode,
+			"is_supported":        supportedPartnerSet[implCode],
+		}).Info("Checking partner support")
+
+		if supportedPartnerSet[implCode] {
 			eligiblePartners = append(eligiblePartners, DatabasePartnerInfo{
 				PartnerCode: mapping.PartnerCode,
 				PartnerID:   mapping.PartnerID,
@@ -631,6 +648,25 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}
 
 	return eligiblePartners, nil
+}
+
+// getImplementationCode returns the implementation code for a given database partner code
+func getImplementationCode(dbPartnerCode string) string {
+	// This mapping should match the one in the factory
+	adapterImplementationMap := map[string]string{
+		"smile_ecomm":       "smile_ecom",
+		"smile_ecom":        "smile_ecom",
+		"shipyaari":         "shipyaari",
+		"smile_courier":     "smile_courier",
+		"dhl":               "dhl",
+		"smile_cargo":       "smile_cargo",
+		"smile_hyperlocal":  "delcaper",
+	}
+
+	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {
+		return implCode
+	}
+	return dbPartnerCode // Return original code if no mapping exists
 }
 
 // partnerResult represents the result of checking serviceability with a single partner
