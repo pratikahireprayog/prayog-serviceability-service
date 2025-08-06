@@ -24,6 +24,7 @@ type PartnerAdaptersConfig struct {
 	SmileEcom    SmileEcomConfig    `yaml:"smile_ecom" json:"smile_ecom"`
 	DHL          DHLConfig          `yaml:"dhl" json:"dhl"`
 	SmileCargo   SmileCargoConfig   `yaml:"smile_cargo" json:"smile_cargo"`
+	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -95,6 +96,22 @@ type SmileCargoConfig struct {
 	Rating      float64       `yaml:"rating" json:"rating"`
 	MinWeightKG float64       `yaml:"min_weight_kg" json:"min_weight_kg"`
 	MaxWeightKG float64       `yaml:"max_weight_kg" json:"max_weight_kg"`
+}
+
+// DelcaperConfig configuration for Delcaper partner adapter (hyperlocal delivery)
+type DelcaperConfig struct {
+	BaseURL         string        `yaml:"base_url" json:"base_url"`
+	Email           string        `yaml:"email" json:"email"`
+	Password        string        `yaml:"password" json:"password"`
+	VendorType      string        `yaml:"vendor_type" json:"vendor_type"`
+	LoginURL        string        `yaml:"login_url" json:"login_url"`
+	CheckServiceURL string        `yaml:"check_service_url" json:"check_service_url"`
+	Timeout         time.Duration `yaml:"timeout" json:"timeout"`
+	TokenExpiryBuffer time.Duration `yaml:"token_expiry_buffer" json:"token_expiry_buffer"`
+	MaxRetries      int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay      time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Rating          float64       `yaml:"rating" json:"rating"`
 }
 
 // PartnerServiceConfig holds configuration for Partner Service integration
@@ -310,6 +327,20 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:      4.3,
 			MinWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MIN_WEIGHT_KG", 25.0),   // 25kg minimum for cargo
 			MaxWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MAX_WEIGHT_KG", 5000.0), // 5 ton maximum
+		},
+		Delcaper: DelcaperConfig{
+			BaseURL:           getEnvOrDefault("DELCAPER_BASE_URL", "https://apis.delcaper.com"),
+			Email:             getEnvOrDefault("DELCAPER_EMAIL", "atharva.bodke@shreemaruti.com"),
+			Password:          getEnvOrDefault("DELCAPER_PASSWORD", "Atharva@PRS2024"),
+			VendorType:        getEnvOrDefault("DELCAPER_VENDOR_TYPE", "SELLER"),
+			LoginURL:          getEnvOrDefault("DELCAPER_LOGIN_URL", "/auth/login"),
+			CheckServiceURL:   getEnvOrDefault("DELCAPER_CHECK_SERVICE_URL", "/fulfillment/public/seller/order/check-feasible"),
+			Timeout:           getEnvAsDurationOrDefault("DELCAPER_TIMEOUT", 30*time.Second),
+			TokenExpiryBuffer: getEnvAsDurationOrDefault("DELCAPER_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
+			MaxRetries:        getEnvAsIntOrDefault("DELCAPER_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("DELCAPER_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("DELCAPER_ENABLED", true),
+			Rating:            4.0,
 		},
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
+	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_cargo"
@@ -32,12 +33,13 @@ type PartnerAdapterFactory interface {
 // adapterImplementationMap maps database partner codes to their implementation codes
 // This is the ONLY place where partner code mapping should be defined
 var adapterImplementationMap = map[string]string{
-	"smile_ecomm":   "smile_ecom",    // Database uses smile_ecomm, implementation is smile_ecom
-	"smile_ecom":    "smile_ecom",    // Direct mapping
-	"shipyaari":     "shipyaari",     // Direct mapping
-	"smile_courier": "smile_courier", // Direct mapping
-	"dhl":           "dhl",           // Direct mapping
-	"smile_cargo":   "smile_cargo",   // Direct mapping
+	"smile_ecomm":       "smile_ecom",        // Database uses smile_ecomm, implementation is smile_ecom
+	"smile_ecom":        "smile_ecom",        // Direct mapping
+	"shipyaari":         "shipyaari",         // Direct mapping
+	"smile_courier":     "smile_courier",     // Direct mapping
+	"dhl":               "dhl",               // Direct mapping
+	"smile_cargo":       "smile_cargo",       // Direct mapping
+	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -201,6 +203,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.DHL, nil
 	case "smile_cargo":
 		return f.config.SmileCargo, nil
+	case "delcaper":
+		return f.config.Delcaper, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -248,6 +252,11 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 	// Enable Smile Cargo adapter when configuration is available
 	if f.config.SmileCargo.Enabled {
 		f.implementations["smile_cargo"] = smile_cargo.NewAdapter(f.config.SmileCargo)
+	}
+
+	// Initialize Delcaper adapter for hyperlocal serviceability
+	if f.config.Delcaper.Enabled {
+		f.implementations["delcaper"] = delcaper.NewAdapter(f.config.Delcaper)
 	}
 }
 
