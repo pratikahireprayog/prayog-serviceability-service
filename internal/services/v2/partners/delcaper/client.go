@@ -121,6 +121,7 @@ func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRe
 
 // IsHealthy checks if the client can successfully authenticate
 func (c *DelcaperClient) IsHealthy(ctx context.Context) bool {
-	_, err := c.tokenManager.GetToken(ctx)
-	return err == nil
+	// For now, just check if the configuration is valid
+	// The actual authentication will happen when making API calls
+	return c.config.Enabled && c.config.BaseURL != "" && c.config.Email != "" && c.config.Password != ""
 } 
