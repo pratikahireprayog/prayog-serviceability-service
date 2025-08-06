@@ -56,9 +56,11 @@ type CheckFeasibleResponse struct {
 
 // FeasibleData contains the feasibility check response data
 type FeasibleData struct {
-	IsFeasible bool     `json:"isFeasible"`
-	Services   []Service `json:"services,omitempty"`
-	Message    string   `json:"message,omitempty"`
+	Feasible           bool   `json:"feasible"`           // Actual field name from API
+	Distance           int    `json:"distance"`           // Distance in km
+	SerivceablityIssue string `json:"SerivceablityIssue"` // Serviceability issue
+	Services           []Service `json:"services,omitempty"`
+	Message            string   `json:"message,omitempty"`
 }
 
 // Service represents a delivery service
