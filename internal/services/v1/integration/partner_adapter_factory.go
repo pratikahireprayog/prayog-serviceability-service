@@ -16,10 +16,11 @@ import (
 // adapterImplementationMap maps database partner codes to their implementation codes
 // This is the ONLY place where partner code mapping should be defined
 var adapterImplementationMap = map[string]string{
-	"smile_ecomm":   "smile_ecom",    // Database uses smile_ecomm, implementation is smile_ecom
-	"smile_ecom":    "smile_ecom",    // Direct mapping
-	"shipyaari":     "shipyaari",     // Direct mapping
-	"smile_courier": "smile_courier", // Direct mapping
+	"smile_ecomm":       "smile_ecom",        // Database uses smile_ecomm, implementation is smile_ecom
+	"smile_ecom":        "smile_ecom",        // Direct mapping
+	"shipyaari":         "shipyaari",         // Direct mapping
+	"smile_courier":     "smile_courier",     // Direct mapping
+	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -319,6 +320,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.SmileCourier, nil
 	case "smile_ecom":
 		return f.config.SmileEcom, nil
+	case "delcaper":
+		return f.config.Delcaper, nil
 	default:
 		return map[string]interface{}{
 			"status":              "generic_adapter",
