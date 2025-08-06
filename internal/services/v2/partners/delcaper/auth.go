@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"prayog-serviceability-service/internal/shared/config"
 )
 
 // TokenManager handles JWT token management for Delcaper API
@@ -50,9 +52,27 @@ func (tm *TokenManager) GetToken(ctx context.Context) (string, error) {
 
 // refreshTokenMethod performs login to get new tokens
 func (tm *TokenManager) refreshTokenMethod(ctx context.Context) (string, error) {
-	// For now, we'll return an error indicating token refresh is needed
-	// In a real implementation, this would call the login API
-	return "", fmt.Errorf("token refresh needed - please login again")
+	// Cast config to DelcaperConfig
+	config, ok := tm.config.(config.DelcaperConfig)
+	if !ok {
+		return "", fmt.Errorf("invalid config type for token refresh")
+	}
+
+	// Create a temporary client to perform login
+	tempClient := &DelcaperClient{
+		config:      config,
+		httpClient:  tm.httpClient,
+		tokenManager: tm,
+	}
+
+	// Perform login
+	loginResp, err := tempClient.Login(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to login during token refresh: %w", err)
+	}
+
+	// Return the new access token
+	return loginResp.Data.AccessToken, nil
 }
 
 // isTokenValid checks if the current token is still valid
