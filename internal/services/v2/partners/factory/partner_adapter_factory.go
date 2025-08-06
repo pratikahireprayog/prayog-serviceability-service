@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
@@ -85,6 +86,7 @@ type partnerAdapterFactory struct {
 	geolocationService services.GeolocationService
 	hubLocationService services.HubLocationService
 	implementations    map[string]common.PartnerAdapter // Implementation code -> adapter instance
+	logger             *logrus.Logger
 }
 
 // NewPartnerAdapterFactory creates a new partner adapter factory
@@ -96,6 +98,7 @@ func NewPartnerAdapterFactory(cfg config.PartnerAdaptersConfig, httpClient *http
 		geolocationService: geolocationService,
 		hubLocationService: hubLocationService,
 		implementations:    make(map[string]common.PartnerAdapter),
+		logger:             logrus.New(),
 	}
 
 	// Initialize all available adapter implementations
@@ -136,8 +139,11 @@ func (f *partnerAdapterFactory) GetSupportedPartners() []string {
 	}
 
 	// Debug logging to see what's happening
-	fmt.Printf("DEBUG: Factory implementations: %v\n", f.implementations)
-	fmt.Printf("DEBUG: Factory supported partners: %v\n", partners)
+	f.logger.WithFields(logrus.Fields{
+		"component":           "partner_adapter_factory",
+		"implementations":     f.implementations,
+		"supported_partners":  partners,
+	}).Info("Factory supported partners retrieved")
 
 	// NOTE: This method should ideally be called with the actual database partner codes
 	// For now, we return implementation codes. The orchestrator should filter based on
@@ -233,35 +239,79 @@ func (f *partnerAdapterFactory) ValidateConfigurations() error {
 
 // initializeImplementations initializes all available adapter implementations
 func (f *partnerAdapterFactory) initializeImplementations() {
+	f.logger.WithFields(logrus.Fields{
+		"component": "partner_adapter_factory",
+		"action":    "initialize_implementations",
+	}).Info("Starting adapter implementations initialization")
+
+	f.logger.WithFields(logrus.Fields{
+		"component": "partner_adapter_factory",
+		"delcaper_enabled": f.config.Delcaper.Enabled,
+	}).Info("Delcaper configuration status")
+	
 	// Initialize Shipyaari adapter with real implementation
 	if f.config.Shipyaari.Enabled {
 		f.implementations["shipyaari"] = shipyaari.NewShipyaariAdapter(f.config.Shipyaari)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "shipyaari",
+		}).Info("Initialized shipyaari adapter")
 	}
 
 	// Initialize Smile Courier adapter with real implementation
 	if f.config.SmileCourier.Enabled {
 		f.implementations["smile_courier"] = smile_courier.NewSmileCourierAdapter(f.config.SmileCourier)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "smile_courier",
+		}).Info("Initialized smile_courier adapter")
 	}
 
 	// Initialize Smile Ecom adapter with real implementation
 	if f.config.SmileEcom.Enabled {
 		f.implementations["smile_ecom"] = smile_ecom.NewSmileEcomAdapter(f.config.SmileEcom, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "smile_ecom",
+		}).Info("Initialized smile_ecom adapter")
 	}
 
 	// Initialize DHL adapter with real implementation and geolocation service
 	if f.config.DHL.Enabled {
 		f.implementations["dhl"] = dhl.NewAdapter(f.config.DHL, f.geolocationService, f.hubLocationService)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "dhl",
+		}).Info("Initialized dhl adapter")
 	}
 
 	// Enable Smile Cargo adapter when configuration is available
 	if f.config.SmileCargo.Enabled {
 		f.implementations["smile_cargo"] = smile_cargo.NewAdapter(f.config.SmileCargo)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "smile_cargo",
+		}).Info("Initialized smile_cargo adapter")
 	}
 
 	// Initialize Delcaper adapter for hyperlocal serviceability
 	if f.config.Delcaper.Enabled {
 		f.implementations["delcaper"] = delcaper.NewAdapter(f.config.Delcaper)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delcaper",
+		}).Info("Initialized delcaper adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delcaper",
+		}).Warn("Delcaper adapter not enabled in config")
 	}
+	
+	f.logger.WithFields(logrus.Fields{
+		"component":      "partner_adapter_factory",
+		"implementations": f.implementations,
+	}).Info("Adapter implementations initialization completed")
 }
 
 // isImplementationEnabled checks if an implementation is enabled
@@ -269,7 +319,11 @@ func (f *partnerAdapterFactory) isImplementationEnabled(implCode string, adapter
 	// Check if the adapter is healthy and enabled
 	ctx := context.Background()
 	isHealthy := adapter.IsHealthy(ctx)
-	fmt.Printf("DEBUG: Checking if %s is enabled: %v\n", implCode, isHealthy)
+	f.logger.WithFields(logrus.Fields{
+		"component": "partner_adapter_factory",
+		"adapter":   implCode,
+		"is_healthy": isHealthy,
+	}).Info("Checking adapter health status")
 	return isHealthy
 }
 
