@@ -135,6 +135,10 @@ func (f *partnerAdapterFactory) GetSupportedPartners() []string {
 		}
 	}
 
+	// Debug logging to see what's happening
+	fmt.Printf("DEBUG: Factory implementations: %v\n", f.implementations)
+	fmt.Printf("DEBUG: Factory supported partners: %v\n", partners)
+
 	// NOTE: This method should ideally be called with the actual database partner codes
 	// For now, we return implementation codes. The orchestrator should filter based on
 	// actual database codes and check if they can be mapped to implementations.
@@ -264,7 +268,9 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 func (f *partnerAdapterFactory) isImplementationEnabled(implCode string, adapter common.PartnerAdapter) bool {
 	// Check if the adapter is healthy and enabled
 	ctx := context.Background()
-	return adapter.IsHealthy(ctx)
+	isHealthy := adapter.IsHealthy(ctx)
+	fmt.Printf("DEBUG: Checking if %s is enabled: %v\n", implCode, isHealthy)
+	return isHealthy
 }
 
 // Helper validation methods (simplified for now)
