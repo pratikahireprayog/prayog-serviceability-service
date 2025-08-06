@@ -54,12 +54,26 @@ func NewServiceabilityOrchestrator(
 
 // CheckServiceability orchestrates the V2 serviceability check process
 func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
+	s.logger.WithFields(logrus.Fields{
+		"component":        "serviceability_orchestrator",
+		"action":           "check_serviceability",
+		"source_postal":    req.SourcePostalCode,
+		"dest_postal":      req.DestinationPostalCode,
+		"parcel_category":  req.ParcelCategory,
+		"country_code":     req.CountryCode,
+		"product_type":     req.ProductType,
+	}).Info("Starting V2 serviceability check")
+
 	// Validate input request
 	if req == nil {
 		return nil, errors.ErrInvalidRequest("request cannot be nil")
 	}
 
 	if err := s.validateV2Request(req); err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"component": "serviceability_orchestrator",
+			"error":     err.Error(),
+		}).Error("Request validation failed")
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
@@ -70,13 +84,32 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 	// Get eligible partners based on parcel category filtering
 	eligiblePartners, err := s.getEligiblePartners(timeoutCtx, req)
 	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"component": "serviceability_orchestrator",
+			"error":     err.Error(),
+		}).Error("Failed to get eligible partners")
 		return nil, fmt.Errorf("failed to get eligible partners: %w", err)
 	}
+
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"eligible_partners": len(eligiblePartners),
+		"partner_codes":   func() []string {
+			codes := make([]string, len(eligiblePartners))
+			for i, partner := range eligiblePartners {
+				codes[i] = partner.PartnerCode
+			}
+			return codes
+		}(),
+	}).Info("Found eligible partners, starting serviceability checks")
 
 	// Check serviceability with all eligible partners concurrently
 	partnerResults := s.checkWithPartners(timeoutCtx, req, eligiblePartners)
 
 	if len(eligiblePartners) == 0 {
+		s.logger.WithFields(logrus.Fields{
+			"component": "serviceability_orchestrator",
+		}).Info("No eligible partners found, returning empty response")
 		return &models.ServiceabilityV2Response{
 			Success:  false,
 			Partners: []models.PartnerV2Response{},
@@ -94,6 +127,14 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 
 	// Process results and build response
 	response := s.buildV2Response(partnerResults, req)
+
+	s.logger.WithFields(logrus.Fields{
+		"component":        "serviceability_orchestrator",
+		"action":           "check_serviceability",
+		"total_partners":   len(partnerResults),
+		"serviceable_count": len(response.Partners),
+		"success":          response.Success,
+	}).Info("V2 serviceability check completed")
 
 	return response, nil
 }
@@ -155,6 +196,19 @@ func (s *serviceabilityOrchestrator) BulkCheckServiceability(ctx context.Context
 
 // checkWithPartners checks serviceability with multiple partners concurrently
 func (s *serviceabilityOrchestrator) checkWithPartners(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfos []DatabasePartnerInfo) []partnerResult {
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"action":          "check_with_partners",
+		"total_partners":  len(partnerInfos),
+		"partner_codes":   func() []string {
+			codes := make([]string, len(partnerInfos))
+			for i, info := range partnerInfos {
+				codes[i] = info.PartnerCode
+			}
+			return codes
+		}(),
+	}).Info("Starting concurrent partner serviceability checks")
+
 	var wg sync.WaitGroup
 	results := make([]partnerResult, len(partnerInfos))
 
@@ -171,35 +225,82 @@ func (s *serviceabilityOrchestrator) checkWithPartners(ctx context.Context, req 
 	}
 
 	wg.Wait()
+
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"action":          "check_with_partners",
+		"total_partners":  len(partnerInfos),
+		"completed":       len(results),
+	}).Info("Completed concurrent partner serviceability checks")
+
 	return results
 }
 
 // checkWithPartner checks serviceability with a single partner
 func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *models.ServiceabilityV2Request, info DatabasePartnerInfo) partnerResult {
+	s.logger.WithFields(logrus.Fields{
+		"component":    "serviceability_orchestrator",
+		"action":       "check_with_partner",
+		"partner_code": info.PartnerCode,
+		"partner_id":   info.PartnerID,
+	}).Info("Starting partner serviceability check")
+
 	adapter, exists := s.partnerFactory.GetAdapter(info.PartnerCode)
 	if !exists {
+		s.logger.WithFields(logrus.Fields{
+			"component":    "serviceability_orchestrator",
+			"partner_code": info.PartnerCode,
+		}).Error("Partner adapter not found")
 		return partnerResult{
 			PartnerCode: info.PartnerCode,
 			Error:       errors.ErrPartnerNotFound(info.PartnerCode),
 		}
 	}
 
+	s.logger.WithFields(logrus.Fields{
+		"component":    "serviceability_orchestrator",
+		"partner_code": info.PartnerCode,
+		"adapter_type": fmt.Sprintf("%T", adapter),
+	}).Info("Partner adapter found, checking health")
+
 	// Check if adapter is healthy
 	if !adapter.IsHealthy(ctx) {
+		s.logger.WithFields(logrus.Fields{
+			"component":    "serviceability_orchestrator",
+			"partner_code": info.PartnerCode,
+		}).Error("Partner adapter is not healthy")
 		return partnerResult{
 			PartnerCode: info.PartnerCode,
 			Error:       errors.ErrPartnerUnavailable(info.PartnerCode),
 		}
 	}
 
+	s.logger.WithFields(logrus.Fields{
+		"component":    "serviceability_orchestrator",
+		"partner_code": info.PartnerCode,
+	}).Info("Partner adapter is healthy, calling CheckServiceability")
+
 	// Call the adapter
 	result, err := adapter.CheckServiceability(ctx, req, common.PartnerInfo{PartnerID: info.PartnerID, PartnerCode: info.PartnerCode})
 	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"component":    "serviceability_orchestrator",
+			"partner_code": info.PartnerCode,
+			"error":        err.Error(),
+		}).Error("Partner serviceability check failed")
 		return partnerResult{
 			PartnerCode: info.PartnerCode, // No longer needed since adapter sets it
 			Error:       err,
 		}
 	}
+
+	s.logger.WithFields(logrus.Fields{
+		"component":    "serviceability_orchestrator",
+		"partner_code": info.PartnerCode,
+		"success":      result.Success,
+		"has_services": len(result.Services) > 0,
+		"has_capabilities": len(result.Capabilities) > 0,
+	}).Info("Partner serviceability check completed successfully")
 
 	return partnerResult{
 		PartnerCode: info.PartnerCode,
