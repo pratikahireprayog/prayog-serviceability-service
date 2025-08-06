@@ -194,7 +194,7 @@ func (a *Adapter) convertCheckFeasibleResponse(response *CheckFeasibleResponse, 
 	}
 
 	// Handle response based on feasibility status
-	if response.Data.IsFeasible {
+	if response.Data.Feasible {
 		// Add services if available
 		for _, service := range response.Data.Services {
 			v2Service := models.ServiceV2{
@@ -230,7 +230,7 @@ func (a *Adapter) convertCheckFeasibleResponse(response *CheckFeasibleResponse, 
 		// Add capabilities
 		result.Capabilities["hyperlocal"] = true
 		result.Capabilities["local_delivery"] = true
-		result.Capabilities["same_day"] = response.Data.IsFeasible
+		result.Capabilities["same_day"] = response.Data.Feasible
 	} else {
 		// Service not feasible
 		errorMsg := response.Data.Message
@@ -244,6 +244,8 @@ func (a *Adapter) convertCheckFeasibleResponse(response *CheckFeasibleResponse, 
 	result.Metadata["api_version"] = "v1"
 	result.Metadata["adapter_type"] = "http_with_auth"
 	result.Metadata["order_type"] = "HYPERLOCAL"
+	result.Metadata["distance_km"] = response.Data.Distance
+	result.Metadata["serviceability_issue"] = response.Data.SerivceablityIssue
 
 	// Handle errors
 	if response.Status != 200 {
