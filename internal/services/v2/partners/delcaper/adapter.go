@@ -9,22 +9,50 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Adapter implements the PartnerAdapter interface for Delcaper
 type Adapter struct {
 	client *DelcaperClient
 	config config.DelcaperConfig
+	logger *logrus.Logger
 }
 
 // NewAdapter creates a new Delcaper adapter instance
 func NewAdapter(config config.DelcaperConfig) *Adapter {
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	// Log configuration with redacted sensitive fields
+	logger.WithFields(logrus.Fields{
+		"partner":    "Delcaper",
+		"base_url":   config.BaseURL,
+		"email":      redactField(config.Email),
+		"enabled":    config.Enabled,
+		"timeout":    config.Timeout,
+	}).Info("Creating Delcaper adapter")
+
 	return &Adapter{
 		client: NewDelcaperClient(config, &http.Client{
 			Timeout: config.Timeout,
 		}),
 		config: config,
+		logger: logger,
 	}
+}
+
+// redactField safely redacts sensitive fields for logging
+func redactField(field string) string {
+	if field == "" {
+		return "[EMPTY]"
+	}
+	if len(field) <= 3 {
+		return "[REDACTED]"
+	}
+	return field[:3] + "***"
 }
 
 // GetPartnerCode returns the partner code
@@ -64,7 +92,37 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 
 // CheckServiceability checks serviceability for the request
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+	a.logger.WithFields(logrus.Fields{
+		"partner_code": partnerInfo.PartnerCode,
+		"source_pincode": func() string {
+			if request.SourcePostalCode != nil {
+				return *request.SourcePostalCode
+			}
+			return ""
+		}(),
+		"destination_pincode": func() string {
+			if request.DestinationPostalCode != nil {
+				return *request.DestinationPostalCode
+			}
+			if request.PostalCode != nil {
+				return *request.PostalCode
+			}
+			return ""
+		}(),
+		"parcel_category": func() string {
+			if request.ParcelCategory != nil {
+				return *request.ParcelCategory
+			}
+			return ""
+		}(),
+	}).Info("Starting Delcaper serviceability check")
+
 	if !a.SupportsRequest(ctx, request) {
+		a.logger.WithFields(logrus.Fields{
+			"partner_code": partnerInfo.PartnerCode,
+			"reason":       "Request not supported by Delcaper (not hyperlocal or missing pincodes)",
+		}).Info("Delcaper request not supported")
+		
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -86,6 +144,11 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	// Track start time for response time calculation
 	startTime := time.Now()
 
+	a.logger.WithFields(logrus.Fields{
+		"partner_code": partnerInfo.PartnerCode,
+		"timeout":      a.config.Timeout,
+	}).Info("Making Delcaper API call")
+
 	// Make API call
 	response, err := a.client.CheckFeasible(apiCtx, delcaperRequest)
 	
@@ -95,6 +158,13 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	if err != nil {
 		// Check if it's a timeout error
 		if ctx.Err() == context.DeadlineExceeded || apiCtx.Err() == context.DeadlineExceeded {
+			a.logger.WithFields(logrus.Fields{
+				"partner_code":  partnerInfo.PartnerCode,
+				"response_time": responseTime,
+				"timeout":       a.config.Timeout,
+				"error":         err.Error(),
+			}).Error("Delcaper API timeout")
+			
 			return &common.PartnerServiceabilityResult{
 				PartnerID:    partnerInfo.PartnerID,
 				PartnerCode:  partnerInfo.PartnerCode,
@@ -104,6 +174,12 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 				ResponseTime: responseTime,
 			}, nil
 		}
+		
+		a.logger.WithFields(logrus.Fields{
+			"partner_code":  partnerInfo.PartnerCode,
+			"response_time": responseTime,
+			"error":         err.Error(),
+		}).Error("Delcaper API call failed")
 		
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -115,6 +191,13 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
+	a.logger.WithFields(logrus.Fields{
+		"partner_code":  partnerInfo.PartnerCode,
+		"response_time": responseTime,
+		"feasible":      response.Data.Feasible,
+		"services_count": len(response.Data.Services),
+	}).Info("Delcaper API call successful")
+
 	// Convert response and return
 	result := a.convertCheckFeasibleResponse(response, partnerInfo)
 	result.ResponseTime = responseTime
@@ -125,6 +208,12 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 func (a *Adapter) IsHealthy(ctx context.Context) bool {
 	// Check if configuration is valid
 	if !a.config.Enabled || a.config.BaseURL == "" || a.config.Email == "" || a.config.Password == "" {
+		a.logger.WithFields(logrus.Fields{
+			"enabled":   a.config.Enabled,
+			"base_url":  a.config.BaseURL != "",
+			"email":     a.config.Email != "",
+			"password":  a.config.Password != "",
+		}).Warn("Delcaper adapter configuration invalid")
 		return false
 	}
 	
@@ -133,7 +222,13 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	
-	return a.client.IsHealthy(healthCtx)
+	isHealthy := a.client.IsHealthy(healthCtx)
+	
+	a.logger.WithFields(logrus.Fields{
+		"healthy": isHealthy,
+	}).Info("Delcaper adapter health check")
+	
+	return isHealthy
 }
 
 // GetMetrics returns adapter metrics
@@ -154,24 +249,34 @@ func (a *Adapter) GetMetrics() *common.PartnerMetrics {
 
 // Initialize initializes the adapter
 func (a *Adapter) Initialize(ctx context.Context) error {
+	a.logger.Info("Initializing Delcaper adapter")
+	
 	// Perform any initialization tasks
 	// For Delcaper, we might want to test the connection or validate credentials
 	if !a.config.Enabled {
-		return fmt.Errorf("Delcaper adapter is disabled")
+		err := fmt.Errorf("Delcaper adapter is disabled")
+		a.logger.WithError(err).Error("Delcaper adapter initialization failed")
+		return err
 	}
 	
 	// Test health check
 	if !a.IsHealthy(ctx) {
-		return fmt.Errorf("Delcaper adapter health check failed")
+		err := fmt.Errorf("Delcaper adapter health check failed")
+		a.logger.WithError(err).Error("Delcaper adapter initialization failed")
+		return err
 	}
 	
+	a.logger.Info("Delcaper adapter initialized successfully")
 	return nil
 }
 
 // Shutdown gracefully shuts down the adapter
 func (a *Adapter) Shutdown(ctx context.Context) error {
+	a.logger.Info("Shutting down Delcaper adapter")
+	
 	// Perform any cleanup tasks
 	// For Delcaper, we might want to clear tokens or close connections
+	a.logger.Info("Delcaper adapter shutdown completed")
 	return nil
 }
 
