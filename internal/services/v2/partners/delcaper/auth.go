@@ -125,6 +125,7 @@ func (tm *TokenManager) Login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("login failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
+	tm.logger.Info("Starting JSON unmarshalling of login response")
 	var loginResp LoginResponse
 	if err := json.Unmarshal(body, &loginResp); err != nil {
 		tm.logger.WithFields(logrus.Fields{
@@ -134,6 +135,14 @@ func (tm *TokenManager) Login(ctx context.Context) (string, error) {
 		}).Error("Failed to unmarshal login response")
 		return "", fmt.Errorf("failed to unmarshal login response: %w", err)
 	}
+	tm.logger.Info("JSON unmarshalling completed successfully")
+
+	tm.logger.WithFields(logrus.Fields{
+		"has_access_token": loginResp.Data.AccessToken != "",
+		"has_refresh_token": loginResp.Data.RefreshToken != "",
+		"expires_in": loginResp.Data.ExpiresIn,
+		"user_id": loginResp.Data.UserDto.ID,
+	}).Info("Login response parsed, storing tokens")
 
 	// Store tokens
 	tm.SetTokens(loginResp.Data.AccessToken, loginResp.Data.RefreshToken, loginResp.Data.ExpiresIn)
@@ -192,11 +201,20 @@ func (tm *TokenManager) isTokenValid() bool {
 
 // SetTokens sets the tokens and expiry time
 func (tm *TokenManager) SetTokens(accessToken, refreshTokenParam, expiresIn string) {
+	tm.logger.Info("Starting SetTokens method")
+	
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
+	tm.logger.Info("Acquired lock, setting tokens")
 	tm.accessToken = accessToken
 	tm.refreshToken = refreshTokenParam
+
+	tm.logger.WithFields(logrus.Fields{
+		"access_token_length": len(accessToken),
+		"refresh_token_length": len(refreshTokenParam),
+		"expires_in": expiresIn,
+	}).Info("Tokens set, parsing expiry")
 
 	// Parse expiresIn (assuming it's in seconds)
 	if expiresIn != "" {
@@ -212,6 +230,8 @@ func (tm *TokenManager) SetTokens(accessToken, refreshTokenParam, expiresIn stri
 	} else {
 		tm.logger.Warn("No expires_in provided, token may expire immediately")
 	}
+	
+	tm.logger.Info("SetTokens method completed")
 }
 
 // ClearTokens clears stored tokens
