@@ -90,11 +90,12 @@ func (c *DelcaperClient) Login(ctx context.Context) (string, error) {
 		"response_time": responseTime,
 	}).Info("Received login response")
 
-	if resp.StatusCode != http.StatusOK {
+	// Accept any 2xx status code as successful
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		c.logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"response":    string(body),
-		}).Error("Login failed with non-OK status")
+		}).Error("Login failed with non-success status")
 		return "", fmt.Errorf("login failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -184,8 +185,8 @@ func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRe
 		"response_time": responseTime,
 	}).Info("Received feasibility response")
 
-	// Accept both 200 (OK) and 201 (Created) as successful responses
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+	// Accept any 2xx status code as successful
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		c.logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"response":    string(body),
