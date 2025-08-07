@@ -43,9 +43,8 @@ func NewDelcaperClient(cfg config.DelcaperConfig, httpClient *http.Client) *Delc
 func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRequest) (*CheckFeasibleResponse, error) {
 	c.logger.WithFields(logrus.Fields{
 		"order_type": req.OrderType,
-		"pickup_pincode": req.PickupPincode,
-		"delivery_pincode": req.DeliveryPincode,
-		"weight": req.Weight,
+		"pickup_zip": req.PickupAddress.Zip,
+		"shipping_zip": req.ShippingAddress.Zip,
 	}).Info("Starting Delcaper feasibility check")
 	
 	// Get valid token (this will perform login if needed)
