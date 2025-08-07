@@ -27,9 +27,8 @@ func NewDelcaperClient(cfg config.DelcaperConfig, httpClient *http.Client) *Delc
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
-	// Create token manager with logger
+	// Create token manager without logger to avoid circular dependency
 	tokenManager := NewTokenManager(cfg, httpClient)
-	tokenManager.logger = logger // Set the logger for token manager
 
 	return &DelcaperClient{
 		config:      cfg,
