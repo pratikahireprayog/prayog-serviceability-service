@@ -184,12 +184,13 @@ func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRe
 		"response_time": responseTime,
 	}).Info("Received feasibility response")
 
-	if resp.StatusCode != http.StatusOK {
+	// Accept both 200 (OK) and 201 (Created) as successful responses
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		c.logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"response":    string(body),
 			"url":        url,
-		}).Error("Feasibility check failed with non-OK status")
+		}).Error("Feasibility check failed with non-success status")
 		return nil, fmt.Errorf("feasibility check failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
