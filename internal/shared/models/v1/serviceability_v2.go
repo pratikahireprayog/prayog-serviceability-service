@@ -112,7 +112,6 @@ type V2ResponseMetadata struct {
 	ServiceableCount int           `json:"serviceable_count"`
 	ProcessingTime   time.Duration `json:"processing_time"`
 	Filters          V2Filters     `json:"filters"`
-	RawQuery         string        `json:"raw_query,omitempty"`
 	// Remove EligiblePartners field - not needed
 }
 

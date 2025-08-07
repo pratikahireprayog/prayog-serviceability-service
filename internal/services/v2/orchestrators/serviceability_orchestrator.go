@@ -421,7 +421,6 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				ParcelCategory: req.ParcelCategory,
 				ProductType:    req.ProductType,
 			},
-			RawQuery: fmt.Sprintf("SELECT * FROM partner_attribute_map WHERE attribute_code = '%s'", *req.ParcelCategory),
 		},
 	}
 
@@ -554,11 +553,9 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	var err error
 
 	// Log the start of the database query
-	rawQuery := fmt.Sprintf("SELECT * FROM partner_attribute_map WHERE attribute_code = '%s'", *req.ParcelCategory)
 	s.logger.WithFields(logrus.Fields{
 		"component":       "serviceability_orchestrator",
 		"parcel_category": *req.ParcelCategory,
-		"raw_query":       rawQuery,
 		"total_partners":  len(allSupportedPartners),
 	}).Info("Starting database query for partners by attribute")
 
