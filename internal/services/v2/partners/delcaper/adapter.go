@@ -79,25 +79,61 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	// Convert request to Delcaper format
 	delcaperRequest := a.convertToCheckFeasibleRequest(request)
 
+	// Use timeout context for the API call
+	apiCtx, cancel := context.WithTimeout(ctx, a.config.Timeout)
+	defer cancel()
+
+	// Track start time for response time calculation
+	startTime := time.Now()
+
 	// Make API call
-	response, err := a.client.CheckFeasible(ctx, delcaperRequest)
+	response, err := a.client.CheckFeasible(apiCtx, delcaperRequest)
+	
+	// Calculate response time
+	responseTime := time.Since(startTime)
+	
 	if err != nil {
+		// Check if it's a timeout error
+		if ctx.Err() == context.DeadlineExceeded || apiCtx.Err() == context.DeadlineExceeded {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				Services:     make([]models.ServiceV2, 0),
+				Error:        err,
+				ErrorMessage: &[]string{fmt.Sprintf("Delcaper API timeout after %v: %v", a.config.Timeout, err)}[0],
+				ResponseTime: responseTime,
+			}, nil
+		}
+		
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			Services:     make([]models.ServiceV2, 0),
 			Error:        err,
 			ErrorMessage: &[]string{fmt.Sprintf("Delcaper API call failed: %v", err)}[0],
+			ResponseTime: responseTime,
 		}, nil
 	}
 
 	// Convert response and return
-	return a.convertCheckFeasibleResponse(response, partnerInfo), nil
+	result := a.convertCheckFeasibleResponse(response, partnerInfo)
+	result.ResponseTime = responseTime
+	return result, nil
 }
 
 // IsHealthy checks if the adapter is healthy
 func (a *Adapter) IsHealthy(ctx context.Context) bool {
-	return a.client.IsHealthy(ctx)
+	// Check if configuration is valid
+	if !a.config.Enabled || a.config.BaseURL == "" || a.config.Email == "" || a.config.Password == "" {
+		return false
+	}
+	
+	// Perform a quick health check by testing the connection
+	// Use a short timeout for health check
+	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	
+	return a.client.IsHealthy(healthCtx)
 }
 
 // GetMetrics returns adapter metrics
@@ -245,7 +281,7 @@ func (a *Adapter) convertCheckFeasibleResponse(response *CheckFeasibleResponse, 
 	result.Metadata["adapter_type"] = "http_with_auth"
 	result.Metadata["order_type"] = "HYPERLOCAL"
 	result.Metadata["distance_km"] = response.Data.Distance
-	result.Metadata["serviceability_issue"] = response.Data.SerivceablityIssue
+	result.Metadata["serviceability_issue"] = response.Data.ServiceabilityIssue
 
 	// Handle errors
 	if response.Status != 200 {

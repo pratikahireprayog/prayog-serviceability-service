@@ -58,7 +58,7 @@ type CheckFeasibleResponse struct {
 type FeasibleData struct {
 	Feasible           bool   `json:"feasible"`           // Actual field name from API
 	Distance           int    `json:"distance"`           // Distance in km
-	SerivceablityIssue string `json:"SerivceablityIssue"` // Serviceability issue
+	ServiceabilityIssue string `json:"SerivceablityIssue"` // Serviceability issue (keeping original JSON tag for API compatibility)
 	Services           []Service `json:"services,omitempty"`
 	Message            string   `json:"message,omitempty"`
 }

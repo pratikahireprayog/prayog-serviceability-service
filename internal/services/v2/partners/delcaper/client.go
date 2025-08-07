@@ -48,6 +48,11 @@ func (c *DelcaperClient) Login(ctx context.Context) (*LoginResponse, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 
+	// Use timeout context for the login request
+	loginCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer cancel()
+	req = req.WithContext(loginCtx)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute login request: %w", err)
@@ -76,8 +81,11 @@ func (c *DelcaperClient) Login(ctx context.Context) (*LoginResponse, error) {
 
 // CheckFeasible checks serviceability for the given request
 func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRequest) (*CheckFeasibleResponse, error) {
-	// Get valid token
-	token, err := c.tokenManager.GetToken(ctx)
+	// Get valid token with timeout
+	tokenCtx, cancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer cancel()
+	
+	token, err := c.tokenManager.GetToken(tokenCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get valid token: %w", err)
 	}
@@ -95,6 +103,11 @@ func (c *DelcaperClient) CheckFeasible(ctx context.Context, req *CheckFeasibleRe
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	// Use a timeout context for the HTTP request
+	requestCtx, requestCancel := context.WithTimeout(ctx, c.config.Timeout)
+	defer requestCancel()
+	httpReq = httpReq.WithContext(requestCtx)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

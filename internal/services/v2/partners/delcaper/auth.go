@@ -58,15 +58,18 @@ func (tm *TokenManager) refreshTokenMethod(ctx context.Context) (string, error) 
 		return "", fmt.Errorf("invalid config type for token refresh")
 	}
 
-	// Create a temporary client to perform login
+	// Create a temporary client to perform login with timeout
 	tempClient := &DelcaperClient{
 		config:      config,
 		httpClient:  tm.httpClient,
 		tokenManager: tm,
 	}
 
-	// Perform login
-	loginResp, err := tempClient.Login(ctx)
+	// Perform login with timeout context
+	loginCtx, cancel := context.WithTimeout(ctx, config.Timeout)
+	defer cancel()
+	
+	loginResp, err := tempClient.Login(loginCtx)
 	if err != nil {
 		return "", fmt.Errorf("failed to login during token refresh: %w", err)
 	}
