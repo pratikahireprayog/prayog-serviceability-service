@@ -360,11 +360,17 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			}
 			partnerCode := result.PartnerInfo.PartnerCode
 
-			// Extract hub_details from metadata if available
+			// Extract hub_details from metadata if available and create clean metadata without hub_details
 			var hubDetails interface{}
+			cleanMetadata := make(map[string]interface{})
+			
 			if result.Result.Metadata != nil {
-				if hubDetailsValue, exists := result.Result.Metadata["hub_details"]; exists {
-					hubDetails = hubDetailsValue
+				for key, value := range result.Result.Metadata {
+					if key == "hub_details" {
+						hubDetails = value
+					} else {
+						cleanMetadata[key] = value
+					}
 				}
 			}
 
@@ -377,7 +383,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				PartnerServices: result.Result.PartnerServices,
 				Capabilities:    result.Result.Capabilities,
 				ResponseTime:    result.Result.ResponseTime,
-				Metadata:        result.Result.Metadata,
+				Metadata:        cleanMetadata,
 				HubDetails:      hubDetails,
 			}
 
