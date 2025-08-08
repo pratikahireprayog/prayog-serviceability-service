@@ -82,6 +82,7 @@ type PartnerV2Response struct {
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           *string                `json:"error,omitempty"`
 	ResponseTime    time.Duration          `json:"response_time"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ServiceV2 represents service information for v2 responses

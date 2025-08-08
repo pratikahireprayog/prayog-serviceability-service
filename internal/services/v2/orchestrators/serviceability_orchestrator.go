@@ -369,18 +369,23 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				PartnerServices: result.Result.PartnerServices,
 				Capabilities:    result.Result.Capabilities,
 				ResponseTime:    result.Result.ResponseTime,
+				Metadata:        result.Result.Metadata,
 			}
 
-			// Add to serviceable partners only if serviceable (determined by having services or capabilities)
+			// Add to serviceable partners if they have services, capabilities, or metadata
 			// AND no error message (partners with errors are not serviceable)
-			isServiceable := len(result.Result.Services) > 0 || len(result.Result.Capabilities) > 0
+			hasServices := len(result.Result.Services) > 0
+			hasCapabilities := len(result.Result.Capabilities) > 0
+			hasMetadata := len(result.Result.Metadata) > 0
 			hasError := result.Result.ErrorMessage != nil
+			
+			isServiceable := hasServices || hasCapabilities || hasMetadata
 			
 			if isServiceable && !hasError {
 				serviceablePartners = append(serviceablePartners, partnerResponse)
 				serviceableCount++
 			}
-			// Non-serviceable partners (with errors or no services) are excluded from the response
+			// Non-serviceable partners (with errors or no services/capabilities/metadata) are excluded from the response
 		}
 	}
 
