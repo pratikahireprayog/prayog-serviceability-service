@@ -203,21 +203,8 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Transform the response to use snake_case field names
-	hubDetails := map[string]interface{}{
-		"source_hub":                 a.transformHubInfo(hubOpsResponse.SourceHub),
-		"source_international_hub":    a.transformHubInfo(hubOpsResponse.SourceInternationalHub),
-		"source_3pl_hub":             a.transformHubInfo(hubOpsResponse.Source3PLHub),
-		"destination_hub":            a.transformHubInfo(hubOpsResponse.DestinationHub),
-		"destination_international_hub": a.transformHubInfo(hubOpsResponse.DestinationInternationalHub),
-		"destination_3pl_hub":         a.transformHubInfo(hubOpsResponse.Destination3PLHub),
-		"routes":                    a.transformRoutes(hubOpsResponse.Routes),
-		"delivery_available":         hubOpsResponse.DeliveryAvailable,
-	}
-
-	// Add everything under hub_details key
-	result.Capabilities["hub_details"] = hubDetails
-	result.Metadata["hub_details"] = hubDetails
+	// Return the raw HubOps response under hub_details key
+	result.Metadata["hub_details"] = hubOpsResponse
 
 	return result
 }

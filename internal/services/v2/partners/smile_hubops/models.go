@@ -11,50 +11,50 @@ type HubOpsRequest struct {
 
 // HubInfo represents hub information in the response
 type HubInfo struct {
-	PremiseID            int     `json:"premise_id"`
-	PremiseName          string  `json:"premise_name"`
-	ParentPremiseName    *string `json:"parent_premise_name"`
-	PersonalNumber       int64   `json:"personal_number"`
-	OfficialNumber       int64   `json:"official_number"`
+	PremiseID            int     `json:"premiseId"`
+	PremiseName          string  `json:"premiseName"`
+	ParentPremiseName    *string `json:"parentPremiseName"`
+	PersonalNumber       int64   `json:"personalNumber"`
+	OfficialNumber       int64   `json:"officialNumber"`
 	City                 string  `json:"city"`
 	Address              *string `json:"address"`
-	AddressLine1         *string `json:"address_line1"`
-	AddressLine2         *string `json:"address_line2"`
-	BillingCycle         *string `json:"billing_cycle"`
+	AddressLine1         *string `json:"addressLine1"`
+	AddressLine2         *string `json:"addressLine2"`
+	BillingCycle         *string `json:"billingCycle"`
 	Pincode              int     `json:"pincode"`
 	State                string  `json:"state"`
 	Zone                 string  `json:"zone"`
 	Type                 string  `json:"type"`
-	ParentID             *int    `json:"parent_id"`
-	ParentIDAir          *int    `json:"parent_id_air"`
+	ParentID             *int    `json:"parentId"`
+	ParentIDAir          *int    `json:"parentIdAir"`
 	GST                  *string `json:"gst"`
-	StateCode            *string `json:"state_code"`
-	CutoffTime           *string `json:"cutoff_time"`
-	IsMetro              *bool   `json:"is_metro"`
+	StateCode            *string `json:"stateCode"`
+	CutoffTime           *string `json:"cutoffTime"`
+	IsMetro              *bool   `json:"isMetro"`
 	FOV                  *float64 `json:"fov"`
 	COD                  *float64 `json:"cod"`
 	Premium              *float64 `json:"premium"`
 	Latitude             *string `json:"latitude"`
 	Longitude            *string `json:"longitude"`
-	PersonalEmailID      *string `json:"personal_email_id"`
-	OfficialEmailID      *string `json:"official_email_id"`
+	PersonalEmailID      *string `json:"personalEmailId"`
+	OfficialEmailID      *string `json:"officialEmailId"`
 	PAN                  *string `json:"pan"`
-	CPType               *string `json:"cp_type"`
-	RateCardType         *string `json:"rate_card_type"`
-	ForceUpdateAllowed   bool    `json:"force_update_allowed"`
-	IsTerminalHub        bool    `json:"is_terminal_hub"`
-	CreatedDate          *string `json:"created_date"`
+	CPType               *string `json:"cpType"`
+	RateCardType         *string `json:"rateCardType"`
+	ForceUpdateAllowed   bool    `json:"forceUpdateAllowed"`
+	IsTerminalHub        bool    `json:"isTerminalHub"`
+	CreatedDate          *string `json:"createdDate"`
 	Status               string  `json:"status"`
 	Areas                []interface{} `json:"areas"`
-	HubType              string  `json:"hub_type"`
-	HubMode              string  `json:"hub_mode"`
-	RateCardID           *int    `json:"rate_card_id"`
-	HOID                 *int    `json:"ho_id"`
-	HubPincodeMap        []interface{} `json:"hub_pincode_map"`
-	WalletMappingCustID  *int    `json:"wallet_mapping_cust_id"`
-	MiscellaneousDetails *interface{} `json:"miscellaneous_details"`
-	CenterMap            *interface{} `json:"center_map"`
-	SPID                 *int    `json:"sp_id"`
+	HubType              string  `json:"hubType"`
+	HubMode              string  `json:"hubMode"`
+	RateCardID           *int    `json:"rateCardId"`
+	HOID                 *int    `json:"hoId"`
+	HubPincodeMap        []interface{} `json:"hubPincodeMap"`
+	WalletMappingCustID  *int    `json:"walletMappingCustId"`
+	MiscellaneousDetails *interface{} `json:"miscellaneousDetails"`
+	CenterMap            *interface{} `json:"centerMap"`
+	SPID                 *int    `json:"spId"`
 }
 
 // Route represents a delivery route
