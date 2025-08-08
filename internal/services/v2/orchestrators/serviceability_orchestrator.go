@@ -360,6 +360,14 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			}
 			partnerCode := result.PartnerInfo.PartnerCode
 
+			// Extract hub_details from metadata if available
+			var hubDetails interface{}
+			if result.Result.Metadata != nil {
+				if hubDetailsValue, exists := result.Result.Metadata["hub_details"]; exists {
+					hubDetails = hubDetailsValue
+				}
+			}
+
 			partnerResponse := models.PartnerV2Response{
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
@@ -370,6 +378,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				Capabilities:    result.Result.Capabilities,
 				ResponseTime:    result.Result.ResponseTime,
 				Metadata:        result.Result.Metadata,
+				HubDetails:      hubDetails,
 			}
 
 			// Add to serviceable partners if they have services, capabilities, or metadata
