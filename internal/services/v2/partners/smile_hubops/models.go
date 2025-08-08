@@ -5,8 +5,8 @@ import (
 
 // HubOpsRequest represents the request structure for Smile HubOps API
 type HubOpsRequest struct {
-	SourcePostalCode      int `json:"source_postal_code"`
-	DestinationPostalCode int `json:"destination_postal_code"`
+	SourcePostalCode      int `json:"sourcePostalCode"`
+	DestinationPostalCode int `json:"destinationPostalCode"`
 }
 
 // HubInfo represents hub information in the response
