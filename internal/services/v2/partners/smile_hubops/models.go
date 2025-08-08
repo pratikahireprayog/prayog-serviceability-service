@@ -59,22 +59,22 @@ type HubInfo struct {
 
 // Route represents a delivery route
 type Route struct {
-	TATDays    int       `json:"tat_days"`
+	TATDays    int       `json:"tatDays"`
 	Mode       int       `json:"mode"`
 	Route      []HubInfo `json:"route"`
-	CutoffTime *string   `json:"cutoff_time"`
+	CutoffTime *string   `json:"cutoffTime"`
 }
 
 // HubOpsResponse represents the response structure from Smile HubOps API
 type HubOpsResponse struct {
-	SourceHub                 *HubInfo  `json:"source_hub"`
-	SourceInternationalHub    *HubInfo  `json:"source_international_hub"`
-	Source3PLHub             *HubInfo  `json:"source_3pl_hub"`
-	DestinationHub            *HubInfo  `json:"destination_hub"`
-	DestinationInternationalHub *HubInfo `json:"destination_international_hub"`
-	Destination3PLHub         *HubInfo  `json:"destination_3pl_hub"`
+	SourceHub                 *HubInfo  `json:"sourceHub"`
+	SourceInternationalHub    *HubInfo  `json:"sourceInternationalHub"`
+	Source3PLHub             *HubInfo  `json:"source3PLHub"`
+	DestinationHub            *HubInfo  `json:"destinationHub"`
+	DestinationInternationalHub *HubInfo `json:"destinationInternationalHub"`
+	Destination3PLHub         *HubInfo  `json:"destination3PLHub"`
 	Routes                    []Route   `json:"routes"`
-	DeliveryAvailable         bool      `json:"delivery_available"`
+	DeliveryAvailable         bool      `json:"deliveryAvailable"`
 }
 
 // HubServiceabilityData represents the hub serviceability data to be included in the response

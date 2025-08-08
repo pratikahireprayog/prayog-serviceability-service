@@ -249,7 +249,7 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		result.Services = append(result.Services, service)
 	}
 
-	// Return the raw HubOps response under hub_details key
+	// Copy the entire HubOps API response exactly as received into hub_details
 	result.Metadata["hub_details"] = hubOpsResponse
 
 	return result
