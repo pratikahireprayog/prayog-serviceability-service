@@ -5,88 +5,88 @@ import (
 
 // HubOpsRequest represents the request structure for Smile HubOps API
 type HubOpsRequest struct {
-	SourcePostalCode      int `json:"sourcePostalCode"`
-	DestinationPostalCode int `json:"destinationPostalCode"`
+	SourcePostalCode      int `json:"source_postal_code"`
+	DestinationPostalCode int `json:"destination_postal_code"`
 }
 
 // HubInfo represents hub information in the response
 type HubInfo struct {
-	PremiseID            int     `json:"premiseId"`
-	PremiseName          string  `json:"premiseName"`
-	ParentPremiseName    *string `json:"parentPremiseName"`
-	PersonalNumber       int64   `json:"personalNumber"`
-	OfficialNumber       int64   `json:"officialNumber"`
+	PremiseID            int     `json:"premise_id"`
+	PremiseName          string  `json:"premise_name"`
+	ParentPremiseName    *string `json:"parent_premise_name"`
+	PersonalNumber       int64   `json:"personal_number"`
+	OfficialNumber       int64   `json:"official_number"`
 	City                 string  `json:"city"`
 	Address              *string `json:"address"`
-	AddressLine1         *string `json:"addressLine1"`
-	AddressLine2         *string `json:"addressLine2"`
-	BillingCycle         *string `json:"billingCycle"`
+	AddressLine1         *string `json:"address_line1"`
+	AddressLine2         *string `json:"address_line2"`
+	BillingCycle         *string `json:"billing_cycle"`
 	Pincode              int     `json:"pincode"`
 	State                string  `json:"state"`
 	Zone                 string  `json:"zone"`
 	Type                 string  `json:"type"`
-	ParentID             *int    `json:"parentId"`
-	ParentIDAir          *int    `json:"parentIdAir"`
+	ParentID             *int    `json:"parent_id"`
+	ParentIDAir          *int    `json:"parent_id_air"`
 	GST                  *string `json:"gst"`
-	StateCode            *string `json:"stateCode"`
-	CutoffTime           *string `json:"cutoffTime"`
-	IsMetro              *bool   `json:"isMetro"`
+	StateCode            *string `json:"state_code"`
+	CutoffTime           *string `json:"cutoff_time"`
+	IsMetro              *bool   `json:"is_metro"`
 	FOV                  *float64 `json:"fov"`
 	COD                  *float64 `json:"cod"`
 	Premium              *float64 `json:"premium"`
 	Latitude             *string `json:"latitude"`
 	Longitude            *string `json:"longitude"`
-	PersonalEmailID      *string `json:"personalEmailId"`
-	OfficialEmailID      *string `json:"officialEmailId"`
+	PersonalEmailID      *string `json:"personal_email_id"`
+	OfficialEmailID      *string `json:"official_email_id"`
 	PAN                  *string `json:"pan"`
-	CPType               *string `json:"cpType"`
-	RateCardType         *string `json:"rateCardType"`
-	ForceUpdateAllowed   bool    `json:"forceUpdateAllowed"`
-	IsTerminalHub        bool    `json:"isTerminalHub"`
-	CreatedDate          *string `json:"createdDate"`
+	CPType               *string `json:"cp_type"`
+	RateCardType         *string `json:"rate_card_type"`
+	ForceUpdateAllowed   bool    `json:"force_update_allowed"`
+	IsTerminalHub        bool    `json:"is_terminal_hub"`
+	CreatedDate          *string `json:"created_date"`
 	Status               string  `json:"status"`
 	Areas                []interface{} `json:"areas"`
-	HubType              string  `json:"hubType"`
-	HubMode              string  `json:"hubMode"`
-	RateCardID           *int    `json:"rateCardId"`
-	HOID                 *int    `json:"hoId"`
-	HubPincodeMap        []interface{} `json:"hubPincodeMap"`
-	WalletMappingCustID  *int    `json:"walletMappingCustId"`
-	MiscellaneousDetails *interface{} `json:"miscellaneousDetails"`
-	CenterMap            *interface{} `json:"centerMap"`
-	SPID                 *int    `json:"spId"`
+	HubType              string  `json:"hub_type"`
+	HubMode              string  `json:"hub_mode"`
+	RateCardID           *int    `json:"rate_card_id"`
+	HOID                 *int    `json:"ho_id"`
+	HubPincodeMap        []interface{} `json:"hub_pincode_map"`
+	WalletMappingCustID  *int    `json:"wallet_mapping_cust_id"`
+	MiscellaneousDetails *interface{} `json:"miscellaneous_details"`
+	CenterMap            *interface{} `json:"center_map"`
+	SPID                 *int    `json:"sp_id"`
 }
 
 // Route represents a delivery route
 type Route struct {
-	TATDays    int       `json:"tatDays"`
+	TATDays    int       `json:"tat_days"`
 	Mode       int       `json:"mode"`
 	Route      []HubInfo `json:"route"`
-	CutoffTime *string   `json:"cutoffTime"`
+	CutoffTime *string   `json:"cutoff_time"`
 }
 
 // HubOpsResponse represents the response structure from Smile HubOps API
 type HubOpsResponse struct {
-	SourceHub                 *HubInfo  `json:"sourceHub"`
-	SourceInternationalHub    *HubInfo  `json:"sourceInternationalHub"`
-	Source3PLHub             *HubInfo  `json:"source3PLHub"`
-	DestinationHub            *HubInfo  `json:"destinationHub"`
-	DestinationInternationalHub *HubInfo `json:"destinationInternationalHub"`
-	Destination3PLHub         *HubInfo  `json:"destination3PLHub"`
+	SourceHub                 *HubInfo  `json:"source_hub"`
+	SourceInternationalHub    *HubInfo  `json:"source_international_hub"`
+	Source3PLHub             *HubInfo  `json:"source_3pl_hub"`
+	DestinationHub            *HubInfo  `json:"destination_hub"`
+	DestinationInternationalHub *HubInfo `json:"destination_international_hub"`
+	Destination3PLHub         *HubInfo  `json:"destination_3pl_hub"`
 	Routes                    []Route   `json:"routes"`
-	DeliveryAvailable         bool      `json:"deliveryAvailable"`
+	DeliveryAvailable         bool      `json:"delivery_available"`
 }
 
 // HubServiceabilityData represents the hub serviceability data to be included in the response
 type HubServiceabilityData struct {
-	SourceHub                 *HubInfo  `json:"sourceHub,omitempty"`
-	SourceInternationalHub    *HubInfo  `json:"sourceInternationalHub,omitempty"`
-	Source3PLHub             *HubInfo  `json:"source3PLHub,omitempty"`
-	DestinationHub            *HubInfo  `json:"destinationHub,omitempty"`
-	DestinationInternationalHub *HubInfo `json:"destinationInternationalHub,omitempty"`
-	Destination3PLHub         *HubInfo  `json:"destination3PLHub,omitempty"`
+	SourceHub                 *HubInfo  `json:"source_hub,omitempty"`
+	SourceInternationalHub    *HubInfo  `json:"source_international_hub,omitempty"`
+	Source3PLHub             *HubInfo  `json:"source_3pl_hub,omitempty"`
+	DestinationHub            *HubInfo  `json:"destination_hub,omitempty"`
+	DestinationInternationalHub *HubInfo `json:"destination_international_hub,omitempty"`
+	Destination3PLHub         *HubInfo  `json:"destination_3pl_hub,omitempty"`
 	Routes                    []Route   `json:"routes,omitempty"`
-	DeliveryAvailable         bool      `json:"deliveryAvailable"`
+	DeliveryAvailable         bool      `json:"delivery_available"`
 }
 
 // Service represents a service offered by Smile HubOps

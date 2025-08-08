@@ -203,45 +203,105 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Create hub serviceability data
-	hubServiceabilityData := &HubServiceabilityData{
-		SourceHub:                 hubOpsResponse.SourceHub,
-		SourceInternationalHub:    hubOpsResponse.SourceInternationalHub,
-		Source3PLHub:             hubOpsResponse.Source3PLHub,
-		DestinationHub:            hubOpsResponse.DestinationHub,
-		DestinationInternationalHub: hubOpsResponse.DestinationInternationalHub,
-		Destination3PLHub:         hubOpsResponse.Destination3PLHub,
-		Routes:                    hubOpsResponse.Routes,
-		DeliveryAvailable:         hubOpsResponse.DeliveryAvailable,
+	// Transform the response to use snake_case field names
+	hubDetails := map[string]interface{}{
+		"source_hub":                 a.transformHubInfo(hubOpsResponse.SourceHub),
+		"source_international_hub":    a.transformHubInfo(hubOpsResponse.SourceInternationalHub),
+		"source_3pl_hub":             a.transformHubInfo(hubOpsResponse.Source3PLHub),
+		"destination_hub":            a.transformHubInfo(hubOpsResponse.DestinationHub),
+		"destination_international_hub": a.transformHubInfo(hubOpsResponse.DestinationInternationalHub),
+		"destination_3pl_hub":         a.transformHubInfo(hubOpsResponse.Destination3PLHub),
+		"routes":                    a.transformRoutes(hubOpsResponse.Routes),
+		"delivery_available":         hubOpsResponse.DeliveryAvailable,
 	}
 
-	// Add hub serviceability to capabilities
-	result.Capabilities["hub_serviceability"] = hubServiceabilityData
-
-	// Create capabilities structure
-	capabilities := &Capabilities{
-		HubServiceability:     hubServiceabilityData,
-		DeliveryAvailable:     hubOpsResponse.DeliveryAvailable,
-		RouteCount:            len(hubOpsResponse.Routes),
-		AirModeAvailable:      a.hasAirMode(hubOpsResponse.Routes),
-		SurfaceModeAvailable:  a.hasSurfaceMode(hubOpsResponse.Routes),
-	}
-
-	// Add capabilities to result
-	result.Capabilities["capabilities"] = capabilities
-
-	// Create services if delivery is available
-	if hubOpsResponse.DeliveryAvailable {
-		services := a.createServices(hubOpsResponse.Routes)
-		result.Services = services
-	}
-
-	// Add metadata
-	result.Metadata["hub_serviceability"] = hubServiceabilityData
-	result.Metadata["route_count"] = len(hubOpsResponse.Routes)
-	result.Metadata["delivery_available"] = hubOpsResponse.DeliveryAvailable
+	// Add everything under hub_details key
+	result.Capabilities["hub_details"] = hubDetails
+	result.Metadata["hub_details"] = hubDetails
 
 	return result
+}
+
+// transformHubInfo transforms HubInfo to use snake_case field names
+func (a *Adapter) transformHubInfo(hubInfo *HubInfo) map[string]interface{} {
+	if hubInfo == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"premise_id":              hubInfo.PremiseID,
+		"premise_name":            hubInfo.PremiseName,
+		"parent_premise_name":     hubInfo.ParentPremiseName,
+		"personal_number":         hubInfo.PersonalNumber,
+		"official_number":         hubInfo.OfficialNumber,
+		"city":                    hubInfo.City,
+		"address":                 hubInfo.Address,
+		"address_line1":           hubInfo.AddressLine1,
+		"address_line2":           hubInfo.AddressLine2,
+		"billing_cycle":           hubInfo.BillingCycle,
+		"pincode":                 hubInfo.Pincode,
+		"state":                   hubInfo.State,
+		"zone":                    hubInfo.Zone,
+		"type":                    hubInfo.Type,
+		"parent_id":               hubInfo.ParentID,
+		"parent_id_air":           hubInfo.ParentIDAir,
+		"gst":                     hubInfo.GST,
+		"state_code":              hubInfo.StateCode,
+		"cutoff_time":             hubInfo.CutoffTime,
+		"is_metro":                hubInfo.IsMetro,
+		"fov":                     hubInfo.FOV,
+		"cod":                     hubInfo.COD,
+		"premium":                 hubInfo.Premium,
+		"latitude":                hubInfo.Latitude,
+		"longitude":               hubInfo.Longitude,
+		"personal_email_id":       hubInfo.PersonalEmailID,
+		"official_email_id":       hubInfo.OfficialEmailID,
+		"pan":                     hubInfo.PAN,
+		"cp_type":                 hubInfo.CPType,
+		"rate_card_type":          hubInfo.RateCardType,
+		"force_update_allowed":    hubInfo.ForceUpdateAllowed,
+		"is_terminal_hub":         hubInfo.IsTerminalHub,
+		"created_date":            hubInfo.CreatedDate,
+		"status":                  hubInfo.Status,
+		"areas":                   hubInfo.Areas,
+		"hub_type":                hubInfo.HubType,
+		"hub_mode":                hubInfo.HubMode,
+		"rate_card_id":            hubInfo.RateCardID,
+		"ho_id":                   hubInfo.HOID,
+		"hub_pincode_map":         hubInfo.HubPincodeMap,
+		"wallet_mapping_cust_id":  hubInfo.WalletMappingCustID,
+		"miscellaneous_details":    hubInfo.MiscellaneousDetails,
+		"center_map":              hubInfo.CenterMap,
+		"sp_id":                   hubInfo.SPID,
+	}
+}
+
+// transformRoutes transforms routes to use snake_case field names
+func (a *Adapter) transformRoutes(routes []Route) []map[string]interface{} {
+	var transformedRoutes []map[string]interface{}
+	
+	for _, route := range routes {
+		transformedRoute := map[string]interface{}{
+			"tat_days":     route.TATDays,
+			"mode":         route.Mode,
+			"route":        a.transformRouteHubs(route.Route),
+			"cutoff_time":  route.CutoffTime,
+		}
+		transformedRoutes = append(transformedRoutes, transformedRoute)
+	}
+	
+	return transformedRoutes
+}
+
+// transformRouteHubs transforms route hubs to use snake_case field names
+func (a *Adapter) transformRouteHubs(hubs []HubInfo) []map[string]interface{} {
+	var transformedHubs []map[string]interface{}
+	
+	for _, hub := range hubs {
+		transformedHubs = append(transformedHubs, a.transformHubInfo(&hub))
+	}
+	
+	return transformedHubs
 }
 
 // hasAirMode checks if any route has air mode
