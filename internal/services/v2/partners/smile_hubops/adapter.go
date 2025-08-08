@@ -83,6 +83,26 @@ func (a *Adapter) CheckServiceability(ctx context.Context, req *models.Serviceab
 			"component": "smile_hubops_adapter",
 			"error":     err.Error(),
 		}).Error("HubOps API call failed")
+		
+		// If it's a 404, return empty result (not serviceable)
+		if err.Error() == "service not available (404)" {
+			result := &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Services:     []models.ServiceV2{},
+				Capabilities: make(map[string]interface{}),
+				Metadata:     make(map[string]interface{}),
+			}
+			
+			a.logger.WithFields(logrus.Fields{
+				"component": "smile_hubops_adapter",
+				"status":    "not_serviceable",
+			}).Info("Service not available (404)")
+			
+			return result, nil
+		}
+		
 		return nil, fmt.Errorf("HubOps API call failed: %w", err)
 	}
 
@@ -201,6 +221,32 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		Services:     []models.ServiceV2{},
 		Capabilities: make(map[string]interface{}),
 		Metadata:     make(map[string]interface{}),
+	}
+
+	// If we got a response from HubOps API (200 status), it means serviceable
+	// Create a basic service to indicate serviceability
+	if hubOpsResponse != nil {
+		service := models.ServiceV2{
+			ServiceCode:   "hubops_serviceable",
+			ServiceName:   "HubOps Serviceable",
+			TATDays:       0, // Will be updated from routes if available
+			IsCOD:         true,
+			Pickup:        true,
+			Delivery:      true,
+			Insurance:     true,
+			ProductTypes:  map[string]bool{"general": true},
+			DeliveryModes: map[string]bool{
+				"air":    true,
+				"surface": true,
+			},
+		}
+
+		// Update TAT days from routes if available
+		if len(hubOpsResponse.Routes) > 0 {
+			service.TATDays = hubOpsResponse.Routes[0].TATDays
+		}
+
+		result.Services = append(result.Services, service)
 	}
 
 	// Return the raw HubOps response under hub_details key

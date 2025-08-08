@@ -120,6 +120,25 @@ func (c *HubOpsClient) CheckServiceability(ctx context.Context, sourcePostalCode
 	}
 
 	// Check status code
+	if resp.StatusCode == 404 {
+		// Parse the error response body
+		var errorResponse map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
+			c.logger.WithFields(logrus.Fields{
+				"component":   "smile_hubops_client",
+				"status_code": resp.StatusCode,
+				"error":       "failed to parse 404 response",
+			}).Error("Failed to parse 404 response body")
+		} else {
+			c.logger.WithFields(logrus.Fields{
+				"component":   "smile_hubops_client",
+				"status_code": resp.StatusCode,
+				"detail":      errorResponse["detail"],
+			}).Info("HubOps API returned 404 - service not available")
+		}
+		return nil, fmt.Errorf("service not available (404)")
+	}
+	
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		c.logger.WithFields(logrus.Fields{
 			"component":   "smile_hubops_client",
