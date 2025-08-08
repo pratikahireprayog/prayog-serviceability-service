@@ -158,6 +158,12 @@ func (c *HubOpsClient) CheckServiceability(ctx context.Context, sourcePostalCode
 		return nil, fmt.Errorf("failed to parse raw response: %w", err)
 	}
 
+	c.logger.WithFields(logrus.Fields{
+		"component":        "smile_hubops_client",
+		"raw_response_keys": len(rawResponse),
+		"raw_response":     rawResponse,
+	}).Info("Parsed raw response successfully")
+
 	// Also parse into structured response for internal use
 	var hubOpsResponse HubOpsResponse
 	if err := json.Unmarshal(bodyBytes, &hubOpsResponse); err != nil {
@@ -171,10 +177,20 @@ func (c *HubOpsClient) CheckServiceability(ctx context.Context, sourcePostalCode
 	hubOpsResponse.RawResponse = rawResponse
 
 	c.logger.WithFields(logrus.Fields{
+		"component":        "smile_hubops_client",
+		"structured_parse_success": err == nil,
+		"delivery_available":       hubOpsResponse.DeliveryAvailable,
+		"route_count":              len(hubOpsResponse.Routes),
+		"has_raw_response":         hubOpsResponse.RawResponse != nil,
+	}).Info("Parsed structured response")
+
+	c.logger.WithFields(logrus.Fields{
 		"component":           "smile_hubops_client",
 		"delivery_available":  hubOpsResponse.DeliveryAvailable,
 		"route_count":         len(hubOpsResponse.Routes),
 		"response_time":       responseTime,
+		"raw_response_keys":   len(rawResponse),
+		"has_raw_response":    hubOpsResponse.RawResponse != nil,
 	}).Info("HubOps serviceability check completed successfully")
 
 	return &hubOpsResponse, nil

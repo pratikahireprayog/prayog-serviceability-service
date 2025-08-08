@@ -116,6 +116,9 @@ func (a *Adapter) CheckServiceability(ctx context.Context, req *models.Serviceab
 		"response_time":       time.Since(startTime),
 		"has_services":        len(result.Services) > 0,
 		"has_capabilities":    len(result.Capabilities) > 0,
+		"has_metadata":        len(result.Metadata) > 0,
+		"metadata_keys":       len(result.Metadata),
+		"hub_details_exists":  result.Metadata["hub_details"] != nil,
 	}).Info("Smile HubOps serviceability check completed")
 
 	return result, nil
@@ -214,6 +217,14 @@ func (a *Adapter) getPostalCodes(req *models.ServiceabilityV2Request) (string, s
 
 // transformResponse transforms HubOps response to common format
 func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo common.PartnerInfo, responseTime time.Duration) *common.PartnerServiceabilityResult {
+	a.logger.WithFields(logrus.Fields{
+		"component":        "smile_hubops_adapter",
+		"action":           "transform_response",
+		"hub_response_nil": hubOpsResponse == nil,
+		"has_raw_response": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil,
+		"raw_response_keys": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil ? len(hubOpsResponse.RawResponse) : 0,
+	}).Info("Starting response transformation")
+
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -229,9 +240,19 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 	if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
 		// Use the raw response from the API call
 		result.Metadata["hub_details"] = hubOpsResponse.RawResponse
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_hubops_adapter",
+			"action":    "set_raw_response",
+			"keys_count": len(hubOpsResponse.RawResponse),
+		}).Info("Using raw response for hub_details")
 	} else {
 		// Fallback to structured response if raw response is not available
 		result.Metadata["hub_details"] = hubOpsResponse
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_hubops_adapter",
+			"action":    "set_structured_response",
+			"response_nil": hubOpsResponse == nil,
+		}).Info("Using structured response for hub_details")
 	}
 
 	// Debug logging
@@ -240,6 +261,8 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		"hub_details_set": hubOpsResponse != nil,
 		"has_raw_response": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil,
 		"metadata_keys": len(result.Metadata),
+		"raw_response_keys": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil ? len(hubOpsResponse.RawResponse) : 0,
+		"metadata_hub_details": result.Metadata["hub_details"] != nil,
 	}).Info("Setting hub_details in metadata")
 
 	return result
