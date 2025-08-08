@@ -16,6 +16,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_cargo"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
+	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
 	"prayog-serviceability-service/internal/shared/config"
 )
 
@@ -41,6 +42,7 @@ var adapterImplementationMap = map[string]string{
 	"dhl":               "dhl",               // Direct mapping
 	"smile_cargo":       "smile_cargo",       // Direct mapping
 	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
+	"smile_hubops":      "smile_hubops",      // Direct mapping
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -62,6 +64,7 @@ func getPartnerDisplayName(code string) string {
 		"smile_ecom":    "Smile Ecommerce",
 		"shipyaari":     "Shipyaari",
 		"smile_courier": "Smile Courier",
+		"smile_hubops":  "Smile HubOps",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -215,6 +218,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.SmileCargo, nil
 	case "delcaper":
 		return f.config.Delcaper, nil
+	case "smile_hubops":
+		return f.config.SmileHubOps, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -306,6 +311,20 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "delcaper",
 		}).Warn("Delcaper adapter not enabled in config")
+	}
+
+	// Initialize Smile HubOps adapter for hub operations
+	if f.config.SmileHubOps.Enabled {
+		f.implementations["smile_hubops"] = smile_hubops.NewAdapter(f.config.SmileHubOps)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "smile_hubops",
+		}).Info("Initialized smile_hubops adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "smile_hubops",
+		}).Warn("Smile HubOps adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{

@@ -25,6 +25,7 @@ type PartnerAdaptersConfig struct {
 	DHL          DHLConfig          `yaml:"dhl" json:"dhl"`
 	SmileCargo   SmileCargoConfig   `yaml:"smile_cargo" json:"smile_cargo"`
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
+	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -112,6 +113,16 @@ type DelcaperConfig struct {
 	RetryDelay      time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Enabled         bool          `yaml:"enabled" json:"enabled"`
 	Rating          float64       `yaml:"rating" json:"rating"`
+}
+
+// SmileHubOpsConfig configuration for Smile HubOps partner adapter (hub operations)
+type SmileHubOpsConfig struct {
+	BaseURL     string        `yaml:"base_url" json:"base_url"`
+	Timeout     time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries  int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay  time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled     bool          `yaml:"enabled" json:"enabled"`
+	Rating      float64       `yaml:"rating" json:"rating"`
 }
 
 // PartnerServiceConfig holds configuration for Partner Service integration
@@ -341,6 +352,14 @@ func LoadIntegrationConfig() IntegrationConfig {
 			RetryDelay:        getEnvAsDurationOrDefault("DELCAPER_RETRY_DELAY", 1*time.Second),
 			Enabled:           getEnvAsBoolOrDefault("DELCAPER_ENABLED", true),
 			Rating:            4.0,
+		},
+		SmileHubOps: SmileHubOpsConfig{
+			BaseURL:    getEnvOrDefault("SMILE_HUBOPS_BASE_URL", "https://devhubopsapis.innofulfill.com"),
+			Timeout:    getEnvAsDurationOrDefault("SMILE_HUBOPS_TIMEOUT", 30*time.Second),
+			MaxRetries: getEnvAsIntOrDefault("SMILE_HUBOPS_MAX_RETRIES", 3),
+			RetryDelay: getEnvAsDurationOrDefault("SMILE_HUBOPS_RETRY_DELAY", 1*time.Second),
+			Enabled:    getEnvAsBoolOrDefault("SMILE_HUBOPS_ENABLED", true),
+			Rating:     4.5,
 		},
 	}
 
