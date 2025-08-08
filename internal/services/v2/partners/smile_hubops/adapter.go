@@ -217,12 +217,17 @@ func (a *Adapter) getPostalCodes(req *models.ServiceabilityV2Request) (string, s
 
 // transformResponse transforms HubOps response to common format
 func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo common.PartnerInfo, responseTime time.Duration) *common.PartnerServiceabilityResult {
+	rawResponseKeys := 0
+	if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
+		rawResponseKeys = len(hubOpsResponse.RawResponse)
+	}
+	
 	a.logger.WithFields(logrus.Fields{
 		"component":        "smile_hubops_adapter",
 		"action":           "transform_response",
 		"hub_response_nil": hubOpsResponse == nil,
 		"has_raw_response": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil,
-		"raw_response_keys": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil ? len(hubOpsResponse.RawResponse) : 0,
+		"raw_response_keys": rawResponseKeys,
 	}).Info("Starting response transformation")
 
 	result := &common.PartnerServiceabilityResult{
@@ -261,7 +266,7 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		"hub_details_set": hubOpsResponse != nil,
 		"has_raw_response": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil,
 		"metadata_keys": len(result.Metadata),
-		"raw_response_keys": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil ? len(hubOpsResponse.RawResponse) : 0,
+		"raw_response_keys": rawResponseKeys,
 		"metadata_hub_details": result.Metadata["hub_details"] != nil,
 	}).Info("Setting hub_details in metadata")
 
