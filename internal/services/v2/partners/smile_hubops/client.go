@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -109,21 +110,21 @@ func (c *HubOpsClient) CheckServiceability(ctx context.Context, sourcePostalCode
 		return nil, fmt.Errorf("HubOps API request timed out")
 	}
 
-	// Parse response
-	var hubOpsResponse HubOpsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&hubOpsResponse); err != nil {
+	// Read the response body once
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
 		c.logger.WithFields(logrus.Fields{
 			"component": "smile_hubops_client",
 			"error":     err.Error(),
-		}).Error("Failed to decode response")
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		}).Error("Failed to read response body")
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Check status code
+	// Check status code first
 	if resp.StatusCode == 404 {
 		// Parse the error response body
 		var errorResponse map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
+		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
 			c.logger.WithFields(logrus.Fields{
 				"component":   "smile_hubops_client",
 				"status_code": resp.StatusCode,
@@ -143,10 +144,31 @@ func (c *HubOpsClient) CheckServiceability(ctx context.Context, sourcePostalCode
 		c.logger.WithFields(logrus.Fields{
 			"component":   "smile_hubops_client",
 			"status_code": resp.StatusCode,
-			"response":    hubOpsResponse,
 		}).Error("HubOps API returned error status")
 		return nil, fmt.Errorf("HubOps API returned status %d", resp.StatusCode)
 	}
+
+	// Parse the raw response
+	var rawResponse map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &rawResponse); err != nil {
+		c.logger.WithFields(logrus.Fields{
+			"component": "smile_hubops_client",
+			"error":     err.Error(),
+		}).Error("Failed to parse raw response")
+		return nil, fmt.Errorf("failed to parse raw response: %w", err)
+	}
+
+	// Also parse into structured response for internal use
+	var hubOpsResponse HubOpsResponse
+	if err := json.Unmarshal(bodyBytes, &hubOpsResponse); err != nil {
+		c.logger.WithFields(logrus.Fields{
+			"component": "smile_hubops_client",
+			"error":     err.Error(),
+		}).Warn("Failed to parse structured response, using raw response")
+	}
+
+	// Store raw response in the structured response
+	hubOpsResponse.RawResponse = rawResponse
 
 	c.logger.WithFields(logrus.Fields{
 		"component":           "smile_hubops_client",

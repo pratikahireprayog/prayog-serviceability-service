@@ -75,6 +75,7 @@ type HubOpsResponse struct {
 	Destination3PLHub         *HubInfo  `json:"destination3PLHub"`
 	Routes                    []Route   `json:"routes"`
 	DeliveryAvailable         bool      `json:"deliveryAvailable"`
+	RawResponse               map[string]interface{} `json:"-"` // Raw response from API
 }
 
 // HubServiceabilityData represents the hub serviceability data to be included in the response

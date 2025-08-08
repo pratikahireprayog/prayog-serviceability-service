@@ -223,34 +223,24 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// If we got a response from HubOps API (200 status), it means serviceable
-	// Create a basic service to indicate serviceability
-	if hubOpsResponse != nil {
-		service := models.ServiceV2{
-			ServiceCode:   "hubops_serviceable",
-			ServiceName:   "HubOps Serviceable",
-			TATDays:       0, // Will be updated from routes if available
-			IsCOD:         true,
-			Pickup:        true,
-			Delivery:      true,
-			Insurance:     true,
-			ProductTypes:  map[string]bool{"general": true},
-			DeliveryModes: map[string]bool{
-				"air":    true,
-				"surface": true,
-			},
-		}
-
-		// Update TAT days from routes if available
-		if len(hubOpsResponse.Routes) > 0 {
-			service.TATDays = hubOpsResponse.Routes[0].TATDays
-		}
-
-		result.Services = append(result.Services, service)
-	}
+	// Don't add any services - just return the raw HubOps response in hub_details
 
 	// Copy the entire HubOps API response exactly as received into hub_details
-	result.Metadata["hub_details"] = hubOpsResponse
+	if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
+		// Use the raw response from the API call
+		result.Metadata["hub_details"] = hubOpsResponse.RawResponse
+	} else {
+		// Fallback to structured response if raw response is not available
+		result.Metadata["hub_details"] = hubOpsResponse
+	}
+
+	// Debug logging
+	a.logger.WithFields(logrus.Fields{
+		"component":     "smile_hubops_adapter",
+		"hub_details_set": hubOpsResponse != nil,
+		"has_raw_response": hubOpsResponse != nil && hubOpsResponse.RawResponse != nil,
+		"metadata_keys": len(result.Metadata),
+	}).Info("Setting hub_details in metadata")
 
 	return result
 }
