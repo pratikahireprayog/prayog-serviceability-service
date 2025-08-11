@@ -2,8 +2,11 @@ package smile_hubops
 
 import (
 	"context"
+    "encoding/json"
 	"fmt"
 	"net/http"
+    "regexp"
+    "strings"
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
@@ -243,10 +246,11 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 
     // Copy the entire HubOps API response exactly as received into hub_details
     if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
-        // Use the raw response from the API call and augment with partner identifiers
-        raw := make(map[string]interface{}, len(hubOpsResponse.RawResponse)+2)
-        for k, v := range hubOpsResponse.RawResponse {
-            raw[k] = v
+        // Convert all keys to snake_case and augment with partner identifiers
+        converted := convertKeysToSnakeCase(hubOpsResponse.RawResponse)
+        raw, _ := converted.(map[string]interface{})
+        if raw == nil {
+            raw = map[string]interface{}{}
         }
         if partnerInfo.PartnerID != nil {
             raw["partner_id"] = partnerInfo.PartnerID.String()
@@ -260,15 +264,33 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
             "component":  "smile_hubops_adapter",
             "action":     "set_raw_response",
             "keys_count": len(raw),
-        }).Info("Using raw response for hub_details with partner identifiers")
+        }).Info("Using raw response for hub_details with partner identifiers (snake_case)")
     } else {
-		// Fallback to structured response if raw response is not available
-        result.Metadata["hub_details"] = hubOpsResponse
+        // Fallback: convert structured response to map, snake_case keys, and set hub_details
+        var m map[string]interface{}
+        if hubOpsResponse != nil {
+            if b, err := json.Marshal(hubOpsResponse); err == nil {
+                _ = json.Unmarshal(b, &m)
+            }
+        }
+        converted := convertKeysToSnakeCase(m)
+        raw, _ := converted.(map[string]interface{})
+        if raw == nil {
+            raw = map[string]interface{}{}
+        }
+        if partnerInfo.PartnerID != nil {
+            raw["partner_id"] = partnerInfo.PartnerID.String()
+        } else {
+            raw["partner_id"] = nil
+        }
+        raw["partner_code"] = partnerInfo.PartnerCode
+
+        result.Metadata["hub_details"] = raw
 		a.logger.WithFields(logrus.Fields{
 			"component": "smile_hubops_adapter",
 			"action":    "set_structured_response",
 			"response_nil": hubOpsResponse == nil,
-		}).Info("Using structured response for hub_details")
+        }).Info("Using structured response for hub_details (snake_case)")
 	}
 
 	// Debug logging
@@ -282,6 +304,44 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 	}).Info("Setting hub_details in metadata")
 
 	return result
+}
+
+// convertKeysToSnakeCase recursively converts all map keys to snake_case
+func convertKeysToSnakeCase(input interface{}) interface{} {
+    switch v := input.(type) {
+    case map[string]interface{}:
+        out := make(map[string]interface{}, len(v))
+        for k, val := range v {
+            out[toSnakeCase(k)] = convertKeysToSnakeCase(val)
+        }
+        return out
+    case []interface{}:
+        arr := make([]interface{}, len(v))
+        for i, elem := range v {
+            arr[i] = convertKeysToSnakeCase(elem)
+        }
+        return arr
+    default:
+        return input
+    }
+}
+
+var snakeCaseRegex1 = regexp.MustCompile("([a-z0-9])([A-Z])")
+var snakeCaseRegex2 = regexp.MustCompile("([A-Z]+)([A-Z][a-z])")
+
+func toSnakeCase(s string) string {
+    if s == "" {
+        return s
+    }
+    // Replace spaces and hyphens with underscores first
+    s = strings.ReplaceAll(s, "-", "_")
+    s = strings.ReplaceAll(s, " ", "_")
+    // Handle cases like JSONURL -> json_url
+    s = snakeCaseRegex2.ReplaceAllString(s, "${1}_${2}")
+    // Handle camelCase -> camel_case
+    s = snakeCaseRegex1.ReplaceAllString(s, "${1}_${2}")
+    s = strings.ToLower(s)
+    return s
 }
 
 // transformHubInfo transforms HubInfo to use snake_case field names
