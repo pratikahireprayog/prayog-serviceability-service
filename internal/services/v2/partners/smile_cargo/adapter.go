@@ -146,28 +146,34 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		}
 	}
 
-	// Service is only available if BOTH from and to have valid SmilePartners
-	if !hasFromPartner || !hasToPartner {
-		reason := "SmilePartner missing in "
-		if !hasFromPartner && !hasToPartner {
-			reason += "both 'from' and 'to' objects"
-		} else if !hasFromPartner {
-			reason += "'from' object"
-		} else {
-			reason += "'to' object"
-		}
-		result.Metadata["reason"] = reason + " - service not available"
-		result.Metadata["has_from_partner"] = hasFromPartner
-		result.Metadata["has_to_partner"] = hasToPartner
-		result.Metadata["bigship_partners_found"] = len(response.Data) > 0 && len(response.Data[0].BigShipPartners) > 0
+    // Service is only available if BOTH from and to have valid SmilePartners
+    if !hasFromPartner || !hasToPartner {
+        reason := "Smile Cargo not serviceable: SmilePartner missing in "
+        if !hasFromPartner && !hasToPartner {
+            reason += "both 'from' and 'to' objects"
+        } else if !hasFromPartner {
+            reason += "'from' object"
+        } else {
+            reason += "'to' object"
+        }
+        result.ErrorMessage = &reason
+        // Leave Capabilities and Metadata empty so orchestrator excludes this partner
+        return result
+    }
 
-		// Return empty capabilities structure for non-serviceable requests
-		result.Capabilities = map[string]interface{}{
-			"source_postal_code":      nil,
-			"destination_postal_code": nil,
-		}
-		return result
-	}
+    // Additional business rules:
+    // - From pincode requires firstMile = true
+    // - To pincode requires lastMile = true
+    if fromSmilePartner != nil && !fromSmilePartner.FirstMile {
+        msg := "Smile Cargo not serviceable: firstMile must be true for source pincode"
+        result.ErrorMessage = &msg
+        return result
+    }
+    if toSmilePartner != nil && !toSmilePartner.LastMile {
+        msg := "Smile Cargo not serviceable: lastMile must be true for destination pincode"
+        result.ErrorMessage = &msg
+        return result
+    }
 
 	// Both SmilePartners found and active
 
@@ -195,8 +201,8 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 	// Remove the services array as per user request
 	result.Services = []models.ServiceV2{} // Empty services array
 
-	// Set metadata
-	result.Metadata["reason"] = "Smile Cargo service available in both from and to locations"
+    // Set metadata
+    result.Metadata["reason"] = "Smile Cargo serviceable: smilePartner present at source and destination with required first/last mile"
 	result.Metadata["from_city"] = fromSmilePartner.CityName
 	result.Metadata["to_city"] = toSmilePartner.CityName
 	result.Metadata["area_availability"] = toSmilePartner.AreaAvailability
