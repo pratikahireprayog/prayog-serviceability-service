@@ -293,7 +293,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 		},
 		SmileCourier: SmileCourierConfig{
 			BaseURL:         getEnvOrDefault("SMILE_COURIER_BASE_URL", "https://apis.delcaper.com"),
-			CheckServiceURL: "/serviceability/courier/v1",
+			CheckServiceURL: "/serviceability/courier",
 			Timeout:         getEnvAsDurationOrDefault("SMILE_COURIER_TIMEOUT", 30*time.Second),
 			MaxRetries:      getEnvAsIntOrDefault("SMILE_COURIER_MAX_RETRIES", 3),
 			RetryDelay:      getEnvAsDurationOrDefault("SMILE_COURIER_RETRY_DELAY", 1*time.Second),
