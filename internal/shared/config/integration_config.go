@@ -325,7 +325,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			SandboxMode:   getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
 		},
 		SmileCargo: SmileCargoConfig{
-			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),
+			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://apis.delcaper.com"),
 			APIKey:      getEnvOrDefault("SMILE_CARGO_API_KEY", ""),
 			VendorCode:  getEnvOrDefault("SMILE_CARGO_VENDOR_CODE", "bhav19"),
 			ServiceURL:  getEnvOrDefault("SMILE_CARGO_SERVICE_URL", "/delivery-orchestrator/service-availability/v3"),
