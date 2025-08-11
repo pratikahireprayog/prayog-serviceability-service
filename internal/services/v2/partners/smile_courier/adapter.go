@@ -164,9 +164,6 @@ func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Reque
 
 // transformResponse converts Smile Courier response to standard format
 func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
-	// TODO: Update response structure when Smile Courier API is integrated
-	// Current implementation is placeholder - may need to match final payload format
-
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -175,40 +172,72 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Handle response based on serviceability status
-	if resp.Data != nil && resp.Data.Serviceable {
-		// Add capabilities based on pincode data
-		result.Capabilities["cod_available"] = resp.Data.PincodeData.IsCOD
-		result.Capabilities["pickup_available"] = true
-		result.Capabilities["delivery_available"] = true
-		result.Capabilities["zone"] = resp.Data.PincodeData.Zone
-		result.Capabilities["state"] = resp.Data.PincodeData.StateName
-		result.Capabilities["city"] = resp.Data.PincodeData.City
-		result.Capabilities["serviceability_type"] = resp.Data.PincodeData.Serviceability.Serviceability
-		result.Capabilities["pincode_type"] = resp.Data.PincodeData.PincodeType.PincodeType
-
-		// Add available services to capabilities
-		availableServices := make([]string, 0)
-		for _, service := range resp.Data.AvailableServices {
-			if service.Serviceable {
-				availableServices = append(availableServices, service.ServiceName)
-			}
-		}
-		result.Capabilities["available_services"] = availableServices
-	}
-
-	// Add metadata
-	result.Metadata["api_version"] = "v1"
-	result.Metadata["adapter_type"] = "http_no_auth"
-
-	// Handle errors
-	if resp.Status != 200 {
+	// If no data or non-200, treat as error so orchestrator excludes
+	if resp == nil || resp.Status != 200 || resp.Data == nil {
 		errorMsg := resp.Message
 		if errorMsg == "" {
 			errorMsg = fmt.Sprintf("Smile Courier API returned status %d", resp.Status)
 		}
 		result.ErrorMessage = &errorMsg
+		return result
 	}
+
+	// Determine serviceability from partner response
+	isServiceable := resp.Data.Serviceable
+
+	// If non-serviceable, return an empty result so orchestrator excludes this partner
+	if !isServiceable {
+		// Do not populate capabilities or metadata to avoid false positives
+		// Leave Services empty and no ErrorMessage (valid non-serviceable case)
+		// This makes hasServices/hasCapabilities/hasMetadata all false
+		result.Capabilities = map[string]interface{}{}
+		result.Metadata = map[string]interface{}{}
+		return result
+	}
+
+	// Populate capabilities only for serviceable cases
+	if resp.Data.PincodeData != nil {
+		result.Capabilities["pincode"] = resp.Data.PincodeData.Pincode
+		result.Capabilities["state"] = resp.Data.PincodeData.StateName
+		result.Capabilities["state_code"] = resp.Data.PincodeData.StateCode
+		result.Capabilities["city"] = resp.Data.PincodeData.City
+		result.Capabilities["zone"] = resp.Data.PincodeData.Zone
+		result.Capabilities["new_city"] = resp.Data.PincodeData.NewCity
+		result.Capabilities["district"] = resp.Data.PincodeData.DistrictIP
+		result.Capabilities["is_cod"] = resp.Data.PincodeData.IsCOD
+		if v := resp.Data.PincodeData.Serviceability.Serviceability; v != "" {
+			result.Capabilities["serviceability_status"] = v
+		}
+		if v := resp.Data.PincodeData.PincodeType.PincodeType; v != "" {
+			result.Capabilities["pincode_type"] = v
+		}
+	}
+
+	// Available services
+	if len(resp.Data.AvailableServices) > 0 {
+		availableServices := make([]string, 0)
+		serviceableServices := make([]string, 0)
+		for _, service := range resp.Data.AvailableServices {
+			availableServices = append(availableServices, service.ServiceName)
+			if service.Serviceable {
+				serviceableServices = append(serviceableServices, service.ServiceName)
+			}
+		}
+		result.Capabilities["available_services"] = availableServices
+		result.Capabilities["serviceable_services"] = serviceableServices
+		result.Capabilities["total_services"] = len(availableServices)
+		result.Capabilities["serviceable_service_count"] = len(serviceableServices)
+	}
+
+	// Pickup/Delivery only when serviceable
+	result.Capabilities["pickup_available"] = true
+	result.Capabilities["delivery_available"] = true
+
+	// Metadata only for serviceable path
+	result.Metadata["api_version"] = "v1"
+	result.Metadata["adapter_type"] = "http_no_auth"
+	result.Metadata["response_status"] = resp.Status
+	result.Metadata["serviceable"] = true
 
 	return result
 }
