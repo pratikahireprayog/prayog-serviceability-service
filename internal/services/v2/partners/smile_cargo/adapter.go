@@ -131,8 +131,9 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 	var hasFromPartner = false
 	var hasToPartner = false
 
-	// Check all data entries and separate "from" and "to" entries
-	for _, data := range response.Data {
+    // Check all data entries and separate "from" and "to" entries
+    validPartners := make([]*SmilePartner, 0, 2)
+    for _, data := range response.Data {
 		// Check if this is a "from" entry (has fromPincode)
 		if data.FromPincode != nil && data.SmilePartner != nil && data.SmilePartner.Status {
 			fromSmilePartner = data.SmilePartner
@@ -144,7 +145,25 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 			toSmilePartner = data.SmilePartner
 			hasToPartner = true
 		}
+
+        // Track any valid smilePartner entries regardless of explicit from/to tagging
+        if data.SmilePartner != nil && data.SmilePartner.Status {
+            validPartners = append(validPartners, data.SmilePartner)
+        }
 	}
+
+    // Fallback: If explicit from/to not identified but we have at least two valid entries,
+    // assign first as from and second as to.
+    if (!hasFromPartner || !hasToPartner) && len(validPartners) >= 2 {
+        if !hasFromPartner {
+            fromSmilePartner = validPartners[0]
+            hasFromPartner = true
+        }
+        if !hasToPartner {
+            toSmilePartner = validPartners[1]
+            hasToPartner = true
+        }
+    }
 
     // Service is only available if BOTH from and to have valid SmilePartners
     if !hasFromPartner || !hasToPartner {
