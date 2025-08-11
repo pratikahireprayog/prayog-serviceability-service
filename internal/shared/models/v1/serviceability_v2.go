@@ -66,6 +66,7 @@ type ServiceabilityV2Response struct {
 	SourceAddress      *AddressInfo        `json:"source_address,omitempty"`
 	DestinationAddress *AddressInfo        `json:"destination_address,omitempty"`
 	Addresses          []DetailedAddress   `json:"addresses,omitempty"`
+    HubDetails         interface{}         `json:"hub_details,omitempty"`
 	Partners           []PartnerV2Response `json:"partners"` // Remove omitempty to always include partners array
 	Error              *ErrorResponse      `json:"error,omitempty"`
 	Metadata           *V2ResponseMetadata `json:"metadata,omitempty"`

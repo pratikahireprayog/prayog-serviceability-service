@@ -125,8 +125,8 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 		}, nil
 	}
 
-	// Process results and build response
-	response := s.buildV2Response(partnerResults, req)
+    // Process results and build response
+    response := s.buildV2Response(partnerResults, req)
 
 	s.logger.WithFields(logrus.Fields{
 		"component":        "serviceability_orchestrator",
@@ -313,6 +313,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerResult, req *models.ServiceabilityV2Request) *models.ServiceabilityV2Response {
 	serviceablePartners := make([]models.PartnerV2Response, 0)
 	serviceableCount := 0
+    var topLevelHubDetails interface{}
 
 	// Collect address information
 	var hubLocationInfo *models.HubLocationInfo
@@ -343,12 +344,12 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			}
 		}
 
-		if result.Error != nil {
+        if result.Error != nil {
 			// Handle partner errors (API failures, timeouts, etc.)
 			// Don't add error responses to the partners array
 			// They will be excluded from the final response
 
-		} else if result.Result != nil {
+        } else if result.Result != nil {
 			// Convert partner result to V2 response using database info
 			partnerID := ""
 			if result.Result != nil && result.Result.PartnerID != nil {
@@ -360,8 +361,8 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			}
 			partnerCode := result.PartnerInfo.PartnerCode
 
-			// Extract hub_details from metadata if available and create clean metadata without hub_details
-			var hubDetails interface{}
+            // Extract hub_details from metadata if available and create clean metadata without hub_details
+            var hubDetails interface{}
 			cleanMetadata := make(map[string]interface{})
 			
 			if result.Result.Metadata != nil {
@@ -396,10 +397,28 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			
 			isServiceable := hasServices || hasCapabilities || hasMetadata
 			
-			if isServiceable && !hasError {
-				serviceablePartners = append(serviceablePartners, partnerResponse)
-				serviceableCount++
-			}
+            if isServiceable && !hasError {
+                // If this partner is Smile HubOps, do NOT include it in partners array.
+                // Only set top-level hub_details if present.
+                isHubOps := false
+                if result.PartnerInfo != nil {
+                    partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
+                    if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
+                        isHubOps = true
+                    }
+                }
+
+                if isHubOps {
+                    if hubDetails != nil {
+                        topLevelHubDetails = hubDetails
+                    }
+                    // Count Smile HubOps as serviceable but skip adding to partners array
+                    serviceableCount++
+                } else {
+                    serviceablePartners = append(serviceablePartners, partnerResponse)
+                    serviceableCount++
+                }
+            }
 			// Non-serviceable partners (with errors or no services/capabilities/metadata) are excluded from the response
 		}
 	}
@@ -430,7 +449,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 	partnersToReturn = serviceablePartners
 
 	// Build response
-	response := &models.ServiceabilityV2Response{
+    response := &models.ServiceabilityV2Response{
 		Success:  isSuccess,
 		Partners: partnersToReturn,
 		Metadata: &models.V2ResponseMetadata{
@@ -443,6 +462,11 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			},
 		},
 	}
+
+    // Set top-level hub details if Smile HubOps was serviceable
+    if topLevelHubDetails != nil {
+        response.HubDetails = topLevelHubDetails
+    }
 
 	// Add address information if available
 	s.populateAddressInformation(response, req, hubLocationInfo, sourceCountryCode, destinationCountryCode)

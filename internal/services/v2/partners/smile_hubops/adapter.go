@@ -241,18 +241,29 @@ func (a *Adapter) transformResponse(hubOpsResponse *HubOpsResponse, partnerInfo 
 
 	// Don't add any services - just return the raw HubOps response in hub_details
 
-	// Copy the entire HubOps API response exactly as received into hub_details
-	if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
-		// Use the raw response from the API call
-		result.Metadata["hub_details"] = hubOpsResponse.RawResponse
-		a.logger.WithFields(logrus.Fields{
-			"component": "smile_hubops_adapter",
-			"action":    "set_raw_response",
-			"keys_count": len(hubOpsResponse.RawResponse),
-		}).Info("Using raw response for hub_details")
-	} else {
+    // Copy the entire HubOps API response exactly as received into hub_details
+    if hubOpsResponse != nil && hubOpsResponse.RawResponse != nil {
+        // Use the raw response from the API call and augment with partner identifiers
+        raw := make(map[string]interface{}, len(hubOpsResponse.RawResponse)+2)
+        for k, v := range hubOpsResponse.RawResponse {
+            raw[k] = v
+        }
+        if partnerInfo.PartnerID != nil {
+            raw["partner_id"] = partnerInfo.PartnerID.String()
+        } else {
+            raw["partner_id"] = nil
+        }
+        raw["partner_code"] = partnerInfo.PartnerCode
+
+        result.Metadata["hub_details"] = raw
+        a.logger.WithFields(logrus.Fields{
+            "component":  "smile_hubops_adapter",
+            "action":     "set_raw_response",
+            "keys_count": len(raw),
+        }).Info("Using raw response for hub_details with partner identifiers")
+    } else {
 		// Fallback to structured response if raw response is not available
-		result.Metadata["hub_details"] = hubOpsResponse
+        result.Metadata["hub_details"] = hubOpsResponse
 		a.logger.WithFields(logrus.Fields{
 			"component": "smile_hubops_adapter",
 			"action":    "set_structured_response",
