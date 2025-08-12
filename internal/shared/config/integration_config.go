@@ -354,7 +354,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:            4.0,
 		},
 		SmileHubOps: SmileHubOpsConfig{
-			BaseURL:    getEnvOrDefault("SMILE_HUBOPS_BASE_URL", "https://devhubopsapis.innofulfill.com"),
+			BaseURL:    getEnvOrDefault("SMILE_HUBOPS_BASE_URL", "https://qaapis.hubops.innofulfill.com"),
 			Timeout:    getEnvAsDurationOrDefault("SMILE_HUBOPS_TIMEOUT", 30*time.Second),
 			MaxRetries: getEnvAsIntOrDefault("SMILE_HUBOPS_MAX_RETRIES", 3),
 			RetryDelay: getEnvAsDurationOrDefault("SMILE_HUBOPS_RETRY_DELAY", 1*time.Second),
