@@ -29,7 +29,7 @@ func NewHTTPJourneyTemplatesClient(baseURL string, httpClient *http.Client) Jour
 
 // GetTemplates fetches templates for a given parcel category
 func (c *HTTPJourneyTemplatesClient) GetTemplates(ctx context.Context, parcelCategory string) (*TemplatesResponse, error) {
-    endpoint := fmt.Sprintf("%s/api/v1/templates", c.baseURL)
+    endpoint := fmt.Sprintf("%s/journey-service/api/v1/templates", c.baseURL)
     u, err := url.Parse(endpoint)
     if err != nil {
         return nil, err

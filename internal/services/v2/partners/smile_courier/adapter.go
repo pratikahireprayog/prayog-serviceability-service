@@ -2,6 +2,7 @@ package smile_courier
 
 import (
 	"context"
+    "encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
+    "github.com/sirupsen/logrus"
 )
 
 // SmileCourierAdapter implements the common.PartnerAdapter interface for Smile Courier
@@ -16,6 +18,7 @@ type SmileCourierAdapter struct {
 	*common.HTTPBaseAdapter
 	client *Client
 	config config.SmileCourierConfig
+    logger *logrus.Logger
 }
 
 // NewSmileCourierAdapter creates a new Smile Courier adapter
@@ -48,10 +51,15 @@ func NewSmileCourierAdapter(cfg config.SmileCourierConfig) common.PartnerAdapter
 	baseAdapter.SetHTTPClient(client)
 	baseAdapter.SetAuthenticator(auth)
 
-	adapter := &SmileCourierAdapter{
+    // Initialize logger similar to other partners
+    logger := logrus.New()
+    logger.SetLevel(logrus.InfoLevel)
+
+    adapter := &SmileCourierAdapter{
 		HTTPBaseAdapter: baseAdapter,
 		client:          client,
 		config:          cfg,
+        logger:          logger,
 	}
 
 	return adapter
@@ -59,7 +67,20 @@ func NewSmileCourierAdapter(cfg config.SmileCourierConfig) common.PartnerAdapter
 
 // CheckServiceability implements the main serviceability check for Smile Courier
 func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
-	startTime := time.Now()
+    startTime := time.Now()
+
+    // Start log similar to smile_hubops
+    s.logger.WithFields(logrus.Fields{
+        "component":       "smile_courier_adapter",
+        "action":          "check_serviceability",
+        "partner_code":    partnerInfo.PartnerCode,
+        "partner_id":      partnerInfo.PartnerID,
+        "source_postal":   req.SourcePostalCode,
+        "dest_postal":     req.DestinationPostalCode,
+        "parcel_category": req.ParcelCategory,
+        "country_code":    req.CountryCode,
+        "product_type":    req.ProductType,
+    }).Info("Starting Smile Courier serviceability check")
 
 	// Validate request
 	if err := common.ValidateServiceabilityRequest(req); err != nil {
@@ -72,9 +93,13 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 		}, nil
 	}
 
-	// Transform request to Smile Courier format
-	smileCourierReq, err := s.transformRequest(req)
+    // Transform request to Smile Courier format
+    smileCourierReq, err := s.transformRequest(req)
 	if err != nil {
+        s.logger.WithFields(logrus.Fields{
+            "component":    "smile_courier_adapter",
+            "error":        err.Error(),
+        }).Warn("Request transformation failed - returning non-serviceable")
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -85,8 +110,12 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 	}
 
 	// Make API call to Smile Courier
-	smileCourierResp, err := s.client.CheckServiceability(ctx, smileCourierReq)
+    smileCourierResp, err := s.client.CheckServiceability(ctx, smileCourierReq)
 	if err != nil {
+        s.logger.WithFields(logrus.Fields{
+            "component": "smile_courier_adapter",
+            "error":     err.Error(),
+        }).Error("API call failed - returning non-serviceable")
 		s.RecordRequest(time.Since(startTime), false)
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -95,6 +124,31 @@ func (s *SmileCourierAdapter) CheckServiceability(ctx context.Context, req *mode
 			Error:        err,
 		}, nil
 	}
+
+    // Attempt to interpret Data as object first
+    var dataObj *ServiceabilityData
+    if len(smileCourierResp.Data) > 0 && smileCourierResp.Data[0] == '{' {
+        var tmp ServiceabilityData
+        if err := json.Unmarshal(smileCourierResp.Data, &tmp); err == nil {
+            dataObj = &tmp
+        }
+    }
+    // Fallback: if array, treat as non-serviceable and ignore details
+    hasData := len(smileCourierResp.Data) > 0
+    serviceableVal := interface{}(nil)
+    if dataObj != nil {
+        serviceableVal = dataObj.Serviceable
+    }
+
+    // Log parsed response summary (status/message/data/serviceable)
+    s.logger.WithFields(logrus.Fields{
+        "component":   "smile_courier_adapter",
+        "status":      smileCourierResp.Status,
+        "message":     smileCourierResp.Message,
+        "has_data":    hasData,
+        "serviceable": serviceableVal,
+        "data_is_obj": dataObj != nil,
+    }).Info("Smile Courier API response parsed")
 
 	// Transform response to standard format
 	result := s.transformResponse(smileCourierResp, partnerInfo)
@@ -134,6 +188,12 @@ func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Reque
 	// Get pincodes as strings first
 	sourcePincode := getSourcePincode(req)
 	destPincode := getDestinationPincode(req)
+    s.logger.WithFields(logrus.Fields{
+        "component":   "smile_courier_adapter",
+        "stage":       "transform_request",
+        "source_str":  sourcePincode,
+        "dest_str":    destPincode,
+    }).Info("Preparing pincodes for Smile Courier request")
 
 	// Validate pincodes are not empty
 	if sourcePincode == "" {
@@ -153,6 +213,12 @@ func (s *SmileCourierAdapter) transformRequest(req *models.ServiceabilityV2Reque
 	if err != nil {
 		return nil, fmt.Errorf("invalid destination pincode: %s", destPincode)
 	}
+    s.logger.WithFields(logrus.Fields{
+        "component":  "smile_courier_adapter",
+        "stage":      "transform_request",
+        "from_int":   fromPincode,
+        "to_int":     toPincode,
+    }).Info("Smile Courier pincodes converted")
 
 	smileCourierReq := &ServiceabilityRequest{
 		FromPincode: fromPincode,
@@ -173,20 +239,34 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 	}
 
 	// If no data or non-200, treat as error so orchestrator excludes
-	if resp == nil || resp.Status != 200 || resp.Data == nil {
+    if resp == nil || resp.Status != 200 || len(resp.Data) == 0 {
 		errorMsg := resp.Message
 		if errorMsg == "" {
 			errorMsg = fmt.Sprintf("Smile Courier API returned status %d", resp.Status)
 		}
+        // Log and return non-serviceable so upstream strategy excludes this partner
+        s.logger.WithFields(logrus.Fields{
+            "component": "smile_courier_adapter",
+            "status":    resp.Status,
+            "message":   resp.Message,
+        }).Info("Non-serviceable response - excluding from partners; strategy continues")
 		result.ErrorMessage = &errorMsg
 		return result
 	}
 
 	// Determine serviceability from partner response
-	isServiceable := resp.Data.Serviceable
+    // Interpret serviceability from parsed object if available, else false
+    isServiceable := false
+    var parsedObj ServiceabilityData
+    if len(resp.Data) > 0 && resp.Data[0] == '{' {
+        if err := json.Unmarshal(resp.Data, &parsedObj); err == nil {
+            isServiceable = parsedObj.Serviceable
+        }
+    }
 
 	// If non-serviceable, return an empty result so orchestrator excludes this partner
-	if !isServiceable {
+    if !isServiceable {
+        fmt.Printf("[smile_courier] Serviceable=false in response. Excluding from partners; strategy continues.\n")
 		// Do not populate capabilities or metadata to avoid false positives
 		// Leave Services empty and no ErrorMessage (valid non-serviceable case)
 		// This makes hasServices/hasCapabilities/hasMetadata all false
@@ -196,28 +276,28 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 	}
 
 	// Populate capabilities only for serviceable cases
-	if resp.Data.PincodeData != nil {
-		result.Capabilities["pincode"] = resp.Data.PincodeData.Pincode
-		result.Capabilities["state"] = resp.Data.PincodeData.StateName
-		result.Capabilities["state_code"] = resp.Data.PincodeData.StateCode
-		result.Capabilities["city"] = resp.Data.PincodeData.City
-		result.Capabilities["zone"] = resp.Data.PincodeData.Zone
-		result.Capabilities["new_city"] = resp.Data.PincodeData.NewCity
-		result.Capabilities["district"] = resp.Data.PincodeData.DistrictIP
-		result.Capabilities["is_cod"] = resp.Data.PincodeData.IsCOD
-		if v := resp.Data.PincodeData.Serviceability.Serviceability; v != "" {
+    if parsedObj.PincodeData != nil {
+        result.Capabilities["pincode"] = parsedObj.PincodeData.Pincode
+        result.Capabilities["state"] = parsedObj.PincodeData.StateName
+        result.Capabilities["state_code"] = parsedObj.PincodeData.StateCode
+        result.Capabilities["city"] = parsedObj.PincodeData.City
+        result.Capabilities["zone"] = parsedObj.PincodeData.Zone
+        result.Capabilities["new_city"] = parsedObj.PincodeData.NewCity
+        result.Capabilities["district"] = parsedObj.PincodeData.DistrictIP
+        result.Capabilities["is_cod"] = parsedObj.PincodeData.IsCOD
+        if v := parsedObj.PincodeData.Serviceability.Serviceability; v != "" {
 			result.Capabilities["serviceability_status"] = v
 		}
-		if v := resp.Data.PincodeData.PincodeType.PincodeType; v != "" {
+        if v := parsedObj.PincodeData.PincodeType.PincodeType; v != "" {
 			result.Capabilities["pincode_type"] = v
 		}
 	}
 
 	// Available services
-	if len(resp.Data.AvailableServices) > 0 {
+    if len(parsedObj.AvailableServices) > 0 {
 		availableServices := make([]string, 0)
 		serviceableServices := make([]string, 0)
-		for _, service := range resp.Data.AvailableServices {
+        for _, service := range parsedObj.AvailableServices {
 			availableServices = append(availableServices, service.ServiceName)
 			if service.Serviceable {
 				serviceableServices = append(serviceableServices, service.ServiceName)

@@ -61,11 +61,15 @@ func (c *Client) CheckServiceability(ctx context.Context, req *ServiceabilityReq
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Parse response first
+    // Parse response first
 	var serviceabilityResp ServiceabilityResponse
 	if err := json.Unmarshal(body, &serviceabilityResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+
+    // Debug: log raw HTTP status and body, and parsed summary
+    fmt.Printf("[smile_courier] API response http_status=%d raw_body=%s\n", resp.StatusCode, string(body))
+    // Note: serviceabilityResp.Data is RawMessage; serviceable logged by adapter after parsing
 
 	// Check for HTTP errors (but allow 400 for business logic errors)
 	if resp.StatusCode < 200 || (resp.StatusCode >= 300 && resp.StatusCode != 400) {

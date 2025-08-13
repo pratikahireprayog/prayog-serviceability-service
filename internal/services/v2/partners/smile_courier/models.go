@@ -1,16 +1,19 @@
 package smile_courier
 
+import "encoding/json"
+
 // ServiceabilityRequest represents a request to Smile Courier's serviceability API
 type ServiceabilityRequest struct {
-	FromPincode int `json:"fromPincode"`
-	ToPincode   int `json:"toPincode"`
+    FromPincode int `json:"fromPincode"`
+    ToPincode   int `json:"toPincode"`
 }
 
 // ServiceabilityResponse represents a response from Smile Courier's serviceability API
+// Note: Data can be an object or an array ([]). We use json.RawMessage to handle both.
 type ServiceabilityResponse struct {
-	Status  int                `json:"status"`
-	Message string             `json:"message,omitempty"`
-	Data    *ServiceabilityData `json:"data,omitempty"`
+    Status  int             `json:"status"`
+    Message string          `json:"message,omitempty"`
+    Data    json.RawMessage `json:"data,omitempty"`
 }
 
 // ServiceabilityData contains the actual serviceability information

@@ -216,6 +216,24 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(ctx context.Context, req *mode
         }
     }
 
+    // Final safety filter: remove smile_courier if it has an error (non-serviceable)
+    if len(partners) > 0 {
+        filtered := make([]models.PartnerV2Response, 0, len(partners))
+        for _, p := range partners {
+            if p.PartnerCode == "smile_courier" && p.Error != nil {
+                s.Logger.WithFields(logrus.Fields{
+                    "component":    "smile_primary_np_extension_strategy",
+                    "partner_code": p.PartnerCode,
+                    "event":        "filtered_non_serviceable",
+                    "error":        *p.Error,
+                }).Info("Excluding non-serviceable partner from final partners array")
+                continue
+            }
+            filtered = append(filtered, p)
+        }
+        partners = filtered
+    }
+
     resp := &models.ServiceabilityV2Response{
         Success:  len(partners) > 0,
         Partners: partners,

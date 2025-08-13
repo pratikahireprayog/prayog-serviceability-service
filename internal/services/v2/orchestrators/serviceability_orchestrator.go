@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"os"
+
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
     dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
@@ -64,8 +66,12 @@ func NewServiceabilityOrchestrator(
             return &smnpstrategy.SmilePrimaryNPExtensionStrategy{PartnerFactory: partnerFactory, Logger: logger}
         },
     }
-    // Very simple wiring: use sandbox base URL; can be configured later
-    jtClient := NewHTTPJourneyTemplatesClient("https://sandbox-apis.prayog.io/journey-service", nil)
+    // Configure Journey Templates base URL from environment (JOURNEY_TEMPLATE_URL), defaulting to sandbox
+    baseURL := os.Getenv("JOURNEY_TEMPLATE_URL")
+    if baseURL == "" {
+        baseURL = "https://sandbox-apis.prayog.io"
+    }
+    jtClient := NewHTTPJourneyTemplatesClient(baseURL, nil)
     s.orchestratorFactory = NewOrchestratorFactory(jtClient, "default", registry)
 
     return s
@@ -116,6 +122,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 
 // executeDefault runs the existing default orchestration flow
 func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
+    startTime := time.Now()
     // Get eligible partners based on parcel category filtering
     eligiblePartners, err := s.getEligiblePartners(ctx, req)
     if err != nil {
@@ -171,6 +178,10 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
         "success":           response.Success,
     }).Info("V2 serviceability check completed")
 
+    // Set processing time in metadata
+    if response != nil && response.Metadata != nil {
+        response.Metadata.ProcessingTime = time.Since(startTime)
+    }
     return response, nil
 }
 
@@ -490,11 +501,9 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 		Metadata: &models.V2ResponseMetadata{
 			TotalPartners:    len(partnerResults),
 			ServiceableCount: serviceableCount,
-			Filters: models.V2Filters{
-				CountryCode:    req.CountryCode,
-				ParcelCategory: req.ParcelCategory,
-				ProductType:    req.ProductType,
-			},
+            Filters: models.V2Filters{
+                ParcelCategory: req.ParcelCategory,
+            },
 		},
 	}
 
@@ -507,22 +516,28 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 	s.populateAddressInformation(response, req, hubLocationInfo, sourceCountryCode, destinationCountryCode)
 
 	// Add error message when returnOnlyServiceable=true and there are errors or no serviceable partners
-	if s.returnOnlyServiceable && (!isSuccess || hasErrors) && len(partnerResults) > 0 {
-		if hasErrors {
-			// Classify the error type and return appropriate error code
-			errorCode := s.classifyErrorType(errorMessage)
-			response.Error = &models.ErrorResponse{
-				Code:    errorCode,
-				Message: errorMessage,
-			}
-		} else {
-			// No serviceable partners found
-			response.Error = &models.ErrorResponse{
-				Code:    "NO_SERVICEABLE_PARTNERS",
-				Message: "No serviceable partners found for the given request",
-			}
-		}
-	}
+    if s.returnOnlyServiceable && (!isSuccess || hasErrors) {
+        // If partners array is empty, force legacy-style error
+        if len(partnersToReturn) == 0 {
+            response.Success = false
+            response.Error = &models.ErrorResponse{
+                Code:    "PARTNER_ERROR",
+                Message: "not serviceable",
+            }
+        } else {
+            // Otherwise, keep normalized/classified partner error
+            msg := errorMessage
+            if msg == "" {
+                msg = "Delivery pincode is not serviceable"
+            }
+            msg = s.normalizeErrorMessage(msg)
+            errorCode := s.classifyErrorType(msg)
+            response.Error = &models.ErrorResponse{
+                Code:    errorCode,
+                Message: msg,
+            }
+        }
+    }
 
 	return response
 }
@@ -563,6 +578,15 @@ func (s *serviceabilityOrchestrator) classifyErrorType(errorMessage string) stri
 
 	// Default to PARTNER_ERROR for actual partner-specific errors
 	return "PARTNER_ERROR"
+}
+
+// normalizeErrorMessage maps partner-specific messages to user-facing messages
+func (s *serviceabilityOrchestrator) normalizeErrorMessage(msg string) string {
+    lower := strings.ToLower(msg)
+    if strings.Contains(lower, "from pincode not found") || strings.Contains(lower, "to pincode not found") || strings.Contains(lower, "postal code not found") {
+        return "Delivery pincode is not serviceable"
+    }
+    return msg
 }
 
 // validateV2Request validates the V2 serviceability request
