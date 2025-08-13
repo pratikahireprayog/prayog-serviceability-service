@@ -239,7 +239,8 @@ func (s *SmileCourierAdapter) transformResponse(resp *ServiceabilityResponse, pa
 	}
 
 	// If no data or non-200, treat as error so orchestrator excludes
-    if resp == nil || resp.Status != 200 || len(resp.Data) == 0 {
+    // Accept 200 and 201 as valid response statuses; others are treated as non-serviceable
+    if resp == nil || (resp.Status != 200 && resp.Status != 201) || len(resp.Data) == 0 {
 		errorMsg := resp.Message
 		if errorMsg == "" {
 			errorMsg = fmt.Sprintf("Smile Courier API returned status %d", resp.Status)

@@ -184,8 +184,28 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(ctx context.Context, req *mode
             continue // do not include hubops in partners array
         }
 
-        // Include smile_courier if it has any data
-        partners = append(partners, toPartnerV2Response(r.result, r.code))
+        // Include smile_courier only if serviceable (has data) and no error
+        if r.result != nil {
+            hasServices := len(r.result.Services) > 0
+            hasCapabilities := len(r.result.Capabilities) > 0
+            hasMetadata := len(r.result.Metadata) > 0
+            hasError := r.result.ErrorMessage != nil
+            isServiceable := (hasServices || hasCapabilities || hasMetadata) && !hasError
+
+            if isServiceable {
+                partners = append(partners, toPartnerV2Response(r.result, r.code))
+            } else {
+                s.Logger.WithFields(logrus.Fields{
+                    "component":    "smile_primary_np_extension_strategy",
+                    "segment":      1,
+                    "partner_code": r.code,
+                    "has_services": hasServices,
+                    "has_caps":     hasCapabilities,
+                    "has_meta":     hasMetadata,
+                    "has_error":    hasError,
+                }).Info("Skipping non-serviceable partner from segment 1")
+            }
+        }
     }
 
     // segment_2: shipyaari using pickup pincode from hubops
