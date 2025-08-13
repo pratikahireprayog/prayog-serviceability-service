@@ -9,6 +9,8 @@ import (
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
+    dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
+    smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -30,6 +32,7 @@ type serviceabilityOrchestrator struct {
 	timeout                 time.Duration
 	returnOnlyServiceable   bool
 	logger                  *logrus.Logger
+    orchestratorFactory     OrchestratorFactory
 }
 
 // NewServiceabilityOrchestrator creates a new V2 serviceability orchestrator
@@ -43,13 +46,29 @@ func NewServiceabilityOrchestrator(
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
-	return &serviceabilityOrchestrator{
+    s := &serviceabilityOrchestrator{
 		partnerFactory:          partnerFactory,
 		partnerAttributeMapRepo: partnerAttributeMapRepo,
 		timeout:                 timeout,
 		returnOnlyServiceable:   returnOnlyServiceable,
 		logger:                  logger,
-	}
+    }
+
+    // Register strategies (pattern only). Default delegates to existing flow via executeDefault.
+    registry := map[string]StrategyConstructor{
+        "default": func() OrchestrationStrategy {
+            return &dstrategy.DefaultStrategy{ExecuteFunc: s.executeDefault}
+        },
+        // Minimal implementation uses partner factory; injected here
+        "smile_primary_np_extension": func() OrchestrationStrategy {
+            return &smnpstrategy.SmilePrimaryNPExtensionStrategy{PartnerFactory: partnerFactory, Logger: logger}
+        },
+    }
+    // Very simple wiring: use sandbox base URL; can be configured later
+    jtClient := NewHTTPJourneyTemplatesClient("https://sandbox-apis.prayog.io/journey-service", nil)
+    s.orchestratorFactory = NewOrchestratorFactory(jtClient, "default", registry)
+
+    return s
 }
 
 // CheckServiceability orchestrates the V2 serviceability check process
@@ -77,66 +96,82 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	// Set timeout context
-	timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
+    // Set timeout context
+    timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
+    defer cancel()
 
-	// Get eligible partners based on parcel category filtering
-	eligiblePartners, err := s.getEligiblePartners(timeoutCtx, req)
-	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"component": "serviceability_orchestrator",
-			"error":     err.Error(),
-		}).Error("Failed to get eligible partners")
-		return nil, fmt.Errorf("failed to get eligible partners: %w", err)
-	}
+    // Resolve strategy using Journey templates (factory currently defaults to "default")
+    var strat OrchestrationStrategy
+    if s.orchestratorFactory != nil {
+        resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
+        strat = resolved
+    }
+    if strat == nil || strat.Code() == "default" {
+        return s.executeDefault(timeoutCtx, req)
+    }
 
-	s.logger.WithFields(logrus.Fields{
-		"component":       "serviceability_orchestrator",
-		"eligible_partners": len(eligiblePartners),
-		"partner_codes":   func() []string {
-			codes := make([]string, len(eligiblePartners))
-			for i, partner := range eligiblePartners {
-				codes[i] = partner.PartnerCode
-			}
-			return codes
-		}(),
-	}).Info("Found eligible partners, starting serviceability checks")
+    // Delegate to non-default strategy (logic not implemented for smile_primary_np_extension)
+    return strat.Execute(timeoutCtx, req)
+}
 
-	// Check serviceability with all eligible partners concurrently
-	partnerResults := s.checkWithPartners(timeoutCtx, req, eligiblePartners)
+// executeDefault runs the existing default orchestration flow
+func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
+    // Get eligible partners based on parcel category filtering
+    eligiblePartners, err := s.getEligiblePartners(ctx, req)
+    if err != nil {
+        s.logger.WithFields(logrus.Fields{
+            "component": "serviceability_orchestrator",
+            "error":     err.Error(),
+        }).Error("Failed to get eligible partners")
+        return nil, fmt.Errorf("failed to get eligible partners: %w", err)
+    }
 
-	if len(eligiblePartners) == 0 {
-		s.logger.WithFields(logrus.Fields{
-			"component": "serviceability_orchestrator",
-		}).Info("No eligible partners found, returning empty response")
-		return &models.ServiceabilityV2Response{
-			Success:  false,
-			Partners: []models.PartnerV2Response{},
-			Metadata: &models.V2ResponseMetadata{
-				TotalPartners:    0,
-				ServiceableCount: 0,
-				Filters: models.V2Filters{
-					CountryCode:    req.CountryCode,
-					ParcelCategory: req.ParcelCategory,
-					ProductType:    req.ProductType,
-				},
-			},
-		}, nil
-	}
+    s.logger.WithFields(logrus.Fields{
+        "component":         "serviceability_orchestrator",
+        "eligible_partners": len(eligiblePartners),
+        "partner_codes": func() []string {
+            codes := make([]string, len(eligiblePartners))
+            for i, partner := range eligiblePartners {
+                codes[i] = partner.PartnerCode
+            }
+            return codes
+        }(),
+    }).Info("Found eligible partners, starting serviceability checks")
+
+    // Check serviceability with all eligible partners concurrently
+    partnerResults := s.checkWithPartners(ctx, req, eligiblePartners)
+
+    if len(eligiblePartners) == 0 {
+        s.logger.WithFields(logrus.Fields{
+            "component": "serviceability_orchestrator",
+        }).Info("No eligible partners found, returning empty response")
+        return &models.ServiceabilityV2Response{
+            Success:  false,
+            Partners: []models.PartnerV2Response{},
+            Metadata: &models.V2ResponseMetadata{
+                TotalPartners:    0,
+                ServiceableCount: 0,
+                Filters: models.V2Filters{
+                    CountryCode:    req.CountryCode,
+                    ParcelCategory: req.ParcelCategory,
+                    ProductType:    req.ProductType,
+                },
+            },
+        }, nil
+    }
 
     // Process results and build response
     response := s.buildV2Response(partnerResults, req)
 
-	s.logger.WithFields(logrus.Fields{
-		"component":        "serviceability_orchestrator",
-		"action":           "check_serviceability",
-		"total_partners":   len(partnerResults),
-		"serviceable_count": len(response.Partners),
-		"success":          response.Success,
-	}).Info("V2 serviceability check completed")
+    s.logger.WithFields(logrus.Fields{
+        "component":         "serviceability_orchestrator",
+        "action":            "check_serviceability",
+        "total_partners":    len(partnerResults),
+        "serviceable_count": len(response.Partners),
+        "success":           response.Success,
+    }).Info("V2 serviceability check completed")
 
-	return response, nil
+    return response, nil
 }
 
 // BulkCheckServiceability orchestrates bulk V2 serviceability checks

@@ -184,6 +184,12 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 	sourcePincode := getSourcePincode(req)
 	destPincode := getDestinationPincode(req)
 
+    // Debug: log the raw string pincodes before conversion
+    if s.GetMetrics() != nil { // lightweight guard to avoid adding a logger dependency
+        // Using fmt.Printf to avoid logger dep; acceptable for debug visibility
+        fmt.Printf("[shipyaari] transformRequest pincodes (str) - source: %s, destination: %s\n", sourcePincode, destPincode)
+    }
+
 	// Validate pincodes are not empty
 	if sourcePincode == "" {
 		return nil, fmt.Errorf("source pincode is required for Shipyaari")
@@ -202,6 +208,11 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 	if err != nil {
 		return nil, fmt.Errorf("invalid destination pincode: %s", destPincode)
 	}
+
+    // Debug: log the converted integer pincodes
+    if s.GetMetrics() != nil {
+        fmt.Printf("[shipyaari] transformRequest pincodes (int) - pickup: %d, delivery: %d\n", pickupPincode, deliveryPincode)
+    }
 
 	shipyaariReq := &ServiceabilityRequest{
 		PickupPincode:   pickupPincode,
