@@ -65,7 +65,11 @@ func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
 // CheckServiceability checks serviceability for the request
 func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	// Basic validation
-	if err := s.validateShipyaariRequirements(request); err != nil {
+	// Ensure defaults for missing package details before validating
+	cp := *request
+	s.ensureDefaultPackage(&cp)
+
+	if err := s.validateShipyaariRequirements(&cp); err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -80,7 +84,7 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	}
 
 	// Convert request to Shipyaari format
-	shipyaariRequest, err := s.transformRequest(request)
+	shipyaariRequest, err := s.transformRequest(&cp)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -136,6 +140,40 @@ func (s *ShipyaariAdapter) IsHealthy(ctx context.Context) bool {
 	// For basic health check, we only require that the adapter is enabled
 	// Authentication will be checked during actual API calls
 	return true
+}
+
+// ensureDefaultPackage fills missing package/weight/dimensions with sensible defaults
+func (s *ShipyaariAdapter) ensureDefaultPackage(req *models.ServiceabilityV2Request) {
+    if len(req.Packages) == 0 {
+        req.Packages = []models.Package{{
+            Weight: &models.Weight{Value: 1.0, Unit: "kg"},
+            Dimensions: &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"},
+        }}
+        return
+    }
+    // First package defaults
+    if req.Packages[0].Weight == nil {
+        req.Packages[0].Weight = &models.Weight{Value: 1.0, Unit: "kg"}
+    }
+    if req.Packages[0].Dimensions == nil {
+        req.Packages[0].Dimensions = &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
+    }
+}
+
+// defaultWeight returns the first package weight, defaulting if missing
+func defaultWeight(req *models.ServiceabilityV2Request) *models.Weight {
+    if len(req.Packages) > 0 && req.Packages[0].Weight != nil {
+        return req.Packages[0].Weight
+    }
+    return &models.Weight{Value: 1.0, Unit: "kg"}
+}
+
+// defaultDimensions returns the first package dimensions, defaulting if missing
+func defaultDimensions(req *models.ServiceabilityV2Request) *models.Dimensions {
+    if len(req.Packages) > 0 && req.Packages[0].Dimensions != nil {
+        return req.Packages[0].Dimensions
+    }
+    return &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
 }
 
 // validateShipyaariRequirements validates Shipyaari-specific requirements
@@ -214,17 +252,17 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
         fmt.Printf("[shipyaari] transformRequest pincodes (int) - pickup: %d, delivery: %d\n", pickupPincode, deliveryPincode)
     }
 
-	shipyaariReq := &ServiceabilityRequest{
+    shipyaariReq := &ServiceabilityRequest{
 		PickupPincode:   pickupPincode,
 		DeliveryPincode: deliveryPincode,
 		InvoiceValue:    getOrderValue(req),
 		PaymentMode:     getPaymentMode(req),
-		Weight:          getWeightInKg(req.Packages[0].Weight),
+        Weight:          getWeightInKg(defaultWeight(req)),
 		OrderType:       "B2C", // Default to B2C
 		Dimension: Dimension{
-			Length: getDimensionInCm(req.Packages[0].Dimensions.Length, req.Packages[0].Dimensions.Unit),
-			Width:  getDimensionInCm(req.Packages[0].Dimensions.Width, req.Packages[0].Dimensions.Unit),
-			Height: getDimensionInCm(req.Packages[0].Dimensions.Height, req.Packages[0].Dimensions.Unit),
+            Length: getDimensionInCm(defaultDimensions(req).Length, defaultDimensions(req).Unit),
+            Width:  getDimensionInCm(defaultDimensions(req).Width, defaultDimensions(req).Unit),
+            Height: getDimensionInCm(defaultDimensions(req).Height, defaultDimensions(req).Unit),
 		},
 	}
 
