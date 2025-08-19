@@ -142,22 +142,33 @@ func (s *ShipyaariAdapter) IsHealthy(ctx context.Context) bool {
 	return true
 }
 
-// ensureDefaultPackage fills missing package/weight/dimensions with sensible defaults
+// ensureDefaultPackage fills missing or invalid package/weight/dimensions with sensible defaults
 func (s *ShipyaariAdapter) ensureDefaultPackage(req *models.ServiceabilityV2Request) {
-    if len(req.Packages) == 0 {
-        req.Packages = []models.Package{{
-            Weight: &models.Weight{Value: 1.0, Unit: "kg"},
-            Dimensions: &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"},
-        }}
-        return
-    }
-    // First package defaults
-    if req.Packages[0].Weight == nil {
-        req.Packages[0].Weight = &models.Weight{Value: 1.0, Unit: "kg"}
-    }
-    if req.Packages[0].Dimensions == nil {
-        req.Packages[0].Dimensions = &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
-    }
+	// If no packages provided, create one with defaults
+	if len(req.Packages) == 0 {
+		req.Packages = []models.Package{{
+			Weight:     &models.Weight{Value: 1.0, Unit: "kg"},
+			Dimensions: &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"},
+		}}
+		return
+	}
+
+	// Work with the first package (current API supports single-package pricing)
+	first := &req.Packages[0]
+
+	// Default or sanitize weight
+	if first.Weight == nil || first.Weight.Value <= 0 {
+		first.Weight = &models.Weight{Value: 1.0, Unit: "kg"}
+	} else if first.Weight.Unit == "" {
+		first.Weight.Unit = "kg"
+	}
+
+	// Default or sanitize dimensions (LBH)
+	if first.Dimensions == nil || first.Dimensions.Length <= 0 || first.Dimensions.Width <= 0 || first.Dimensions.Height <= 0 {
+		first.Dimensions = &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
+	} else if first.Dimensions.Unit == "" {
+		first.Dimensions.Unit = "cm"
+	}
 }
 
 // defaultWeight returns the first package weight, defaulting if missing
