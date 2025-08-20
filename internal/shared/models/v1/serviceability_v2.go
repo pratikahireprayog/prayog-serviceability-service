@@ -8,16 +8,16 @@ import (
 
 // Weight represents weight information for packages
 type Weight struct {
-	Value float64 `json:"value" validate:"required,min=0.01"`
-	Unit  string  `json:"unit" validate:"required,oneof=kg g lb oz"`
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
 }
 
 // Dimensions represents dimension information for packages
 type Dimensions struct {
-	Length float64 `json:"length" validate:"required,min=0.1"`
-	Width  float64 `json:"width" validate:"required,min=0.1"`
-	Height float64 `json:"height" validate:"required,min=0.1"`
-	Unit   string  `json:"unit" validate:"required,oneof=cm mm in ft"`
+	Length float64 `json:"length"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+	Unit   string  `json:"unit"`
 }
 
 // Package represents package information for serviceability checks

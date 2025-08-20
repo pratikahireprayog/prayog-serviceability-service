@@ -147,8 +147,8 @@ func (s *ShipyaariAdapter) ensureDefaultPackage(req *models.ServiceabilityV2Requ
 	// If no packages provided, create one with defaults
 	if len(req.Packages) == 0 {
 		req.Packages = []models.Package{{
-			Weight:     &models.Weight{Value: 1.0, Unit: "kg"},
-			Dimensions: &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"},
+			Weight:     &models.Weight{Value: 1.0, Unit: "g"},
+			Dimensions: &models.Dimensions{Length: 1, Width: 1, Height: 1, Unit: "cm"},
 		}}
 		return
 	}
@@ -158,14 +158,14 @@ func (s *ShipyaariAdapter) ensureDefaultPackage(req *models.ServiceabilityV2Requ
 
 	// Default or sanitize weight
 	if first.Weight == nil || first.Weight.Value <= 0 {
-		first.Weight = &models.Weight{Value: 1.0, Unit: "kg"}
+		first.Weight = &models.Weight{Value: 1.0, Unit: "g"}
 	} else if first.Weight.Unit == "" {
-		first.Weight.Unit = "kg"
+		first.Weight.Unit = "g"
 	}
 
 	// Default or sanitize dimensions (LBH)
 	if first.Dimensions == nil || first.Dimensions.Length <= 0 || first.Dimensions.Width <= 0 || first.Dimensions.Height <= 0 {
-		first.Dimensions = &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
+		first.Dimensions = &models.Dimensions{Length: 1, Width: 1, Height: 1, Unit: "cm"}
 	} else if first.Dimensions.Unit == "" {
 		first.Dimensions.Unit = "cm"
 	}
@@ -176,7 +176,7 @@ func defaultWeight(req *models.ServiceabilityV2Request) *models.Weight {
     if len(req.Packages) > 0 && req.Packages[0].Weight != nil {
         return req.Packages[0].Weight
     }
-    return &models.Weight{Value: 1.0, Unit: "kg"}
+    return &models.Weight{Value: 1.0, Unit: "g"}
 }
 
 // defaultDimensions returns the first package dimensions, defaulting if missing
@@ -184,7 +184,7 @@ func defaultDimensions(req *models.ServiceabilityV2Request) *models.Dimensions {
     if len(req.Packages) > 0 && req.Packages[0].Dimensions != nil {
         return req.Packages[0].Dimensions
     }
-    return &models.Dimensions{Length: 10, Width: 10, Height: 10, Unit: "cm"}
+    return &models.Dimensions{Length: 1, Width: 1, Height: 1, Unit: "cm"}
 }
 
 // validateShipyaariRequirements validates Shipyaari-specific requirements
