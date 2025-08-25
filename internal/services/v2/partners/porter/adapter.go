@@ -30,7 +30,11 @@ func NewPorterAdapter(cfg config.PorterConfig, db *sql.DB, geolocationService se
 	partnerConfig.Enabled = cfg.Enabled
 
 	// Create base adapter
-	baseAdapter := common.NewDatabaseBaseAdapter(partnerConfig, db)
+	baseAdapter := common.NewDatabaseBaseAdapter(partnerConfig)
+
+	// Create database client and set it
+	dbClient := &PorterDatabaseClient{DB: db}
+	baseAdapter.SetDatabaseClient(dbClient)
 
 	adapter := &PorterAdapter{
 		DatabaseBaseAdapter: baseAdapter,
@@ -295,17 +299,17 @@ func (p *PorterAdapter) getCoordinatesFromRequest(req *models.ServiceabilityV2Re
 			return 0, 0, fmt.Errorf("geolocation service is required to convert postal code to coordinates")
 		}
 
-		// Get coordinates from postal code
-		geoLocation, err := p.geolocationService.GetLocationByPostalCode(context.Background(), *postalCode, "IN")
+		// Get location hierarchy from postal code
+		locationHierarchy, err := p.geolocationService.GetLocationHierarchy(context.Background(), *postalCode)
 		if err != nil {
-			return 0, 0, fmt.Errorf("failed to get coordinates for %s postal code %s: %w", locationType, *postalCode, err)
+			return 0, 0, fmt.Errorf("failed to get location hierarchy for %s postal code %s: %w", locationType, *postalCode, err)
 		}
 
-		if geoLocation.Latitude == nil || geoLocation.Longitude == nil {
+		if locationHierarchy.Latitude == nil || locationHierarchy.Longitude == nil {
 			return 0, 0, fmt.Errorf("no coordinates found for %s postal code %s", locationType, *postalCode)
 		}
 
-		return *geoLocation.Latitude, *geoLocation.Longitude, nil
+		return *locationHierarchy.Latitude, *locationHierarchy.Longitude, nil
 	}
 
 	return 0, 0, fmt.Errorf("neither coordinates nor postal code provided for %s location", locationType)
@@ -335,8 +339,7 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 	pointGeometry := fmt.Sprintf("POINT(%f %f)", longitude, latitude)
 
 	// Execute query
-	var locationStatus string
-	err := p.GetDatabaseClient().QueryRow(ctx, query, pointGeometry).Scan(&locationStatus)
+	dbRow, err := p.GetDatabaseClient().QueryRow(ctx, query, pointGeometry)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil // No boundaries found, consider as not serviceable
@@ -344,5 +347,194 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 		return false, fmt.Errorf("failed to execute Porter serviceability query: %w", err)
 	}
 
-	return locationStatus == "INSIDE", nil
+	// Extract location_status from the database row
+	locationStatus, ok := dbRow.Data["location_status"]
+	if !ok {
+		return false, fmt.Errorf("location_status column not found in query result")
+	}
+
+	// Convert to string and check if it's "INSIDE"
+	statusStr, ok := locationStatus.(string)
+	if !ok {
+		return false, fmt.Errorf("location_status is not a string: %v", locationStatus)
+	}
+
+	return statusStr == "INSIDE", nil
+}
+
+// PorterDatabaseClient implements the common.DatabaseClient interface for Porter
+type PorterDatabaseClient struct {
+	DB *sql.DB
+}
+
+// Query implements common.DatabaseClient.Query
+func (p *PorterDatabaseClient) Query(ctx context.Context, query string, args ...interface{}) (*common.DatabaseResult, error) {
+	startTime := time.Now()
+
+	rows, err := p.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		// Create a slice of interface{} to hold values
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		// Scan row
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		// Create map for this row
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+
+		results = append(results, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &common.DatabaseResult{
+		Rows:     results,
+		RowCount: int64(len(results)),
+		Duration: time.Since(startTime),
+	}, nil
+}
+
+// QueryRow implements common.DatabaseClient.QueryRow
+func (p *PorterDatabaseClient) QueryRow(ctx context.Context, query string, args ...interface{}) (*common.DatabaseRow, error) {
+	startTime := time.Now()
+
+	// Use Query and return the first row
+	result, err := p.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result.Rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return &common.DatabaseRow{
+		Data:     result.Rows[0],
+		Duration: time.Since(startTime),
+	}, nil
+}
+
+// BeginTx implements common.DatabaseClient.BeginTx
+func (p *PorterDatabaseClient) BeginTx(ctx context.Context) (common.DatabaseTransaction, error) {
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PorterDatabaseTransaction{tx: tx}, nil
+}
+
+// Ping implements common.DatabaseClient.Ping
+func (p *PorterDatabaseClient) Ping(ctx context.Context) error {
+	return p.DB.PingContext(ctx)
+}
+
+// PorterDatabaseTransaction implements common.DatabaseTransaction
+type PorterDatabaseTransaction struct {
+	tx *sql.Tx
+}
+
+// Commit implements common.DatabaseTransaction.Commit
+func (pt *PorterDatabaseTransaction) Commit() error {
+	return pt.tx.Commit()
+}
+
+// Rollback implements common.DatabaseTransaction.Rollback
+func (pt *PorterDatabaseTransaction) Rollback() error {
+	return pt.tx.Rollback()
+}
+
+// Query implements common.DatabaseTransaction.Query
+func (pt *PorterDatabaseTransaction) Query(ctx context.Context, query string, args ...interface{}) (*common.DatabaseResult, error) {
+	startTime := time.Now()
+
+	rows, err := pt.tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		// Create a slice of interface{} to hold values
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		// Scan row
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		// Create map for this row
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			row[col] = values[i]
+		}
+
+		results = append(results, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &common.DatabaseResult{
+		Rows:     results,
+		RowCount: int64(len(results)),
+		Duration: time.Since(startTime),
+	}, nil
+}
+
+// QueryRow implements common.DatabaseTransaction.QueryRow
+func (pt *PorterDatabaseTransaction) QueryRow(ctx context.Context, query string, args ...interface{}) (*common.DatabaseRow, error) {
+	startTime := time.Now()
+
+	// Use Query and return the first row
+	result, err := pt.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result.Rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	return &common.DatabaseRow{
+		Data:     result.Rows[0],
+		Duration: time.Since(startTime),
+	}, nil
 }
