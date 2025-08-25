@@ -50,12 +50,12 @@ func (p *PorterAdapter) SupportsRequest(ctx context.Context, request *models.Ser
 		return false
 	}
 
-	// Porter requires coordinates for both source and destination (no postal code conversion)
-	hasSourceCoords := request.SourceLatitude != nil && request.SourceLongitude != nil
-	hasDestCoords := request.DestinationLatitude != nil && request.DestinationLongitude != nil
+	// Porter requires postal codes for both source and destination to fetch coordinates from database
+	hasSourcePostal := request.SourcePostalCode != nil && *request.SourcePostalCode != ""
+	hasDestPostal := request.DestinationPostalCode != nil && *request.DestinationPostalCode != ""
 
-	// Must have coordinates for both locations
-	if !(hasSourceCoords && hasDestCoords) {
+	// Must have postal codes for both locations
+	if !(hasSourcePostal && hasDestPostal) {
 		return false
 	}
 
@@ -94,8 +94,8 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		}, nil
 	}
 
-	// Get coordinates directly from the request
-	sourceLat, sourceLng, err := p.getCoordinatesFromRequest(request, "source")
+	// Get coordinates from database using postal codes
+	sourceLat, sourceLng, err := p.getCoordinatesFromDatabase(ctx, request, "source")
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -107,7 +107,7 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		}, nil
 	}
 
-	destLat, destLng, err := p.getCoordinatesFromRequest(request, "destination")
+	destLat, destLng, err := p.getCoordinatesFromDatabase(ctx, request, "destination")
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -242,13 +242,13 @@ func (p *PorterAdapter) validatePorterRequirements(req *models.ServiceabilityV2R
 		return fmt.Errorf("Porter only supports hyperlocal parcel category")
 	}
 
-	// Porter requires coordinates for both source and destination (no postal code conversion)
-	hasSourceCoords := req.SourceLatitude != nil && req.SourceLongitude != nil
-	hasDestCoords := req.DestinationLatitude != nil && req.DestinationLongitude != nil
+	// Porter requires postal codes for both source and destination to fetch coordinates from database
+	hasSourcePostal := req.SourcePostalCode != nil && *req.SourcePostalCode != ""
+	hasDestPostal := req.DestinationPostalCode != nil && *req.DestinationPostalCode != ""
 
-	// Must have coordinates for both locations
-	if !(hasSourceCoords && hasDestCoords) {
-		return fmt.Errorf("Porter requires coordinates for both source and destination locations")
+	// Must have postal codes for both locations
+	if !(hasSourcePostal && hasDestPostal) {
+		return fmt.Errorf("Porter requires postal codes for both source and destination locations")
 	}
 
 	return nil
@@ -276,6 +276,133 @@ func (p *PorterAdapter) getCoordinatesFromRequest(req *models.ServiceabilityV2Re
 	}
 
 	return *lat, *lng, nil
+}
+
+// getCoordinatesFromDatabase retrieves latitude and longitude from the database using postal codes
+// This is the new method for Porter to fetch coordinates from geo_locations table
+func (p *PorterAdapter) getCoordinatesFromDatabase(ctx context.Context, req *models.ServiceabilityV2Request, locationType string) (float64, float64, error) {
+	var postalCode string
+	var countryCode string
+
+	switch locationType {
+	case "source":
+		if req.SourcePostalCode == nil || *req.SourcePostalCode == "" {
+			return 0, 0, fmt.Errorf("source postal code is required for Porter serviceability check")
+		}
+		postalCode = *req.SourcePostalCode
+		countryCode = "IN" // Default to India for Porter
+	case "destination":
+		if req.DestinationPostalCode == nil || *req.DestinationPostalCode == "" {
+			return 0, 0, fmt.Errorf("destination postal code is required for Porter serviceability check")
+		}
+		postalCode = *req.DestinationPostalCode
+		countryCode = "IN" // Default to India for Porter
+	default:
+		return 0, 0, fmt.Errorf("invalid location type: %s", locationType)
+	}
+
+	// Query to fetch coordinates from geo_locations table
+	query := `
+		SELECT latitude, longitude
+		FROM public.geo_locations 
+		WHERE postal_code = $1 AND country_code = $2;
+	`
+
+	// Log the query being executed
+	p.logger.WithFields(logrus.Fields{
+		"component":   "porter_adapter",
+		"method":      "getCoordinatesFromDatabase",
+		"location_type": locationType,
+		"postal_code": postalCode,
+		"country_code": countryCode,
+		"query":       query,
+	}).Info("Fetching coordinates from database")
+
+	// Execute query
+	dbRow, err := p.GetDatabaseClient().QueryRow(ctx, query, postalCode, countryCode)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			p.logger.WithFields(logrus.Fields{
+				"component":   "porter_adapter",
+				"method":      "getCoordinatesFromDatabase",
+				"location_type": locationType,
+				"postal_code": postalCode,
+				"country_code": countryCode,
+				"error":       "No coordinates found for postal code",
+			}).Warn("No coordinates found in database for postal code")
+			return 0, 0, fmt.Errorf("no coordinates found for postal code %s in country %s", postalCode, countryCode)
+		}
+		p.logger.WithFields(logrus.Fields{
+			"component":   "porter_adapter",
+			"method":      "getCoordinatesFromDatabase",
+			"location_type": locationType,
+			"postal_code": postalCode,
+			"country_code": countryCode,
+			"error":       err.Error(),
+		}).Error("Failed to fetch coordinates from database")
+		return 0, 0, fmt.Errorf("failed to fetch coordinates from database: %w", err)
+	}
+
+	// Extract latitude and longitude from the database row
+	latitude, ok := dbRow.Data["latitude"]
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component":   "porter_adapter",
+			"method":      "getCoordinatesFromDatabase",
+			"location_type": locationType,
+			"postal_code": postalCode,
+			"row_data":    dbRow.Data,
+		}).Error("latitude column not found in query result")
+		return 0, 0, fmt.Errorf("latitude column not found in query result")
+	}
+
+	longitude, ok := dbRow.Data["longitude"]
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component":   "porter_adapter",
+			"method":      "getCoordinatesFromDatabase",
+			"location_type": locationType,
+			"postal_code": postalCode,
+			"row_data":    dbRow.Data,
+		}).Error("longitude column not found in query result")
+		return 0, 0, fmt.Errorf("longitude column not found in query result")
+	}
+
+	// Convert to float64
+	lat, ok := latitude.(float64)
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component":   "porter_adapter",
+			"method":      "getCoordinatesFromDatabase",
+			"location_type": locationType,
+			"postal_code": postalCode,
+			"latitude":    latitude,
+		}).Error("latitude is not a valid float64")
+		return 0, 0, fmt.Errorf("latitude is not a valid float64: %v", latitude)
+	}
+
+	lng, ok := longitude.(float64)
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component":   "porter_adapter",
+			"method":      "getCoordinatesFromDatabase",
+			"location_type": locationType,
+			"postal_code": postalCode,
+			"longitude":   longitude,
+		}).Error("longitude is not a valid float64")
+		return 0, 0, fmt.Errorf("longitude is not a valid float64: %v", longitude)
+	}
+
+	p.logger.WithFields(logrus.Fields{
+		"component":   "porter_adapter",
+		"method":      "getCoordinatesFromDatabase",
+		"location_type": locationType,
+		"postal_code": postalCode,
+		"latitude":    lat,
+		"longitude":   lng,
+	}).Info("Successfully fetched coordinates from database")
+
+	return lat, lng, nil
 }
 
 // checkLocationServiceability checks if a location is serviceable using Porter's database query
