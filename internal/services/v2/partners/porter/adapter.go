@@ -119,9 +119,8 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		}, nil
 	}
 
-	// Check serviceability for both source and destination using the same query
-	// Both locations must return "INSIDE" for the route to be serviceable
-	sourceServiceable, err := p.checkLocationServiceability(ctx, sourceLat, sourceLng)
+	// Check serviceability for both source and destination and get boundary IDs
+	sourceBoundaryID, sourceServiceable, err := p.checkLocationServiceabilityWithID(ctx, sourceLat, sourceLng)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -133,7 +132,7 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		}, nil
 	}
 
-	destServiceable, err := p.checkLocationServiceability(ctx, destLat, destLng)
+	destBoundaryID, destServiceable, err := p.checkLocationServiceabilityWithID(ctx, destLat, destLng)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -145,8 +144,8 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		}, nil
 	}
 
-	// Both source and destination must be serviceable (return "INSIDE") for Porter to be available
-	isServiceable := sourceServiceable && destServiceable
+	// Both source and destination must be serviceable AND in the same boundary for Porter to be available
+	isServiceable := sourceServiceable && destServiceable && sourceBoundaryID == destBoundaryID
 
 	// If not serviceable, return nil to exclude Porter from partners array
 	if !isServiceable {
@@ -155,6 +154,9 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 			"method":                 "CheckServiceability",
 			"source_serviceable":     sourceServiceable,
 			"destination_serviceable": destServiceable,
+			"source_boundary_id":     sourceBoundaryID,
+			"destination_boundary_id": destBoundaryID,
+			"same_boundary":          sourceBoundaryID == destBoundaryID,
 			"source_coordinates":     fmt.Sprintf("%f,%f", sourceLat, sourceLng),
 			"destination_coordinates": fmt.Sprintf("%f,%f", destLat, destLng),
 		}).Info("Porter not serviceable - excluding from partners array")
@@ -171,6 +173,9 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		Metadata: map[string]interface{}{
 			"source_serviceable":      sourceServiceable,
 			"destination_serviceable": destServiceable,
+			"source_boundary_id":      sourceBoundaryID,
+			"destination_boundary_id": destBoundaryID,
+			"same_boundary":           sourceBoundaryID == destBoundaryID,
 			"source_coordinates":      fmt.Sprintf("%f,%f", sourceLat, sourceLng),
 			"destination_coordinates": fmt.Sprintf("%f,%f", destLat, destLng),
 		},
@@ -428,7 +433,7 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 	// Create the POINT geometry string
 	pointGeometry := fmt.Sprintf("POINT(%f %f)", longitude, latitude)
 
-	// Log the query being executed
+	// Log the query being executed with actual coordinate values
 	p.logger.WithFields(logrus.Fields{
 		"component": "porter_adapter",
 		"method":    "checkLocationServiceability",
@@ -436,6 +441,20 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 		"longitude": longitude,
 		"query":     query,
 		"params":    pointGeometry,
+		"actual_query": fmt.Sprintf(`
+			SELECT 
+				CASE 
+					WHEN EXISTS (
+						SELECT 1
+						FROM pickup_boundaries
+						WHERE ST_Contains(
+							boundary,
+							ST_GeomFromText('POINT(%f %f)', 4326)
+						)
+					) 
+					THEN 'INSIDE'
+					ELSE 'OUTSIDE'
+				END AS location_status;`, longitude, latitude),
 	}).Info("Executing Porter serviceability query")
 
 	// Execute query
@@ -500,6 +519,106 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 	}).Info("Porter serviceability query result")
 
 	return statusStr == "INSIDE", nil
+}
+
+// checkLocationServiceabilityWithID checks if a location is serviceable and returns the boundary ID
+// This function is called for both source and destination coordinates
+// Returns boundary ID, serviceability status, and error
+func (p *PorterAdapter) checkLocationServiceabilityWithID(ctx context.Context, latitude, longitude float64) (int, bool, error) {
+	query := `
+		SELECT 
+			id,
+			'INSIDE' AS location_status
+		FROM pickup_boundaries
+		WHERE ST_Contains(
+			boundary,
+			ST_GeomFromText($1, 4326)
+		);
+	`
+
+	// Create the POINT geometry string
+	pointGeometry := fmt.Sprintf("POINT(%f %f)", longitude, latitude)
+
+	// Log the query being executed with actual coordinate values
+	p.logger.WithFields(logrus.Fields{
+		"component": "porter_adapter",
+		"method":    "checkLocationServiceabilityWithID",
+		"latitude":  latitude,
+		"longitude": longitude,
+		"query":     query,
+		"params":    pointGeometry,
+		"actual_query": fmt.Sprintf(`
+			SELECT 
+				id,
+				'INSIDE' AS location_status
+			FROM pickup_boundaries
+			WHERE ST_Contains(
+				boundary,
+				ST_GeomFromText('POINT(%f %f)', 4326)
+			);`, longitude, latitude),
+	}).Info("Executing Porter serviceability query with boundary ID")
+
+	// Execute query
+	dbRow, err := p.GetDatabaseClient().QueryRow(ctx, query, pointGeometry)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			p.logger.WithFields(logrus.Fields{
+				"component": "porter_adapter",
+				"method":    "checkLocationServiceabilityWithID",
+				"latitude":  latitude,
+				"longitude": longitude,
+				"error":     "No rows returned - location outside all boundaries",
+			}).Warn("Porter serviceability query returned no rows")
+			return 0, false, nil // No boundaries found, consider as not serviceable
+		}
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "checkLocationServiceabilityWithID",
+			"latitude":  latitude,
+			"longitude": longitude,
+			"error":     err.Error(),
+		}).Error("Failed to execute Porter serviceability query")
+		return 0, false, fmt.Errorf("failed to execute Porter serviceability query: %w", err)
+	}
+
+	// Extract boundary ID from the database row
+	boundaryID, ok := dbRow.Data["id"]
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "checkLocationServiceabilityWithID",
+			"latitude":  latitude,
+			"longitude": longitude,
+			"row_data":  dbRow.Data,
+		}).Error("id column not found in query result")
+		return 0, false, fmt.Errorf("id column not found in query result")
+	}
+
+	// Convert boundary ID to int
+	id, ok := boundaryID.(int64)
+	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "checkLocationServiceabilityWithID",
+			"latitude":  latitude,
+			"longitude": longitude,
+			"boundary_id": boundaryID,
+		}).Error("boundary ID is not a valid int64")
+		return 0, false, fmt.Errorf("boundary ID is not a valid int64: %v", boundaryID)
+	}
+
+	// Log the query result
+	p.logger.WithFields(logrus.Fields{
+		"component":      "porter_adapter",
+		"method":         "checkLocationServiceabilityWithID",
+		"latitude":       latitude,
+		"longitude":      longitude,
+		"boundary_id":    id,
+		"isServiceable":  true,
+		"queryDuration":  dbRow.Duration.String(),
+	}).Info("Porter serviceability query result with boundary ID")
+
+	return int(id), true, nil
 }
 
 // PorterDatabaseClient implements the common.DatabaseClient interface for Porter
