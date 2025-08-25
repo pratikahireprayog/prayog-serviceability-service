@@ -148,7 +148,20 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 	// Both source and destination must be serviceable (return "INSIDE") for Porter to be available
 	isServiceable := sourceServiceable && destServiceable
 
-	// Build response
+	// If not serviceable, return nil to exclude Porter from partners array
+	if !isServiceable {
+		p.logger.WithFields(logrus.Fields{
+			"component":              "porter_adapter",
+			"method":                 "CheckServiceability",
+			"source_serviceable":     sourceServiceable,
+			"destination_serviceable": destServiceable,
+			"source_coordinates":     fmt.Sprintf("%f,%f", sourceLat, sourceLng),
+			"destination_coordinates": fmt.Sprintf("%f,%f", destLat, destLng),
+		}).Info("Porter not serviceable - excluding from partners array")
+		return nil, nil
+	}
+
+	// Build response for serviceable case
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -164,50 +177,29 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		ResponseTime: time.Since(startTime),
 	}
 
-	if isServiceable {
-		// Add Porter hyperlocal service
-		result.Services = append(result.Services, models.ServiceV2{
-			ServiceCode:   "porter_hyperlocal",
-			ServiceName:   "Porter Hyperlocal Delivery",
-			TATDays:       1, // Same day or next day for hyperlocal
-			IsCOD:         true,
-			Pickup:        true,
-			Delivery:      true,
-			Insurance:     false,
-			ProductTypes:  map[string]bool{"hyperlocal": true},
-			DeliveryModes: map[string]bool{"hyperlocal": true},
-			Pricing: &models.ServicePricingV2{
-				BaseCost: 0, // Pricing to be determined by Porter
-				Currency: "INR",
-			},
-		})
+	// Add Porter hyperlocal service
+	result.Services = append(result.Services, models.ServiceV2{
+		ServiceCode:   "porter_hyperlocal",
+		ServiceName:   "Porter Hyperlocal Delivery",
+		TATDays:       1, // Same day or next day for hyperlocal
+		IsCOD:         true,
+		Pickup:        true,
+		Delivery:      true,
+		Insurance:     false,
+		ProductTypes:  map[string]bool{"hyperlocal": true},
+		DeliveryModes: map[string]bool{"hyperlocal": true},
+		Pricing: &models.ServicePricingV2{
+			BaseCost: 0, // Pricing to be determined by Porter
+			Currency: "INR",
+		},
+	})
 
-		// Set capabilities
-		result.Capabilities["is_serviceable"] = true
-		result.Capabilities["pickup_available"] = true
-		result.Capabilities["delivery_available"] = true
-		result.Capabilities["cod_available"] = true
-		result.Capabilities["insurance_available"] = false
-	} else {
-		// Set error message for non-serviceable areas
-		// Both source and destination must be "INSIDE" Porter's pickup boundaries
-		errorMsg := "Location not serviceable by Porter"
-		if !sourceServiceable && !destServiceable {
-			errorMsg = "Both source and destination locations are outside Porter's pickup boundaries"
-		} else if !sourceServiceable {
-			errorMsg = "Source location is outside Porter's pickup boundaries"
-		} else {
-			errorMsg = "Destination location is outside Porter's pickup boundaries"
-		}
-		result.ErrorMessage = &errorMsg
-
-		// Set capabilities to false
-		result.Capabilities["is_serviceable"] = false
-		result.Capabilities["pickup_available"] = false
-		result.Capabilities["delivery_available"] = false
-		result.Capabilities["cod_available"] = false
-		result.Capabilities["insurance_available"] = false
-	}
+	// Set capabilities
+	result.Capabilities["is_serviceable"] = true
+	result.Capabilities["pickup_available"] = true
+	result.Capabilities["delivery_available"] = true
+	result.Capabilities["cod_available"] = true
+	result.Capabilities["insurance_available"] = false
 
 	return result, nil
 }
