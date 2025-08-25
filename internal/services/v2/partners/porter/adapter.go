@@ -309,26 +309,76 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 	// Create the POINT geometry string
 	pointGeometry := fmt.Sprintf("POINT(%f %f)", longitude, latitude)
 
+	// Log the query being executed
+	p.logger.WithFields(logrus.Fields{
+		"component": "porter_adapter",
+		"method":    "checkLocationServiceability",
+		"latitude":  latitude,
+		"longitude": longitude,
+		"query":     query,
+		"params":    pointGeometry,
+	}).Info("Executing Porter serviceability query")
+
 	// Execute query
 	dbRow, err := p.GetDatabaseClient().QueryRow(ctx, query, pointGeometry)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			p.logger.WithFields(logrus.Fields{
+				"component": "porter_adapter",
+				"method":    "checkLocationServiceability",
+				"latitude":  latitude,
+				"longitude": longitude,
+				"error":     "No rows returned",
+			}).Warn("Porter serviceability query returned no rows")
 			return false, nil // No boundaries found, consider as not serviceable
 		}
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "checkLocationServiceability",
+			"latitude":  latitude,
+			"longitude": longitude,
+			"error":     err.Error(),
+		}).Error("Failed to execute Porter serviceability query")
 		return false, fmt.Errorf("failed to execute Porter serviceability query: %w", err)
 	}
 
 	// Extract location_status from the database row
 	locationStatus, ok := dbRow.Data["location_status"]
 	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "checkLocationServiceability",
+			"latitude":  latitude,
+			"longitude": longitude,
+			"row_data":  dbRow.Data,
+		}).Error("location_status column not found in query result")
 		return false, fmt.Errorf("location_status column not found in query result")
 	}
 
 	// Convert to string and check if it's "INSIDE"
 	statusStr, ok := locationStatus.(string)
 	if !ok {
+		p.logger.WithFields(logrus.Fields{
+			"component":      "porter_adapter",
+			"method":         "checkLocationServiceability",
+			"latitude":       latitude,
+			"longitude":      longitude,
+			"locationStatus": locationStatus,
+			"type":           fmt.Sprintf("%T", locationStatus),
+		}).Error("location_status is not a string")
 		return false, fmt.Errorf("location_status is not a string: %v", locationStatus)
 	}
+
+	// Log the query result
+	p.logger.WithFields(logrus.Fields{
+		"component":      "porter_adapter",
+		"method":         "checkLocationServiceability",
+		"latitude":       latitude,
+		"longitude":      longitude,
+		"locationStatus": statusStr,
+		"isServiceable":  statusStr == "INSIDE",
+		"queryDuration":  dbRow.Duration.String(),
+	}).Info("Porter serviceability query result")
 
 	return statusStr == "INSIDE", nil
 }
