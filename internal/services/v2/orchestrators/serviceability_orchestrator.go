@@ -340,14 +340,29 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 		}
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"component":    "serviceability_orchestrator",
-		"partner_code": info.PartnerCode,
-		"has_services": len(result.Services) > 0,
-		"has_capabilities": len(result.Capabilities) > 0,
-		"has_error":    result.Error != nil,
-		"error_message": result.ErrorMessage,
-	}).Info("Partner serviceability check completed successfully")
+	// Handle nil result (partner not serviceable, e.g., Porter)
+	if result == nil {
+		s.logger.WithFields(logrus.Fields{
+			"component":    "serviceability_orchestrator",
+			"partner_code": info.PartnerCode,
+		}).Info("Partner returned nil result (not serviceable)")
+		return partnerResult{
+			PartnerCode: info.PartnerCode,
+			Result:      nil, // Explicitly set to nil
+		}
+	}
+
+	// Only log details if result is not nil
+	if result != nil {
+		s.logger.WithFields(logrus.Fields{
+			"component":    "serviceability_orchestrator",
+			"partner_code": info.PartnerCode,
+			"has_services": len(result.Services) > 0,
+			"has_capabilities": len(result.Capabilities) > 0,
+			"has_error":    result.Error != nil,
+			"error_message": result.ErrorMessage,
+		}).Info("Partner serviceability check completed successfully")
+	}
 
 	return partnerResult{
 		PartnerCode: info.PartnerCode,
