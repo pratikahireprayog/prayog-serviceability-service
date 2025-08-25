@@ -298,7 +298,7 @@ func (p *PorterAdapter) checkLocationServiceability(ctx context.Context, latitud
 					FROM pickup_boundaries
 					WHERE ST_Contains(
 						boundary,
-						ST_GeomFromText(?, 4326)
+						ST_GeomFromText($1, 4326)
 					)
 				) 
 				THEN 'INSIDE'
