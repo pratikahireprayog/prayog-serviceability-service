@@ -22,6 +22,7 @@ type GeolocationService interface {
 // geolocationService implements the GeolocationService interface
 type geolocationService struct {
 	geoLocationRepo repositories.GeoLocationRepository
+	postalCodeRepo  repositories.PostalCodeRepository
 }
 
 // NewGeolocationService creates a new geolocation service instance

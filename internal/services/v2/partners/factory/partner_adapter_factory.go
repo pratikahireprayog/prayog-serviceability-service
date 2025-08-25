@@ -334,7 +334,7 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 
 	// Initialize Porter adapter for database-based serviceability
 	if f.config.Porter.Enabled {
-		f.implementations["porter"] = porter.NewPorterAdapter(f.config.Porter, f.db, f.geolocationService)
+		f.implementations["porter"] = porter.NewPorterAdapter(f.config.Porter, f.db)
 		f.logger.WithFields(logrus.Fields{
 			"component": "partner_adapter_factory",
 			"adapter":   "porter",

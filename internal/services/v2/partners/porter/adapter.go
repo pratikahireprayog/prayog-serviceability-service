@@ -9,7 +9,6 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
-	services "prayog-serviceability-service/internal/services/v1/data"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,13 +16,12 @@ import (
 // PorterAdapter implements the common.PartnerAdapter interface for Porter
 type PorterAdapter struct {
 	*common.DatabaseBaseAdapter
-	geolocationService services.GeolocationService
-	config             config.PorterConfig
-	logger             *logrus.Logger
+	config config.PorterConfig
+	logger *logrus.Logger
 }
 
 // NewPorterAdapter creates a new Porter adapter
-func NewPorterAdapter(cfg config.PorterConfig, db *sql.DB, geolocationService services.GeolocationService) common.PartnerAdapter {
+func NewPorterAdapter(cfg config.PorterConfig, db *sql.DB) common.PartnerAdapter {
 	// Create partner config
 	partnerConfig := common.GetPartnerConfigDefaults("porter", "Porter", common.AdapterTypeDatabase)
 	partnerConfig.Timeout = cfg.Timeout
@@ -38,7 +36,6 @@ func NewPorterAdapter(cfg config.PorterConfig, db *sql.DB, geolocationService se
 
 	adapter := &PorterAdapter{
 		DatabaseBaseAdapter: baseAdapter,
-		geolocationService:  geolocationService,
 		config:              cfg,
 		logger:              logrus.New(),
 	}
@@ -53,14 +50,12 @@ func (p *PorterAdapter) SupportsRequest(ctx context.Context, request *models.Ser
 		return false
 	}
 
-	// Porter requires either coordinates OR postal codes for both source and destination
+	// Porter requires coordinates for both source and destination (no postal code conversion)
 	hasSourceCoords := request.SourceLatitude != nil && request.SourceLongitude != nil
 	hasDestCoords := request.DestinationLatitude != nil && request.DestinationLongitude != nil
-	hasSourcePostal := request.SourcePostalCode != nil
-	hasDestPostal := request.DestinationPostalCode != nil
 
-	// Must have either coordinates OR postal codes for both locations
-	if !((hasSourceCoords || hasSourcePostal) && (hasDestCoords || hasDestPostal)) {
+	// Must have coordinates for both locations
+	if !(hasSourceCoords && hasDestCoords) {
 		return false
 	}
 
@@ -78,9 +73,9 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 			PartnerCode:  partnerInfo.PartnerCode,
 			PartnerName:  p.GetPartnerName(),
 			Services:     make([]models.ServiceV2, 0),
-			Metadata: map[string]interface{}{
-				"reason": "Porter does not support this request type (requires hyperlocal parcel category with coordinates OR postal codes)",
-			},
+					Metadata: map[string]interface{}{
+			"reason": "Porter does not support this request type (requires hyperlocal parcel category with coordinates)",
+		},
 		}, nil
 	}
 
@@ -255,64 +250,40 @@ func (p *PorterAdapter) validatePorterRequirements(req *models.ServiceabilityV2R
 		return fmt.Errorf("Porter only supports hyperlocal parcel category")
 	}
 
-	// Porter requires either coordinates OR postal codes for both source and destination
+	// Porter requires coordinates for both source and destination (no postal code conversion)
 	hasSourceCoords := req.SourceLatitude != nil && req.SourceLongitude != nil
 	hasDestCoords := req.DestinationLatitude != nil && req.DestinationLongitude != nil
-	hasSourcePostal := req.SourcePostalCode != nil
-	hasDestPostal := req.DestinationPostalCode != nil
 
-	// Must have either coordinates OR postal codes for both locations
-	if !((hasSourceCoords || hasSourcePostal) && (hasDestCoords || hasDestPostal)) {
-		return fmt.Errorf("Porter requires either coordinates OR postal codes for both source and destination locations")
+	// Must have coordinates for both locations
+	if !(hasSourceCoords && hasDestCoords) {
+		return fmt.Errorf("Porter requires coordinates for both source and destination locations")
 	}
 
 	return nil
 }
 
-// getCoordinatesFromRequest retrieves latitude and longitude from the request
-// It can get coordinates directly from the request OR convert postal codes to coordinates
+// getCoordinatesFromRequest retrieves latitude and longitude directly from the request
+// Porter only uses coordinates from the API request, no postal code conversion
 func (p *PorterAdapter) getCoordinatesFromRequest(req *models.ServiceabilityV2Request, locationType string) (float64, float64, error) {
 	var lat, lng *float64
-	var postalCode *string
 
 	switch locationType {
 	case "source":
 		lat = req.SourceLatitude
 		lng = req.SourceLongitude
-		postalCode = req.SourcePostalCode
 	case "destination":
 		lat = req.DestinationLatitude
 		lng = req.DestinationLongitude
-		postalCode = req.DestinationPostalCode
 	default:
 		return 0, 0, fmt.Errorf("invalid location type: %s", locationType)
 	}
 
-	// If coordinates are provided directly, use them
-	if lat != nil && lng != nil {
-		return *lat, *lng, nil
+	// Porter only uses coordinates directly from the API request
+	if lat == nil || lng == nil {
+		return 0, 0, fmt.Errorf("%s coordinates are required for Porter serviceability check", locationType)
 	}
 
-	// If postal code is provided, convert it to coordinates using geolocation service
-	if postalCode != nil {
-		if p.geolocationService == nil {
-			return 0, 0, fmt.Errorf("geolocation service is required to convert postal code to coordinates")
-		}
-
-		// Get location hierarchy from postal code
-		locationHierarchy, err := p.geolocationService.GetLocationHierarchy(context.Background(), *postalCode)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to get location hierarchy for %s postal code %s: %w", locationType, *postalCode, err)
-		}
-
-		if locationHierarchy.Latitude == nil || locationHierarchy.Longitude == nil {
-			return 0, 0, fmt.Errorf("no coordinates found for %s postal code %s", locationType, *postalCode)
-		}
-
-		return *locationHierarchy.Latitude, *locationHierarchy.Longitude, nil
-	}
-
-	return 0, 0, fmt.Errorf("neither coordinates nor postal code provided for %s location", locationType)
+	return *lat, *lng, nil
 }
 
 // checkLocationServiceability checks if a location is serviceable using Porter's database query
