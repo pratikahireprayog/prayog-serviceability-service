@@ -31,6 +31,10 @@ type ServiceabilityV2Request struct {
 	PostalCode            *string   `json:"postal_code,omitempty" validate:"omitempty,min=3,max=10"`
 	SourcePostalCode      *string   `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
 	DestinationPostalCode *string   `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	SourceLatitude        *float64  `json:"source_latitude,omitempty"`
+	SourceLongitude       *float64  `json:"source_longitude,omitempty"`
+	DestinationLatitude   *float64  `json:"destination_latitude,omitempty"`
+	DestinationLongitude  *float64  `json:"destination_longitude,omitempty"`
 	CountryCode           *string   `json:"country_code,omitempty" validate:"omitempty,len=2"`
 	ParcelCategory        *string   `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
 	ProductType           *string   `json:"product_type,omitempty"`

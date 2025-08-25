@@ -12,6 +12,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
+	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_cargo"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
@@ -43,6 +44,7 @@ var adapterImplementationMap = map[string]string{
 	"smile_cargo":       "smile_cargo",       // Direct mapping
 	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	"smile_hubops":      "smile_hubops",      // Direct mapping
+	"porter":            "porter",            // Direct mapping
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -65,6 +67,7 @@ func getPartnerDisplayName(code string) string {
 		"shipyaari":     "Shipyaari",
 		"smile_courier": "Smile Courier",
 		"smile_hubops":  "Smile HubOps",
+		"porter":        "Porter",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -220,6 +223,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.Delcaper, nil
 	case "smile_hubops":
 		return f.config.SmileHubOps, nil
+	case "porter":
+		return f.config.Porter, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -325,6 +330,20 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "smile_hubops",
 		}).Warn("Smile HubOps adapter not enabled in config")
+	}
+
+	// Initialize Porter adapter for database-based serviceability
+	if f.config.Porter.Enabled {
+		f.implementations["porter"] = porter.NewPorterAdapter(f.config.Porter, f.db, f.geolocationService)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "porter",
+		}).Info("Initialized porter adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "porter",
+		}).Warn("Porter adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{

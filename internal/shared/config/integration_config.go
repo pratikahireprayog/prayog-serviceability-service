@@ -26,6 +26,7 @@ type PartnerAdaptersConfig struct {
 	SmileCargo   SmileCargoConfig   `yaml:"smile_cargo" json:"smile_cargo"`
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
+	Porter       PorterConfig       `yaml:"porter" json:"porter"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -123,6 +124,15 @@ type SmileHubOpsConfig struct {
 	RetryDelay  time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Enabled     bool          `yaml:"enabled" json:"enabled"`
 	Rating      float64       `yaml:"rating" json:"rating"`
+}
+
+// PorterConfig configuration for Porter partner adapter (database-based serviceability)
+type PorterConfig struct {
+	Enabled     bool          `yaml:"enabled" json:"enabled"`
+	Rating      float64       `yaml:"rating" json:"rating"`
+	Timeout     time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries  int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay  time.Duration `yaml:"retry_delay" json:"retry_delay"`
 }
 
 // PartnerServiceConfig holds configuration for Partner Service integration
@@ -360,6 +370,13 @@ func LoadIntegrationConfig() IntegrationConfig {
 			RetryDelay: getEnvAsDurationOrDefault("SMILE_HUBOPS_RETRY_DELAY", 1*time.Second),
 			Enabled:    getEnvAsBoolOrDefault("SMILE_HUBOPS_ENABLED", true),
 			Rating:     4.5,
+		},
+		Porter: PorterConfig{
+			Enabled:    getEnvAsBoolOrDefault("PORTER_ENABLED", true),
+			Rating:     4.0,
+			Timeout:    getEnvAsDurationOrDefault("PORTER_TIMEOUT", 30*time.Second),
+			MaxRetries: getEnvAsIntOrDefault("PORTER_MAX_RETRIES", 3),
+			RetryDelay: getEnvAsDurationOrDefault("PORTER_RETRY_DELAY", 1*time.Second),
 		},
 	}
 
