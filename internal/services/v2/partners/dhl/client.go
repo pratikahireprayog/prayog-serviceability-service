@@ -105,6 +105,17 @@ func redactHeaderValue(key, value string) string {
 	return value
 }
 
+// truncateForLog safely truncates large strings for logging
+func truncateForLog(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	if limit < 0 {
+		return ""
+	}
+	return s[:limit] + "...(truncated)"
+}
+
 // getEnvWithPrefix tries to get environment variable with DHL prefix
 func getEnvWithPrefix(keys ...string) string {
 	for _, key := range keys {
@@ -177,6 +188,15 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		"url":       url,
 		"body_size": len(reqBody),
 	}).Debug("Making DHL API request")
+	// Log request body (truncated) at debug level
+	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
+		c.logger.WithFields(logrus.Fields{
+			"partner":      "DHL",
+			"event":        "request_body",
+			"body_preview": truncateForLog(string(reqBody), 2048),
+			"body_size":    len(reqBody),
+		}).Debug("DHL rates request body")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -252,6 +272,16 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		"status_code": resp.StatusCode,
 		"body_size":   len(body),
 	}).Debug("Received DHL API response")
+	// Log response body (truncated) at debug level
+	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
+		c.logger.WithFields(logrus.Fields{
+			"partner":      "DHL",
+			"event":        "response_body",
+			"status_code":  resp.StatusCode,
+			"body_preview": truncateForLog(string(body), 4096),
+			"body_size":    len(body),
+		}).Debug("DHL rates response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		// Try to parse DHL error response for better error messages
