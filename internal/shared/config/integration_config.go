@@ -349,7 +349,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			MinWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MIN_WEIGHT_KG", 25.0),   // 25kg minimum for cargo
 			MaxWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MAX_WEIGHT_KG", 5000.0), // 5 ton maximum
 		},
-		Delcaper: DelcaperConfig{
+		Delcaper: DelcaperConfig{ 
 			BaseURL:           getEnvOrDefault("DELCAPER_BASE_URL", "https://apis.delcaper.com"),
 			Email:             getEnvOrDefault("DELCAPER_EMAIL", "atharva.bodke@shreemaruti.com"),
 			Password:          getEnvOrDefault("DELCAPER_PASSWORD", "Atharva@PRS2024"),
