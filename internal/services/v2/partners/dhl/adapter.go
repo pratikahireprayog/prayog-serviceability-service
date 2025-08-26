@@ -73,8 +73,25 @@ func (a *Adapter) IsEnabled() bool {
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
+	// Structured start log similar to pickup strategy
+	partnerID := ""
+	if partnerInfo.PartnerID != nil { partnerID = partnerInfo.PartnerID.String() }
+	a.logger.WithFields(logrus.Fields{
+		"component":    "dhl_adapter",
+		"action":       "check_serviceability_start",
+		"partner_code": partnerInfo.PartnerCode,
+		"partner_id":   partnerID,
+	}).Info("Starting DHL adapter serviceability check")
+
 	// Validate DHL-specific requirements
 	if err := a.validateDHLRequirements(request); err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "dhl_adapter",
+			"event":        "validation_failed",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   partnerID,
+			"error":        err.Error(),
+		}).Warn("DHL validation failed")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -98,7 +115,13 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	sourcePincode := *request.SourcePostalCode
 	destinationPincode := *request.DestinationPostalCode
 
+	pid := ""
+	if partnerInfo.PartnerID != nil { pid = partnerInfo.PartnerID.String() }
 	a.logger.WithFields(logrus.Fields{
+		"component":           "dhl_adapter",
+		"step":                1,
+		"partner_code":        partnerInfo.PartnerCode,
+		"partner_id":          pid,
 		"partner":             "DHL",
 		"source_pincode":      sourcePincode,
 		"destination_pincode": destinationPincode,
@@ -124,6 +147,10 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	}
 
 	a.logger.WithFields(logrus.Fields{
+		"component":            "dhl_adapter",
+		"step":                 2,
+		"partner_code":         partnerInfo.PartnerCode,
+		"partner_id":           pid,
 		"partner":              "DHL",
 		"source_pincode":       sourcePincode,
 		"hub_postal_code":      hubLocation.PostalCode,
@@ -150,6 +177,10 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	}
 
 	a.logger.WithFields(logrus.Fields{
+		"component":                "dhl_adapter",
+		"step":                     3,
+		"partner_code":             partnerInfo.PartnerCode,
+		"partner_id":               pid,
 		"partner":                  "DHL",
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
@@ -159,7 +190,23 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	// Step 4: Create DHL API request with dynamic values
 	dhlRequest := a.createInternationalRatesRequest(ctx, request, sourceCountryCode, destinationCountryCode, hubLocation)
 
+	a.logger.WithFields(logrus.Fields{
+		"component":                "dhl_adapter",
+		"step":                     4,
+		"partner_code":             partnerInfo.PartnerCode,
+		"partner_id":               pid,
+		"product_code":             "P",
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+	}).Info("Built DHL rates request")
+
 	// Step 5: Call DHL API
+	a.logger.WithFields(logrus.Fields{
+		"component":    "dhl_adapter",
+		"step":         5,
+		"partner_code": partnerInfo.PartnerCode,
+		"partner_id":   pid,
+	}).Info("Calling DHL rates API")
 	response, err := a.client.CheckRates(ctx, dhlRequest)
 	if err != nil {
 		return &common.PartnerServiceabilityResult{
@@ -179,6 +226,14 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 
 	// Step 6: Process response
 	if len(response.Products) == 0 {
+			a.logger.WithFields(logrus.Fields{
+				"component":                "dhl_adapter",
+				"step":                     6,
+				"partner_code":             partnerInfo.PartnerCode,
+				"partner_id":               pid,
+				"source_country_code":      sourceCountryCode,
+				"destination_country_code": destinationCountryCode,
+			}).Info("No DHL products available for requested route")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -202,6 +257,10 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	result.Metadata["product_code_used"] = "P" // Hardcoded as per requirements
 
 	a.logger.WithFields(logrus.Fields{
+		"component":                "dhl_adapter",
+		"step":                     7,
+		"partner_code":             partnerInfo.PartnerCode,
+		"partner_id":               pid,
 		"partner":                  "DHL",
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
