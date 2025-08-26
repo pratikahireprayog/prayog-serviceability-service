@@ -169,6 +169,31 @@ func (a *DHLBasicAuth) Authenticate(ctx context.Context) error {
 	return nil
 }
 
+// DHLAPIError represents a structured DHL API error with raw body for diagnostics
+type DHLAPIError struct {
+	StatusCode   int
+	Title        string
+	Detail       string
+	Message      string
+	Status       string
+	Instance     string
+	RawBody      string
+}
+
+func (e *DHLAPIError) Error() string {
+	if e == nil {
+		return ""
+	}
+	title := e.Title
+	if title == "" {
+		title = "DHL API error"
+	}
+	if e.Detail != "" {
+		return fmt.Sprintf("%s [%d]: %s", title, e.StatusCode, e.Detail)
+	}
+	return fmt.Sprintf("%s [%d]", title, e.StatusCode)
+}
+
 // CheckRates calls DHL rates API for serviceability and pricing
 func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*RatesResponse, error) {
 	if err := c.auth.Authenticate(ctx); err != nil {
@@ -293,13 +318,16 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 			Status   string `json:"status"`
 		}
 
-		if err := json.Unmarshal(body, &dhlError); err == nil {
-			// Return properly formatted error message
-			return nil, fmt.Errorf("DHL API error [%s]: %s", dhlError.Status, dhlError.Detail)
+		_ = json.Unmarshal(body, &dhlError)
+		return nil, &DHLAPIError{
+			StatusCode: resp.StatusCode,
+			Title:      dhlError.Title,
+			Detail:     dhlError.Detail,
+			Message:    dhlError.Message,
+			Status:     dhlError.Status,
+			Instance:   dhlError.Instance,
+			RawBody:    string(body),
 		}
-
-		// Fallback to original error if JSON parsing fails
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var ratesResp RatesResponse

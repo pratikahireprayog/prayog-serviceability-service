@@ -209,41 +209,53 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	}).Info("Calling DHL rates API")
 	response, err := a.client.CheckRates(ctx, dhlRequest)
 	if err != nil {
+		// Build error metadata with DHL error details when available
+		errMeta := map[string]interface{}{
+			"step":   "dhl_api_call",
+			"reason": "DHL API call failed",
+		}
+		if apiErr, ok := err.(*DHLAPIError); ok {
+			errMeta["status_code"] = apiErr.StatusCode
+			errMeta["title"] = apiErr.Title
+			errMeta["detail"] = apiErr.Detail
+			errMeta["message"] = apiErr.Message
+			errMeta["instance"] = apiErr.Instance
+			errMeta["raw_body"] = apiErr.RawBody
+		}
+
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			ResponseTime: time.Since(startTime),
 			Error:        err,
 			ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
-			Metadata: map[string]interface{}{
-				"reason":                   "DHL API call failed",
-				"source_country_code":      sourceCountryCode,
-				"destination_country_code": destinationCountryCode,
-				"step":                     "dhl_api_call",
-			},
+			Metadata:    errMeta,
 		}, nil
 	}
 
 	// Step 6: Process response
 	if len(response.Products) == 0 {
-			a.logger.WithFields(logrus.Fields{
-				"component":                "dhl_adapter",
-				"step":                     6,
-				"partner_code":             partnerInfo.PartnerCode,
-				"partner_id":               pid,
-				"source_country_code":      sourceCountryCode,
-				"destination_country_code": destinationCountryCode,
-			}).Info("No DHL products available for requested route")
+		// Attach response snapshot
+		emptyMeta := map[string]interface{}{
+			"reason":                   "No DHL products available",
+			"source_country_code":      sourceCountryCode,
+			"destination_country_code": destinationCountryCode,
+			"hub_info":                 hubLocation,
+			"dhl_response":             response,
+		}
+		a.logger.WithFields(logrus.Fields{
+			"component":                "dhl_adapter",
+			"step":                     6,
+			"partner_code":             partnerInfo.PartnerCode,
+			"partner_id":               pid,
+			"source_country_code":      sourceCountryCode,
+			"destination_country_code": destinationCountryCode,
+		}).Info("No DHL products available for requested route")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			ResponseTime: time.Since(startTime),
-			Metadata: map[string]interface{}{
-				"reason":                   "No DHL products available",
-				"source_country_code":      sourceCountryCode,
-				"destination_country_code": destinationCountryCode,
-				"hub_info":                 hubLocation,
-			},
+			Metadata:    emptyMeta,
 		}, nil
 	}
 
@@ -255,6 +267,11 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	result.Metadata["destination_country_code"] = destinationCountryCode
 	result.Metadata["hub_info"] = hubLocation
 	result.Metadata["product_code_used"] = "P" // Hardcoded as per requirements
+	// Attach full DHL response for diagnostics
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]interface{})
+	}
+	result.Metadata["dhl_response"] = response
 
 	a.logger.WithFields(logrus.Fields{
 		"component":                "dhl_adapter",
