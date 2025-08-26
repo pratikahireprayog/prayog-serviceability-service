@@ -79,7 +79,11 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 					} else if dest3pl, ok := m["destination3pl_hub"].(map[string]interface{}); ok {
 						if pin, ok := dest3pl["pincode"]; ok { destination3PLHubPincode = toString(pin) }
 					}
-					topLevelHubDetails = hd
+					// Inject partner_id for hub_details from Journey Templates (partner_code=smile_hubops)
+					if pid := s.getPartnerIDFromTemplates(ctx, "smile_hubops"); pid != nil {
+						m["partner_id"] = pid.String()
+					}
+					topLevelHubDetails = m
 				}
 				s.Logger.WithFields(logrus.Fields{
 					"component":            "international_with_pickup_strategy",
