@@ -55,8 +55,32 @@ func (p *PorterAdapter) SupportsRequest(ctx context.Context, request *models.Ser
 func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
+	// Log start with pincodes
+	sourcePin := ""
+	if request.SourcePostalCode != nil {
+		sourcePin = *request.SourcePostalCode
+	}
+	destPin := ""
+	if request.DestinationPostalCode != nil {
+		destPin = *request.DestinationPostalCode
+	}
+	p.logger.WithFields(logrus.Fields{
+		"component":           "porter_adapter",
+		"method":              "CheckServiceability",
+		"source_pincode":      sourcePin,
+		"destination_pincode": destPin,
+	}).Info("Starting Porter serviceability check")
+
 	// Check if Porter supports this request using only pincodes
 	if !p.SupportsRequest(ctx, request) {
+		hasSourcePostal := request.SourcePostalCode != nil && *request.SourcePostalCode != ""
+		hasDestPostal := request.DestinationPostalCode != nil && *request.DestinationPostalCode != ""
+		p.logger.WithFields(logrus.Fields{
+			"component":              "porter_adapter",
+			"method":                 "CheckServiceability",
+			"has_source_postal":      hasSourcePostal,
+			"has_destination_postal": hasDestPostal,
+		}).Warn("Unsupported request for Porter - missing required pincodes")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -70,6 +94,11 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 
 	// Validate request requirements
 	if err := p.validatePorterRequirements(request); err != nil {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "CheckServiceability",
+			"error":     err.Error(),
+		}).Warn("Porter validation failed")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -86,6 +115,12 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 	// Get coordinates from database using postal codes
 	sourceLat, sourceLng, err := p.getCoordinatesFromDatabase(ctx, request, "source")
 	if err != nil {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "CheckServiceability",
+			"stage":     "get_source_coordinates",
+			"error":     err.Error(),
+		}).Error("Failed to get source coordinates from DB")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -98,6 +133,12 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 
 	destLat, destLng, err := p.getCoordinatesFromDatabase(ctx, request, "destination")
 	if err != nil {
+		p.logger.WithFields(logrus.Fields{
+			"component": "porter_adapter",
+			"method":    "CheckServiceability",
+			"stage":     "get_destination_coordinates",
+			"error":     err.Error(),
+		}).Error("Failed to get destination coordinates from DB")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -171,6 +212,15 @@ func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models
 		ResponseTime: time.Since(startTime),
 	}
 
+	p.logger.WithFields(logrus.Fields{
+		"component":              "porter_adapter",
+		"method":                 "CheckServiceability",
+		"source_serviceable":     sourceServiceable,
+		"destination_serviceable": destServiceable,
+		"source_boundary_id":     sourceBoundaryID,
+		"destination_boundary_id": destBoundaryID,
+	}).Info("Porter serviceable - adding service to result")
+
 	// Add Porter hyperlocal service
 	result.Services = append(result.Services, models.ServiceV2{
 		ServiceCode:   "porter_hyperlocal",
@@ -231,11 +281,6 @@ func (p *PorterAdapter) IsHealthy(ctx context.Context) bool {
 
 // validatePorterRequirements validates Porter-specific requirements
 func (p *PorterAdapter) validatePorterRequirements(req *models.ServiceabilityV2Request) error {
-	// Porter only supports hyperlocal parcel category
-	if req.ParcelCategory == nil || *req.ParcelCategory != "hyperlocal" {
-		return fmt.Errorf("Porter only supports hyperlocal parcel category")
-	}
-
 	// Porter requires postal codes for both source and destination to fetch coordinates from database
 	hasSourcePostal := req.SourcePostalCode != nil && *req.SourcePostalCode != ""
 	hasDestPostal := req.DestinationPostalCode != nil && *req.DestinationPostalCode != ""

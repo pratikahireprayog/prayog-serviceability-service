@@ -11,6 +11,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/models/v1"
+    "github.com/google/uuid"
 )
 
 // InternationalWithPickupStrategy orchestrates the flow:
@@ -53,6 +54,7 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 	partners := make([]models.PartnerV2Response, 0)
 	var sourceHubPincode string
 	var destination3PLHubPincode string
+	var topLevelHubDetails interface{}
 
 	// Step 1: Call Smile HubOps with source/destination pincodes to get hubs
 	if adapter, ok := s.PartnerFactory.GetAdapter("smile_hubops"); ok && adapter != nil && adapter.IsHealthy(ctx) {
@@ -65,6 +67,7 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 		res, err := adapter.CheckServiceability(ctx, req, common.PartnerInfo{PartnerCode: "smile_hubops"})
 		if err == nil && res != nil && res.Metadata != nil {
 			if hd, ok := res.Metadata["hub_details"]; ok {
+				topLevelHubDetails = hd
 				// Expect snake_case keys in Smile HubOps payload
 				if m, ok := hd.(map[string]interface{}); ok {
 					if srcHub, ok := m["source_hub"].(map[string]interface{}); ok {
@@ -76,6 +79,7 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 					} else if dest3pl, ok := m["destination3pl_hub"].(map[string]interface{}); ok {
 						if pin, ok := dest3pl["pincode"]; ok { destination3PLHubPincode = toString(pin) }
 					}
+					topLevelHubDetails = hd
 				}
 				s.Logger.WithFields(logrus.Fields{
 					"component":            "international_with_pickup_strategy",
@@ -105,29 +109,32 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 			cp := *req
 			cp.DestinationPostalCode = strPtr(sourceHubPincode)
 
+			// Map Porter partner ID from Journey Templates for partner_code=porter_2w
+			porter2WPartnerID := s.getPartnerIDFromTemplates(ctx, "porter_2w")
+
 			s.Logger.WithFields(logrus.Fields{
 				"component":           "international_with_pickup_strategy",
 				"step":                2,
-				"partner_code":        "porter",
+				"partner_code":        "porter_2w",
 				"source_pincode":      valOrEmpty(cp.SourcePostalCode),
 				"destination_pincode": sourceHubPincode,
 			}).Info("Calling Porter for source → hub pickup feasibility")
 
-			if res, err := adapter.CheckServiceability(ctx, &cp, common.PartnerInfo{PartnerCode: "porter"}); err == nil && res != nil {
-				if p, ok := toPartnerV2Response(res, "porter"); ok {
+			if res, err := adapter.CheckServiceability(ctx, &cp, common.PartnerInfo{PartnerCode: "porter_2w", PartnerID: porter2WPartnerID}); err == nil && res != nil {
+				if p, ok := toPartnerV2Response(res, "porter_2w"); ok {
 					partners = append(partners, p)
 				}
 			} else if err != nil {
 				s.Logger.WithFields(logrus.Fields{
 					"component": "international_with_pickup_strategy",
-					"partner":   "porter",
+					"partner":   "porter_2w",
 					"error":     err.Error(),
 				}).Warn("Porter call failed")
 			}
 		} else {
 			s.Logger.WithFields(logrus.Fields{
 				"component": "international_with_pickup_strategy",
-				"partner":   "porter",
+				"partner":   "porter_2w",
 			}).Warn("Porter adapter unavailable or unhealthy")
 		}
 	} else {
@@ -143,6 +150,21 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 			cp := *req
 			cp.SourcePostalCode = strPtr(destination3PLHubPincode)
 
+            // Map Shipyaari partner ID from Journey Templates (product_type=nba)
+            shipyaariPartnerID := s.getPartnerIDFromTemplates(ctx, "shipyaari")
+            if shipyaariPartnerID != nil {
+                s.Logger.WithFields(logrus.Fields{
+                    "component":    "international_with_pickup_strategy",
+                    "partner_code": "shipyaari",
+                    "partner_id":   shipyaariPartnerID.String(),
+                }).Info("Mapped Shipyaari partner_id from templates")
+            } else {
+                s.Logger.WithFields(logrus.Fields{
+                    "component":    "international_with_pickup_strategy",
+                    "partner_code": "shipyaari",
+                }).Warn("Could not map Shipyaari partner_id from templates; proceeding without it")
+            }
+
 			s.Logger.WithFields(logrus.Fields{
 				"component":           "international_with_pickup_strategy",
 				"step":                3,
@@ -151,7 +173,7 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 				"destination_pincode": valOrEmpty(cp.DestinationPostalCode),
 			}).Info("Calling Shipyaari for 3PL hub → destination leg")
 
-			if res, err := adapter.CheckServiceability(ctx, &cp, common.PartnerInfo{PartnerCode: "shipyaari"}); err == nil && res != nil {
+			if res, err := adapter.CheckServiceability(ctx, &cp, common.PartnerInfo{PartnerCode: "shipyaari", PartnerID: shipyaariPartnerID}); err == nil && res != nil {
 				if p, ok := toPartnerV2Response(res, "shipyaari"); ok {
 					partners = append(partners, p)
 				}
@@ -179,6 +201,9 @@ func (s *InternationalWithPickupStrategy) Execute(ctx context.Context, req *mode
 	resp := &models.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
 		Partners: partners,
+	}
+	if topLevelHubDetails != nil {
+		resp.HubDetails = topLevelHubDetails
 	}
 
 	return resp, nil
@@ -215,6 +240,55 @@ func (s *InternationalWithPickupStrategy) isProductTypeBlocked(ctx context.Conte
 		return false, err
 	}
 	return len(parsed.Data) == 0, nil
+}
+
+// getPartnerIDFromTemplates fetches journey templates for product_type=nba and extracts the partner_id for the given code
+func (s *InternationalWithPickupStrategy) getPartnerIDFromTemplates(ctx context.Context, partnerCode string) *uuid.UUID {
+    baseURL := os.Getenv("JOURNEY_TEMPLATE_URL")
+    if baseURL == "" {
+        baseURL = "https://sandbox-apis.prayog.io"
+    }
+    endpoint, _ := url.Parse(baseURL)
+    endpoint.Path = "/journey-service/api/v1/templates"
+    q := endpoint.Query()
+    q.Set("product_type", "nba")
+    endpoint.RawQuery = q.Encode()
+
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+    if err != nil { return nil }
+    req.Header.Set("Accept", "application/json")
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil { return nil }
+    defer resp.Body.Close()
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        return nil
+    }
+    var parsed struct {
+        Success bool `json:"success"`
+        Data    []struct {
+            Routes []struct {
+                Partners []struct {
+                    PartnerCode string     `json:"partner_code"`
+                    PartnerID   *uuid.UUID `json:"partner_id"`
+                } `json:"partners"`
+            } `json:"routes"`
+        } `json:"data"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+        return nil
+    }
+    // Scan for partner code match
+    for _, t := range parsed.Data {
+        for _, r := range t.Routes {
+            for _, p := range r.Partners {
+                if p.PartnerCode == partnerCode && p.PartnerID != nil {
+                    return p.PartnerID
+                }
+            }
+        }
+    }
+    return nil
 }
 
 func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (models.PartnerV2Response, bool) {
