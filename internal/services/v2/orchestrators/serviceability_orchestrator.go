@@ -111,9 +111,11 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
     timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
     defer cancel()
 
-    // Resolve strategy using Journey templates (factory currently defaults to "default")
+    // Decide strategy: if product_type is nba, force pickup strategy; else resolve via templates (by parcel_category)
     var strat OrchestrationStrategy
-    if s.orchestratorFactory != nil {
+    if req != nil && req.ProductType != nil && strings.ToLower(*req.ProductType) == "nba" {
+        strat = &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+    } else if s.orchestratorFactory != nil {
         resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
         strat = resolved
     }
