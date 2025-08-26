@@ -43,39 +43,28 @@ func NewPorterAdapter(cfg config.PorterConfig, db *sql.DB) common.PartnerAdapter
 	return adapter
 }
 
-// SupportsRequest checks if Porter can handle this request
+// SupportsRequest checks if Porter can handle this request using only start/destination pincodes
 func (p *PorterAdapter) SupportsRequest(ctx context.Context, request *models.ServiceabilityV2Request) bool {
-	// Porter only supports hyperlocal parcel category
-	if request.ParcelCategory == nil || *request.ParcelCategory != "hyperlocal" {
-		return false
-	}
-
-	// Porter requires postal codes for both source and destination to fetch coordinates from database
+	// Require postal codes for both source and destination
 	hasSourcePostal := request.SourcePostalCode != nil && *request.SourcePostalCode != ""
 	hasDestPostal := request.DestinationPostalCode != nil && *request.DestinationPostalCode != ""
-
-	// Must have postal codes for both locations
-	if !(hasSourcePostal && hasDestPostal) {
-		return false
-	}
-
-	return true
+	return hasSourcePostal && hasDestPostal
 }
 
 // CheckServiceability checks serviceability for the request using Porter's database query
 func (p *PorterAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
-	// Check if Porter supports this request
+	// Check if Porter supports this request using only pincodes
 	if !p.SupportsRequest(ctx, request) {
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			PartnerName:  p.GetPartnerName(),
 			Services:     make([]models.ServiceV2, 0),
-					Metadata: map[string]interface{}{
-			"reason": "Porter does not support this request type (requires hyperlocal parcel category with coordinates)",
-		},
+			Metadata: map[string]interface{}{
+				"reason": "Porter requires both source and destination postal codes",
+			},
 		}, nil
 	}
 
