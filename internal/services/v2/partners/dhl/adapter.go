@@ -2,10 +2,14 @@ package dhl
 
 import (
 	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
+	"net/http"
 
 	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
@@ -128,64 +132,32 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"flow":                "international",
 	}).Info("Starting DHL international serviceability check")
 
-	// Step 2: Find nearest hub for source postal code
-	hubLocation, err := a.findNearestHub(ctx, sourcePincode)
-	if err != nil {
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			Services:     make([]models.ServiceV2, 0),
-			ResponseTime: time.Since(startTime),
-			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("Hub location not found: %v", err)}[0],
-			Metadata: map[string]interface{}{
-				"reason":         "Hub location not found",
-				"source_pincode": sourcePincode,
-				"step":           "hub_lookup",
-			},
-		}, nil
-	}
-
+	// Step 2: Skip hub lookup and DB/geolocation calls; use only pincodes
+	var hubLocation *models.HubLocationInfo = nil
 	a.logger.WithFields(logrus.Fields{
-		"component":            "dhl_adapter",
-		"step":                 2,
-		"partner_code":         partnerInfo.PartnerCode,
-		"partner_id":           pid,
-		"partner":              "DHL",
-		"source_pincode":       sourcePincode,
-		"hub_postal_code":      hubLocation.PostalCode,
-		"hub_info_postal_code": hubLocation.HubInfo.PostalCode,
-		"hub_city_code":        hubLocation.HubInfo.CityCode,
-	}).Info("Found nearest hub for source postal code")
+		"component":      "dhl_adapter",
+		"step":           2,
+		"partner_code":   partnerInfo.PartnerCode,
+		"partner_id":     pid,
+		"note":           "Skipping hub lookup; building request with only from/to pincodes",
+		"source_pincode": sourcePincode,
+	}).Info("Proceeding without hub lookup")
 
-	// Step 3: Get country codes for source and destination
-	sourceCountryCode, destinationCountryCode, err := a.resolveCountryCodes(ctx, sourcePincode, destinationPincode)
-	if err != nil {
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			ResponseTime: time.Since(startTime),
-			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("Country code resolution failed: %v", err)}[0],
-			Metadata: map[string]interface{}{
-				"reason":              "Country code resolution failed",
-				"source_pincode":      sourcePincode,
-				"destination_pincode": destinationPincode,
-				"step":                "country_code_resolution",
-			},
-		}, nil
+	// Step 3: Set country codes without DB calls.
+	// Origin is IN. Destination comes from request.CountryCode when provided; else IN.
+	sourceCountryCode := "IN"
+	destinationCountryCode := "IN"
+	if request.CountryCode != nil && *request.CountryCode != "" {
+		destinationCountryCode = strings.ToUpper(*request.CountryCode)
 	}
-
 	a.logger.WithFields(logrus.Fields{
 		"component":                "dhl_adapter",
 		"step":                     3,
 		"partner_code":             partnerInfo.PartnerCode,
 		"partner_id":               pid,
-		"partner":                  "DHL",
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
-		"flow":                     "international",
-	}).Info("Resolved country codes for international flow")
+	}).Info("Using request-provided destination country code when available")
 
 	// Step 4: Create DHL API request with dynamic values
 	dhlRequest := a.createInternationalRatesRequest(ctx, request, sourceCountryCode, destinationCountryCode, hubLocation)
@@ -200,37 +172,142 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"destination_country_code": destinationCountryCode,
 	}).Info("Built DHL rates request")
 
+	// Log full DHL request payload at INFO level for diagnostics
+	if payload, err := json.Marshal(dhlRequest); err == nil {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "dhl_adapter",
+			"step":         4,
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+			"dhl_request":  string(payload),
+		}).Info("DHL rates request payload")
+	} else {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "dhl_adapter",
+			"step":         4,
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+			"error":        err.Error(),
+		}).Warn("Failed to marshal DHL request payload for logging")
+	}
+
+	// Log the full DHL API URL used
+	apiURL := fmt.Sprintf("%s/rates?strictValidation=false", a.client.config.BaseURL)
+	a.logger.WithFields(logrus.Fields{
+		"component":    "dhl_adapter",
+		"step":         4,
+		"partner_code": partnerInfo.PartnerCode,
+		"partner_id":   pid,
+		"url_path":     "/rates?strictValidation=false",
+		"url":          apiURL,
+	}).Info("DHL rates API URL")
+
 	// Step 5: Call DHL API
 	a.logger.WithFields(logrus.Fields{
 		"component":    "dhl_adapter",
 		"step":         5,
 		"partner_code": partnerInfo.PartnerCode,
 		"partner_id":   pid,
-	}).Info("Calling DHL rates API")
-	response, err := a.client.CheckRates(ctx, dhlRequest)
-	if err != nil {
-		// Build error metadata with DHL error details when available
-		errMeta := map[string]interface{}{
-			"step":   "dhl_api_call",
-			"reason": "DHL API call failed",
-		}
-		if apiErr, ok := err.(*DHLAPIError); ok {
-			errMeta["status_code"] = apiErr.StatusCode
-			errMeta["title"] = apiErr.Title
-			errMeta["detail"] = apiErr.Detail
-			errMeta["message"] = apiErr.Message
-			errMeta["instance"] = apiErr.Instance
-			errMeta["raw_body"] = apiErr.RawBody
+	}).Info("Calling dhl rates API")
+	
+	// Direct HTTP call to DHL rates API (bypassing client wrapper as requested)
+	var response *RatesResponse
+	{
+		url := fmt.Sprintf("%s/rates?strictValidation=false", a.client.config.BaseURL)
+		body, mErr := json.Marshal(dhlRequest)
+		if mErr != nil {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        mErr,
+				ErrorMessage: &[]string{fmt.Sprintf("Failed to marshal DHL request: %v", mErr)}[0],
+			}, nil
 		}
 
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			ResponseTime: time.Since(startTime),
-			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", err)}[0],
-			Metadata:    errMeta,
-		}, nil
+		req, rErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+		if rErr != nil {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        rErr,
+				ErrorMessage: &[]string{fmt.Sprintf("Failed to create DHL request: %v", rErr)}[0],
+			}, nil
+		}
+
+		// Required headers to match working curl
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")
+		req.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT")
+		req.Header.Set("Plugin-Name", "")
+		req.Header.Set("Plugin-Version", "")
+		req.Header.Set("Shipping-System-Platform-Name", "")
+		req.Header.Set("Shipping-System-Platform-Version", "")
+		req.Header.Set("Webstore-Platform-Name", "")
+		req.Header.Set("Webstore-Platform-Version", "")
+		req.Header.Set("X-Version", "2.12.0")
+
+		// Auth header from client config
+		for k, v := range a.client.auth.GetAuthHeaders() {
+			req.Header.Set(k, v)
+		}
+
+		resp, doErr := a.client.httpClient.Do(req)
+		if doErr != nil {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        doErr,
+				ErrorMessage: &[]string{fmt.Sprintf("DHL request failed: %v", doErr)}[0],
+			}, nil
+		}
+		defer resp.Body.Close()
+
+		respBody, rdErr := io.ReadAll(resp.Body)
+		if rdErr != nil {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        rdErr,
+				ErrorMessage: &[]string{fmt.Sprintf("Failed to read DHL response: %v", rdErr)}[0],
+			}, nil
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			var dhlErr struct {
+				Instance string `json:"instance"`
+				Detail   string `json:"detail"`
+				Title    string `json:"title"`
+				Message  string `json:"message"`
+				Status   string `json:"status"`
+			}
+			_ = json.Unmarshal(respBody, &dhlErr)
+			apiErr := &DHLAPIError{StatusCode: resp.StatusCode, Title: dhlErr.Title, Detail: dhlErr.Detail, Message: dhlErr.Message, Status: dhlErr.Status, Instance: dhlErr.Instance, RawBody: string(respBody)}
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        apiErr,
+				ErrorMessage: &[]string{fmt.Sprintf("DHL API call failed: %v", apiErr)}[0],
+				Metadata: map[string]interface{}{"status_code": resp.StatusCode, "raw_body": string(respBody)},
+			}, nil
+		}
+
+		var parsed RatesResponse
+		if uErr := json.Unmarshal(respBody, &parsed); uErr != nil {
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(startTime),
+				Error:        uErr,
+				ErrorMessage: &[]string{fmt.Sprintf("Failed to decode DHL response: %v", uErr)}[0],
+			}, nil
+		}
+		response = &parsed
 	}
 
 	// Step 6: Process response
@@ -240,7 +317,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 			"reason":                   "No DHL products available",
 			"source_country_code":      sourceCountryCode,
 			"destination_country_code": destinationCountryCode,
-			"hub_info":                 hubLocation,
 			"dhl_response":             response,
 		}
 		a.logger.WithFields(logrus.Fields{
@@ -265,7 +341,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	result.Metadata["flow"] = "international"
 	result.Metadata["source_country_code"] = sourceCountryCode
 	result.Metadata["destination_country_code"] = destinationCountryCode
-	result.Metadata["hub_info"] = hubLocation
 	result.Metadata["product_code_used"] = "P" // Hardcoded as per requirements
 	// Attach full DHL response for diagnostics
 	if result.Metadata == nil {
@@ -509,7 +584,8 @@ func (a *Adapter) createInternationalRatesRequest(ctx context.Context, request *
 
 	// Get dynamic city names
 	shipperCityName := a.getShipperCityName(hubLocation)
-	receiverCityName := a.getReceiverCityName(ctx, destinationPincode)
+	// Avoid DB/geolocation calls: use a neutral placeholder for receiver city
+	receiverCityName := "Unknown City"
 
 	// Get hub postal code for shipper details
 	shipperPostalCode := sourcePincode // fallback to source if hub info not available

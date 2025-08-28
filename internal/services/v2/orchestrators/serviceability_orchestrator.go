@@ -14,6 +14,7 @@ import (
     dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
     intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
     smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
+    newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -70,6 +71,10 @@ func NewServiceabilityOrchestrator(
         "smile_primary_np_extension_with_pickup": func() OrchestrationStrategy {
             return &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: partnerFactory, Logger: logger}
         },
+        // New international flow using HubOps by-pincode then DHL
+        "international": func() OrchestrationStrategy {
+            return &newintl.InternationalStrategy{PartnerFactory: partnerFactory, Logger: logger}
+        },
     }
     // Configure Journey Templates base URL from environment (JOURNEY_TEMPLATE_URL), defaulting to sandbox
     baseURL := os.Getenv("JOURNEY_TEMPLATE_URL")
@@ -118,6 +123,10 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
     } else if s.orchestratorFactory != nil {
         resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
         strat = resolved
+    }
+    // Force new international strategy when parcel_category == "international"
+    if req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
+        strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
     }
     if strat == nil || strat.Code() == "default" {
         return s.executeDefault(timeoutCtx, req)

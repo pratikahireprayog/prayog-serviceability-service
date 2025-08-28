@@ -211,17 +211,16 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		"partner":   "DHL",
 		"method":    "POST",
 		"url":       url,
+		"url_path":  "/rates?strictValidation=false",
 		"body_size": len(reqBody),
-	}).Debug("Making DHL API request")
-	// Log request body (truncated) at debug level
-	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
-		c.logger.WithFields(logrus.Fields{
-			"partner":      "DHL",
-			"event":        "request_body",
-			"body_preview": truncateForLog(string(reqBody), 2048),
-			"body_size":    len(reqBody),
-		}).Debug("DHL rates request body")
-	}
+	}).Info("Making DHL API request")
+	// Log request body (truncated)
+	c.logger.WithFields(logrus.Fields{
+		"partner":      "DHL",
+		"event":        "request_body",
+		"body_preview": truncateForLog(string(reqBody), 2048),
+		"body_size":    len(reqBody),
+	}).Info("DHL rates request body")
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -247,8 +246,10 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		req.Header.Set(key, value)
 	}
 
+	// Cookie header intentionally not set
+
 	// Log headers safely (with sensitive headers redacted)
-	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
+	{
 		logFields := logrus.Fields{
 			"partner": "DHL",
 			"headers": make(map[string]string),
@@ -258,7 +259,7 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 				logFields["headers"].(map[string]string)[key] = redactHeaderValue(key, value)
 			}
 		}
-		c.logger.WithFields(logFields).Debug("Request headers prepared")
+		c.logger.WithFields(logFields).Info("Request headers prepared")
 	}
 
 	// Add retry logic
@@ -296,17 +297,15 @@ func (c *DHLClient) CheckRates(ctx context.Context, request RatesRequest) (*Rate
 		"partner":     "DHL",
 		"status_code": resp.StatusCode,
 		"body_size":   len(body),
-	}).Debug("Received DHL API response")
-	// Log response body (truncated) at debug level
-	if c.logger.IsLevelEnabled(logrus.DebugLevel) {
-		c.logger.WithFields(logrus.Fields{
-			"partner":      "DHL",
-			"event":        "response_body",
-			"status_code":  resp.StatusCode,
-			"body_preview": truncateForLog(string(body), 4096),
-			"body_size":    len(body),
-		}).Debug("DHL rates response body")
-	}
+	}).Info("Received DHL API response")
+	// Log response body (truncated)
+	c.logger.WithFields(logrus.Fields{
+		"partner":      "DHL",
+		"event":        "response_body",
+		"status_code":  resp.StatusCode,
+		"body_preview": truncateForLog(string(body), 4096),
+		"body_size":    len(body),
+	}).Info("DHL rates response body")
 
 	if resp.StatusCode != http.StatusOK {
 		// Try to parse DHL error response for better error messages
