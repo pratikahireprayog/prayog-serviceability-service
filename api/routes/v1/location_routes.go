@@ -11,8 +11,10 @@ func RegisterLocationRoutes(router fiber.Router, handler *v1.LocationHandler) {
 	// Country routes
 	countries := router.Group("/countries")
 	{
-		countries.Get("/", handler.GetAllCountries)            // GET /countries
-		countries.Post("/", handler.CreateCountry)             // POST /countries
+			countries.Get("/", handler.GetAllCountries)            // GET /countries
+	countries.Get("/by-codes", handler.GetCountriesByCodes) // GET /countries/by-codes?codes=in,us,af
+	countries.Get("/by-name", handler.GetCountriesByName)   // GET /countries/by-name?name=india
+	countries.Post("/", handler.CreateCountry)             // POST /countries
 		countries.Get("/:id", handler.GetCountryByID)          // GET /countries/{id}
 		countries.Put("/:id", handler.UpdateCountry)           // PUT /countries/{id}
 		countries.Delete("/:id", handler.DeleteCountry)        // DELETE /countries/{id}

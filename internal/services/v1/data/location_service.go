@@ -10,6 +10,8 @@ import (
 type CountryService interface {
 	GetByID(ctx context.Context, id string) (*dtos.CountryResponse, error)
 	GetByCode(ctx context.Context, code string) (*dtos.CountryResponse, error)
+	GetByCodes(ctx context.Context, codesParam string) (*dtos.CountryListResponse, error)
+	GetByName(ctx context.Context, name string) (*dtos.CountryListResponse, error)
 	GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error)
 	GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error)
 	Create(ctx context.Context, req *dtos.CreateCountryRequest) (*dtos.CountryResponse, error)

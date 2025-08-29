@@ -22,7 +22,58 @@ func NewCountryService(repo repositories.CountryRepository) CountryService {
 		repo: repo,
 	}
 }
+// GetByCodes retrieves countries by multiple codes (comma-separated)
+func (s *countryService) GetByCodes(ctx context.Context, codesParam string) (*dtos.CountryListResponse, error) {
+	if strings.TrimSpace(codesParam) == "" {
+		return nil, fmt.Errorf("country codes parameter cannot be empty")
+	}
 
+	// Split comma-separated codes and clean them
+	codes := strings.Split(codesParam, ",")
+	cleanedCodes := make([]string, 0, len(codes))
+	
+	for _, code := range codes {
+		cleanedCode := strings.TrimSpace(code)
+		if cleanedCode != "" {
+			// Validate each code format (2-3 characters, lowercase)
+			if len(cleanedCode) < 2 || len(cleanedCode) > 3 {
+				return nil, fmt.Errorf("invalid country code format: %s (must be 2-3 characters)", cleanedCode)
+			}
+			cleanedCodes = append(cleanedCodes, cleanedCode)
+		}
+	}
+
+	if len(cleanedCodes) == 0 {
+		return nil, fmt.Errorf("no valid country codes provided")
+	}
+
+	// Get countries by codes
+	countries, err := s.repo.GetByCodes(ctx, cleanedCodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by codes: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: fmt.Sprintf("Countries retrieved successfully for codes: %s", strings.Join(cleanedCodes, ", ")),
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
+}
 // GetByID retrieves a country by its ID
 func (s *countryService) GetByID(ctx context.Context, id string) (*dtos.CountryResponse, error) {
 	if strings.TrimSpace(id) == "" {
@@ -68,6 +119,46 @@ func (s *countryService) GetByCode(ctx context.Context, code string) (*dtos.Coun
 	}
 
 	return CountryToResponse(country), nil
+}
+
+// GetByName retrieves countries by name search (case-insensitive partial match)
+func (s *countryService) GetByName(ctx context.Context, name string) (*dtos.CountryListResponse, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("country name cannot be empty")
+	}
+
+	// Clean and validate the name parameter
+	name = strings.TrimSpace(name)
+	if len(name) < 2 {
+		return nil, fmt.Errorf("country name must be at least 2 characters long")
+	}
+
+	// Get countries by name from repository
+	countries, err := s.repo.GetByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by name: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: fmt.Sprintf("Countries retrieved successfully for name search: %s", name),
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
 }
 
 // GetAll retrieves all countries with pagination
@@ -117,6 +208,7 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 		},
 	}, nil
 }
+
 
 // GetAllWithDeleted retrieves all countries including soft-deleted ones (admin operation)
 func (s *countryService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error) {

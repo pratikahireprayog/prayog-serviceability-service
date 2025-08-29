@@ -19,6 +19,8 @@ type CountryRepository interface {
 	Delete(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
 	ForceDelete(ctx context.Context, id string) error
+	GetByCodes(ctx context.Context, codes []string) ([]models.Country, error)
+	GetByName(ctx context.Context, name string) ([]models.Country, error)
 }
 
 // RegionTypeRepository defines the interface for region type operations
