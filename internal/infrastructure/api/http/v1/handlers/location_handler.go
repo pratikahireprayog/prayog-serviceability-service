@@ -45,7 +45,7 @@ func (h *LocationHandler) parsePagination(c *fiber.Ctx) *dtos.PaginationRequest 
 	if offset < 0 {
 		offset = 0
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > 200 {
 		limit = 10
 	}
 
