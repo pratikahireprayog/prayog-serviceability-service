@@ -51,6 +51,26 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		return &modelsv1.ServiceabilityV2Response{Success: false, Partners: []modelsv1.PartnerV2Response{}}, nil
 	}
 
+	// Set country codes from request
+	sourceCountryCode := "IN"  // Default to India
+	destinationCountryCode := "US"  // Default to USA
+
+	// Use the new explicit source_country_code field if available
+	if req.SourceCountryCode != nil && *req.SourceCountryCode != "" {
+		sourceCountryCode = strings.ToUpper(*req.SourceCountryCode)
+	} else if req.CountryCode != nil && *req.CountryCode != "" {
+		// Fallback to generic country_code for source
+		sourceCountryCode = strings.ToUpper(*req.CountryCode)
+	}
+
+	// Use the new explicit destination_country_code field if available
+	if req.DestinationCountryCode != nil && *req.DestinationCountryCode != "" {
+		destinationCountryCode = strings.ToUpper(*req.DestinationCountryCode)
+	} else if req.CountryCode != nil && *req.CountryCode != "" {
+		// Fallback to generic country_code for destination
+		destinationCountryCode = strings.ToUpper(*req.CountryCode)
+	}
+
 	// 1) Call HubOps by-pincode API
 	hubResp, err := s.fetchHubByPincode(ctx, sourcePin)
 	if err != nil {
@@ -69,99 +89,138 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 
 	// 3) Call DHL with adjusted source pincode when available
 	partners := make([]modelsv1.PartnerV2Response, 0)
+	
 	// Direct DHL rates API call in strategy
-	{
-		baseURL := "https://express.api.dhl.com/mydhlapi/test"
-		{
-			// Build DHL request
-			srcPin := sourcePin
-			if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.Pincode != nil {
-				srcPin = fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
-			}
-			dstPin := ""
-			if req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
-				dstPin = *req.DestinationPostalCode
-			} else if req.PostalCode != nil && *req.PostalCode != "" {
-				dstPin = *req.PostalCode
-			}
-			dstCC := "IN"
-			if req.CountryCode != nil && *req.CountryCode != "" { dstCC = strings.ToUpper(*req.CountryCode) }
-			shipperCity := "Unknown City"
-			if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" { shipperCity = *hubResp.NearestInternationalHub.City }
-			receiverCity := "Unknown City"
+	// DHL base URL from .env with fallback to hardcoded
+	baseURL := os.Getenv("DHL_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://express.api.dhl.com/mydhlapi/test"
+	}
+	
+	// Build DHL request - Use HubOps nearestInternationalHub for SOURCE only
+	srcPin := sourcePin
+	dstPin := sourcePin  // Default to source pincode
+		
+	// Extract pincode and city from nearestInternationalHub
+	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.Pincode != nil {
+		// Use nearestInternationalHub pincode for SOURCE only in DHL
+		hubPincode := fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
+		srcPin = hubPincode  // ← HubOps pincode as SOURCE
+		
+		// Use request destination_postal_code as DESTINATION
+		if req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
+			dstPin = *req.DestinationPostalCode  // ← Request destination as DESTINATION
+		} else if req.PostalCode != nil && *req.PostalCode != "" {
+			dstPin = *req.PostalCode  // ← Fallback
+		}
+		
+		s.Logger.WithFields(logrus.Fields{
+			"component": "international_strategy",
+			"original_source_pin": sourcePin,
+			"hub_pincode": hubPincode,
+			"dhl_source_pin": srcPin,        // ← HubOps pincode
+			"dhl_destination_pin": dstPin,   // ← Request destination_postal_code
+		}).Info("Using HubOps pincode as source, request destination as destination for DHL")
+	}
+	
+	// Use the resolved country codes
+	dstCC := destinationCountryCode  // Use the resolved destination country code
+	shipperCity := "Unknown City"
+	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" { 
+		shipperCity = *hubResp.NearestInternationalHub.City 
+	}
+	receiverCity := "Unknown City"
 
-			dhlReq := dhl.RatesRequest{
-				CustomerDetails: dhl.CustomerDetails{
-					ShipperDetails: dhl.ShipperDetails{ PostalCode: srcPin, CityName: shipperCity, CountryCode: "IN" },
-					ReceiverDetails: dhl.ReceiverDetails{ PostalCode: dstPin, CityName: receiverCity, CountryCode: dstCC },
-				},
-				Accounts: []dhl.Account{{ TypeCode: "shipper", Number: "533748932" }},
-				ProductsAndServices: []dhl.ProductAndService{{ ProductCode: "P", LocalProductCode: "P" }},
-				PayerCountryCode: "IN",
-				PlannedShippingDateAndTime: nextBusinessDayOnePMIST(),
-				UnitOfMeasurement: "metric",
-				IsCustomsDeclarable: true,
-				EstimatedDeliveryDate: dhl.EstimatedDeliveryDate{ IsRequested: true, TypeCode: "QDDC" },
-				ReturnStandardProductsOnly: true,
-				Packages: []dhl.Package{{ Weight: defaultWeight(req), Dimensions: dhl.Dimensions{ Length: defaultLen(req), Width: defaultWid(req), Height: defaultHei(req) }}},
-			}
+	dhlReq := dhl.RatesRequest{
+		CustomerDetails: dhl.CustomerDetails{
+			ShipperDetails: dhl.ShipperDetails{ PostalCode: srcPin, CityName: shipperCity, CountryCode: sourceCountryCode },
+			ReceiverDetails: dhl.ReceiverDetails{ PostalCode: dstPin, CityName: receiverCity, CountryCode: dstCC },
+		},
+		Accounts: []dhl.Account{{ TypeCode: "shipper", Number: "533748932" }},
+		ProductsAndServices: []dhl.ProductAndService{{ ProductCode: "P", LocalProductCode: "P" }},
+		PayerCountryCode: "IN",
+		PlannedShippingDateAndTime: nextBusinessDayOnePMIST(),
+		UnitOfMeasurement: "metric",
+		IsCustomsDeclarable: true,
+		EstimatedDeliveryDate: dhl.EstimatedDeliveryDate{ IsRequested: true, TypeCode: "QDDC" },
+		ReturnStandardProductsOnly: true,
+		Packages: []dhl.Package{{ Weight: defaultWeight(req), Dimensions: dhl.Dimensions{ Length: defaultLen(req), Width: defaultWid(req), Height: defaultHei(req) }}},
+	}
 
-			url := fmt.Sprintf("%s/rates?strictValidation=false", baseURL)
-			body, _ := json.Marshal(dhlReq)
-			reqHTTP, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
-			reqHTTP.Header.Set("Content-Type", "application/json")
-			reqHTTP.Header.Set("Accept", "application/json")
-			reqHTTP.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")
-			reqHTTP.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT")
-			reqHTTP.Header.Set("Plugin-Name", "")
-			reqHTTP.Header.Set("Plugin-Version", "")
-			reqHTTP.Header.Set("Shipping-System-Platform-Name", "")
-			reqHTTP.Header.Set("Shipping-System-Platform-Version", "")
-			reqHTTP.Header.Set("Webstore-Platform-Name", "")
-			reqHTTP.Header.Set("Webstore-Platform-Version", "")
-			reqHTTP.Header.Set("X-Version", "2.12.0")
-			// Authorization header (hardcoded Basic auth)
-			reqHTTP.Header.Set("Authorization", "Basic c2hyZWVtYXJ1dDlJTjpEJDZwUCM0blZAMmdCXjB6")
-			client := &http.Client{ Timeout: 15 * time.Second }
-			resp, doErr := client.Do(reqHTTP)
-			if doErr != nil {
-				s.Logger.WithError(doErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("DHL HTTP call failed")
-			} else {
-				defer resp.Body.Close()
-				var rates dhl.RatesResponse
-				if resp.StatusCode == http.StatusOK {
-					if decErr := json.NewDecoder(resp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
-						cap := map[string]interface{}{}
-						prod := rates.Products[0]
-						cap["total_transit_days"] = prod.DeliveryCapabilities.TotalTransitDays
-						cap["estimated_delivery_date_and_time"] = prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime
-						p := modelsv1.PartnerV2Response{
-							PartnerID:   "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
-							PartnerCode: "dhl",
-							Rating:      0,
-							Capabilities: cap,
-							Metadata:    map[string]interface{}{"source_country_code":"IN","destination_country_code":dstCC},
-						}
-						partners = append(partners, p)
-					} else if decErr != nil {
-						s.Logger.WithError(decErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("Failed to decode DHL response")
-					}
-				} else {
-					b, _ := io.ReadAll(resp.Body)
-					s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl","status":resp.StatusCode,"body":string(b)}).Warn("DHL returned non-200")
+	// Log complete DHL request details
+	requestBody, _ := json.MarshalIndent(dhlReq, "", "  ")
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner": "dhl",
+		"action": "dhl_rates_request",
+		"request_body": string(requestBody),
+		"source_pincode": srcPin,
+		"destination_pincode": dstPin,
+		"source_city": shipperCity,
+		"destination_city": receiverCity,
+		"source_country": sourceCountryCode,
+		"destination_country": dstCC,
+		"weight": defaultWeight(req),
+		"dimensions": fmt.Sprintf("%.2fx%.2fx%.2f", defaultLen(req), defaultWid(req), defaultHei(req)),
+		"shipping_date": nextBusinessDayOnePMIST(),
+		"dhl_base_url": baseURL,
+		"dhl_enabled": true,
+	}).Info("Complete DHL Rates API Request")
+
+	url := fmt.Sprintf("%s/rates?strictValidation=false", baseURL)
+	body, _ := json.Marshal(dhlReq)
+	reqHTTP, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	reqHTTP.Header.Set("Content-Type", "application/json")
+	reqHTTP.Header.Set("Accept", "application/json")
+	reqHTTP.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")
+	reqHTTP.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT")
+	reqHTTP.Header.Set("Plugin-Name", "")
+	reqHTTP.Header.Set("Plugin-Version", "")
+	reqHTTP.Header.Set("Shipping-System-Platform-Name", "")
+	reqHTTP.Header.Set("Shipping-System-Platform-Version", "")
+	reqHTTP.Header.Set("Webstore-Platform-Name", "")
+	reqHTTP.Header.Set("Webstore-Platform-Version", "")
+	reqHTTP.Header.Set("X-Version", "2.12.0")
+	// Authorization header (hardcoded Basic auth)
+	reqHTTP.Header.Set("Authorization", "Basic c2hyZWVtYXJ1dDlJTjpEJDZwUCM0blZAMmdCXjB6")
+	client := &http.Client{ Timeout: 15 * time.Second }
+	dhlResp, doErr := client.Do(reqHTTP)
+	if doErr != nil {
+		s.Logger.WithError(doErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("DHL HTTP call failed")
+	} else {
+		defer dhlResp.Body.Close()
+		var rates dhl.RatesResponse
+		if dhlResp.StatusCode == http.StatusOK {
+			if decErr := json.NewDecoder(dhlResp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
+				cap := map[string]interface{}{}
+				prod := rates.Products[0]
+				cap["total_transit_days"] = prod.DeliveryCapabilities.TotalTransitDays
+				cap["estimated_delivery_date_and_time"] = prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime
+				p := modelsv1.PartnerV2Response{
+					PartnerID:   "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
+					PartnerCode: "dhl",
+					Rating:      0,
+					Capabilities: cap,
+					Metadata:    map[string]interface{}{"source_country_code":sourceCountryCode,"destination_country_code":dstCC},
 				}
+				partners = append(partners, p)
+			} else if decErr != nil {
+				s.Logger.WithError(decErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("Failed to decode DHL response")
 			}
+		} else {
+			b, _ := io.ReadAll(dhlResp.Body)
+			s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl","status":dhlResp.StatusCode,"body":string(b)}).Warn("DHL returned non-200")
 		}
 	}
 
-	resp := &modelsv1.ServiceabilityV2Response{
+	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
 		Partners: partners,
 	}
 	if len(addresses) > 0 {
-		resp.Addresses = addresses
+		serviceabilityResp.Addresses = addresses
 	}
-	return resp, nil
+	return serviceabilityResp, nil
 }
 
 // HubOps API integration
