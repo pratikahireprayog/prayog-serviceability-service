@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"prayog-serviceability-service/internal/shared/models/v1"
 
@@ -82,6 +83,55 @@ func (r *countryRepository) GetByCodeWithDeleted(ctx context.Context, code strin
 	return &country, nil
 }
 
+// GetByCodes retrieves countries by multiple codes (comma-separated)
+func (r *countryRepository) GetByCodes(ctx context.Context, codes []string) ([]models.Country, error) {
+	var countries []models.Country
+	
+	if len(codes) == 0 {
+		return countries, nil
+	}
+
+	// Convert codes to lowercase for case-insensitive matching
+	normalizedCodes := make([]string, len(codes))
+	for i, code := range codes {
+		normalizedCodes[i] = strings.ToLower(strings.TrimSpace(code))
+	}
+
+	// Query countries by codes
+	err := r.db.WithContext(ctx).
+		Where("LOWER(code) IN ? AND is_active = ?", normalizedCodes, true).
+		Find(&countries).Error
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by codes: %w", err)
+	}
+
+	return countries, nil
+}
+
+// GetByName retrieves countries by name search (case-insensitive partial match)
+func (r *countryRepository) GetByName(ctx context.Context, name string) ([]models.Country, error) {
+	var countries []models.Country
+	
+	// Clean and normalize the search name
+	searchName := strings.TrimSpace(name)
+	if searchName == "" {
+		return countries, nil
+	}
+
+	// Use ILIKE for case-insensitive partial matching (PostgreSQL)
+	// For MySQL, you would use LOWER() and LIKE instead
+	err := r.db.WithContext(ctx).
+		Where("LOWER(name) LIKE LOWER(?) AND is_active = ?", "%"+searchName+"%", true).
+		Find(&countries).Error
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by name: %w", err)
+	}
+
+	return countries, nil
+}
+
 // GetAll retrieves all countries with pagination (excludes soft-deleted records)
 func (r *countryRepository) GetAll(ctx context.Context, offset, limit int) ([]models.Country, int64, error) {
 	var countries []models.Country
@@ -101,6 +151,19 @@ func (r *countryRepository) GetAll(ctx context.Context, offset, limit int) ([]mo
 	}
 
 	return countries, total, nil
+}
+
+// GetAllWithoutPagination retrieves all countries without pagination (excludes soft-deleted records)
+func (r *countryRepository) GetAllWithoutPagination(ctx context.Context) ([]models.Country, error) {
+	var countries []models.Country
+
+	// Get all records without pagination
+	err := r.db.WithContext(ctx).Where("is_active = ?", true).Find(&countries).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries: %w", err)
+	}
+
+	return countries, nil
 }
 
 // GetAllWithDeleted retrieves all countries with pagination (includes soft-deleted records)
