@@ -174,7 +174,7 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	if req.Limit < 1 || req.Limit > 100 {
+	if req.Limit < 1 || req.Limit > 200 {
 		req.Limit = 10
 	}
 
