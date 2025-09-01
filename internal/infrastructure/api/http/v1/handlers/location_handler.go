@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -180,6 +181,123 @@ func (h *LocationHandler) GetCountryByCode(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(country)
+}
+
+// GetCountriesByCodes retrieves multiple countries by comma-separated codes
+func (h *LocationHandler) GetCountriesByCodes(c *fiber.Ctx) error {
+	codesParam := c.Query("codes")
+	if strings.TrimSpace(codesParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "codes parameter is required (comma-separated country codes)",
+			},
+		})
+	}
+
+	// Get countries by codes (service handles the comma-separated parsing)
+	countries, err := h.locationService.Countries().GetByCodes(c.Context(), codesParam)
+	if err != nil {
+		return h.handleError(c, err, "GetCountriesByCodes")
+	}
+
+	return c.JSON(countries)
+}
+
+// GetCountryByCodeQuery retrieves a single country by code using query parameter
+func (h *LocationHandler) GetCountryByCodeQuery(c *fiber.Ctx) error {
+	code := c.Query("code")
+	if strings.TrimSpace(code) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "code parameter is required",
+			},
+		})
+	}
+
+	// Get country by code
+	country, err := h.locationService.Countries().GetByCode(c.Context(), code)
+	if err != nil {
+		return h.handleError(c, err, "GetCountryByCodeQuery")
+	}
+
+	return c.JSON(country)
+}
+
+// GetCountriesByNameQuery retrieves countries by name search using query parameter
+func (h *LocationHandler) GetCountriesByNameQuery(c *fiber.Ctx) error {
+	name := c.Query("name")
+	if strings.TrimSpace(name) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "name parameter is required",
+			},
+		})
+	}
+
+	// Get countries by name (service handles the search logic)
+	countries, err := h.locationService.Countries().GetByName(c.Context(), name)
+	if err != nil {
+		return h.handleError(c, err, "GetCountriesByNameQuery")
+	}
+
+	return c.JSON(countries)
+}
+
+// GetCountriesByNamesQuery retrieves multiple countries by comma-separated names
+func (h *LocationHandler) GetCountriesByNamesQuery(c *fiber.Ctx) error {
+	namesParam := c.Query("names")
+	if strings.TrimSpace(namesParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "names parameter is required (comma-separated country names)",
+			},
+		})
+	}
+
+	// Split comma-separated names and clean them
+	names := strings.Split(namesParam, ",")
+	cleanedNames := make([]string, 0, len(names))
+	
+	for _, name := range names {
+		cleanedName := strings.TrimSpace(name)
+		if cleanedName != "" {
+			cleanedNames = append(cleanedNames, cleanedName)
+		}
+	}
+
+	if len(cleanedNames) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    fiber.StatusBadRequest,
+				"message": "no valid country names provided",
+			},
+		})
+	}
+
+	// Get countries by names (we'll need to implement this in the service)
+	// For now, we'll get countries one by one and combine results
+	var allCountries []dtos.CountryResponse
+	for _, name := range cleanedNames {
+		countries, err := h.locationService.Countries().GetByName(c.Context(), name)
+		if err != nil {
+			// Log error but continue with other names
+			h.logger.WithError(err).WithField("name", name).Warn("Failed to get countries by name")
+			continue
+		}
+		if countries != nil && countries.Data != nil {
+			allCountries = append(allCountries, countries.Data...)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": fmt.Sprintf("Countries retrieved successfully for names: %s", strings.Join(cleanedNames, ", ")),
+		"data":    allCountries,
+	})
 }
 
 // GetAllCountries retrieves all countries with pagination
