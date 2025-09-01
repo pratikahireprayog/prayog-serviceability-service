@@ -94,7 +94,7 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 	// DHL base URL from .env with fallback to hardcoded
 	baseURL := os.Getenv("DHL_BASE_URL")
 	if baseURL == "" {
-		baseURL = "https://express.api.dhl.com/mydhlapi/testui"
+		baseURL = ""
 	}
 	
 	// Build DHL request - Use HubOps nearestInternationalHub for SOURCE only
