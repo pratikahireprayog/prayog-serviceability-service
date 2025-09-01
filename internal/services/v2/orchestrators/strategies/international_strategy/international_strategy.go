@@ -226,7 +226,13 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 }
 
 // HubOps API integration
-const hubOpsURL = "https://qaapis.hubops.innofulfill.com/smcs-webapp/hubops-serviceability/by-pincode"
+var hubOpsURL = func() string {
+	if url := os.Getenv("SMILE_HUBOPS_BY_SOURCE_PINCODE"); url != "" {
+		return url
+	}
+	// No fallback - must be set in .env
+	return ""
+}()
 
 type hubOpsRequest struct {
 	PostalCode string `json:"postalCode"`
