@@ -181,8 +181,10 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 	reqHTTP.Header.Set("Webstore-Platform-Name", "")
 	reqHTTP.Header.Set("Webstore-Platform-Version", "")
 	reqHTTP.Header.Set("X-Version", "2.12.0")
-	// Authorization header (hardcoded Basic auth)
-	reqHTTP.Header.Set("Authorization", "Basic c2hyZWVtYXJ1dDlJTjpEJDZwUCM0blZAMmdCXjB6")
+	// Authorization header from .env
+	if basicAuth := os.Getenv("DHL_BASIC_AUTH"); basicAuth != "" {
+		reqHTTP.Header.Set("Authorization", "Basic "+basicAuth)
+	} 
 	client := &http.Client{ Timeout: 15 * time.Second }
 	dhlResp, doErr := client.Do(reqHTTP)
 	if doErr != nil {
