@@ -143,11 +143,23 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"source_pincode": sourcePincode,
 	}).Info("Proceeding without hub lookup")
 
-	// Step 3: Set country codes without DB calls.
-	// Origin is IN. Destination comes from request.CountryCode when provided; else IN.
-	sourceCountryCode := "IN"
-	destinationCountryCode := "IN"
-	if request.CountryCode != nil && *request.CountryCode != "" {
+	// Step 2: Set country codes from request
+	sourceCountryCode := "IN"  // Default to India
+	destinationCountryCode := "US"  // Default to USA
+	
+	// Use the new explicit source_country_code field if available
+	if request.SourceCountryCode != nil && *request.SourceCountryCode != "" {
+		sourceCountryCode = strings.ToUpper(*request.SourceCountryCode)
+	} else if request.CountryCode != nil && *request.CountryCode != "" {
+		// Fallback to generic country_code for source
+		sourceCountryCode = strings.ToUpper(*request.CountryCode)
+	}
+	
+	// Use the new explicit destination_country_code field if available
+	if request.DestinationCountryCode != nil && *request.DestinationCountryCode != "" {
+		destinationCountryCode = strings.ToUpper(*request.DestinationCountryCode)
+	} else if request.CountryCode != nil && *request.CountryCode != "" {
+		// Fallback to generic country_code for destination
 		destinationCountryCode = strings.ToUpper(*request.CountryCode)
 	}
 	a.logger.WithFields(logrus.Fields{
