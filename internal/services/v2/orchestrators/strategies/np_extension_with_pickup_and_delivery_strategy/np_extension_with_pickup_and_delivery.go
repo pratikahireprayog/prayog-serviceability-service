@@ -166,16 +166,17 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 	}
 
 	// Step 2: Porter Segment 1 - source → sourceHub pincode (pickup)
+	var segment1Success bool
 	if sourceHubPincode != "" {
 		if adapter, ok := s.PartnerFactory.GetAdapter("porter"); ok && adapter != nil && adapter.IsHealthy(ctx) {
-					// Build modified request for Porter Segment 1
-		cp := *req
-		cp.DestinationPostalCode = strPtr(sourceHubPincode)
+			// Build modified request for Porter Segment 1
+			cp := *req
+			cp.DestinationPostalCode = strPtr(sourceHubPincode)
 
-		// Use partner ID from Journey Templates API for porter_2w
-		porter2WPartnerID := s.getPartnerIDFromTemplates(ctx, "porter_2w")
+			// Use partner ID from Journey Templates API for porter_2w
+			porter2WPartnerID := s.getPartnerIDFromTemplates(ctx, "porter_2w")
 
-		s.Logger.WithFields(logrus.Fields{
+			s.Logger.WithFields(logrus.Fields{
 				"component":           "np_extension_with_pickup_and_delivery_strategy",
 				"step":                2,
 				"segment":             "segment_1",
@@ -192,6 +193,7 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 					p.Metadata["segment_type"] = "transport"
 					p.Metadata["sequence"] = 1
 					partners = append(partners, p)
+					segment1Success = true
 				}
 			} else if err != nil {
 				s.Logger.WithFields(logrus.Fields{
@@ -200,6 +202,7 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 					"segment":   "segment_1",
 					"error":     err.Error(),
 				}).Warn("Porter Segment 1 call failed")
+				segment1Success = false
 			}
 		} else {
 			s.Logger.WithFields(logrus.Fields{
@@ -207,12 +210,14 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 				"partner":   "porter_2w",
 				"segment":   "segment_1",
 			}).Warn("Porter adapter unavailable or unhealthy")
+			segment1Success = false
 		}
 	} else {
 		s.Logger.WithFields(logrus.Fields{
 			"component": "np_extension_with_pickup_and_delivery_strategy",
 			"event":     "source_hub_pincode_missing",
 		}).Warn("Skipping Porter Segment 1 as hub pincode was not found")
+		segment1Success = false
 	}
 
 	// Step 3: Smile HubOps Segment 2 - Hub details are preserved in topLevelHubDetails
@@ -226,16 +231,17 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 	}
 
 	// Step 4: Porter Segment 3 - destination3PLHub → destination (final delivery on event trigger)
+	var segment3Success bool
 	if destination3PLHubPincode != "" {
 		if adapter, ok := s.PartnerFactory.GetAdapter("porter"); ok && adapter != nil && adapter.IsHealthy(ctx) {
-					// Build modified request for Porter Segment 3
-		cp := *req
-		cp.SourcePostalCode = strPtr(destination3PLHubPincode)
+			// Build modified request for Porter Segment 3
+			cp := *req
+			cp.SourcePostalCode = strPtr(destination3PLHubPincode)
 
-		// Use partner ID from Journey Templates API for porter_2w
-		porter2WPartnerID := s.getPartnerIDFromTemplates(ctx, "porter_2w")
+			// Use partner ID from Journey Templates API for porter_2w
+			porter2WPartnerID := s.getPartnerIDFromTemplates(ctx, "porter_2w")
 
-		s.Logger.WithFields(logrus.Fields{
+			s.Logger.WithFields(logrus.Fields{
 				"component":           "np_extension_with_pickup_and_delivery_strategy",
 				"step":                4,
 				"segment":             "segment_3",
@@ -253,6 +259,7 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 					p.Metadata["sequence"] = 3
 					p.Metadata["trigger_type"] = "on_event"
 					partners = append(partners, p)
+					segment3Success = true
 				}
 			} else if err != nil {
 				s.Logger.WithFields(logrus.Fields{
@@ -261,6 +268,7 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 					"segment":   "segment_3",
 					"error":     err.Error(),
 				}).Warn("Porter Segment 3 call failed")
+				segment3Success = false
 			}
 		} else {
 			s.Logger.WithFields(logrus.Fields{
@@ -268,12 +276,28 @@ func (s *NPExtensionWithPickupAndDeliveryStrategy) Execute(ctx context.Context, 
 				"partner":   "porter_2w",
 				"segment":   "segment_3",
 			}).Warn("Porter adapter unavailable or unhealthy")
+			segment3Success = false
 		}
 	} else {
 		s.Logger.WithFields(logrus.Fields{
 			"component": "np_extension_with_pickup_and_delivery_strategy",
 			"event":     "destination_3pl_hub_pincode_missing",
 		}).Warn("Skipping Porter Segment 3 as 3PL hub pincode was not found")
+		segment3Success = false
+	}
+
+	// Check if all required segments succeeded
+	if !segment1Success || !segment3Success {
+		s.Logger.WithFields(logrus.Fields{
+			"component":      "np_extension_with_pickup_and_delivery_strategy",
+			"event":          "segments_failed",
+			"segment1Success": segment1Success,
+			"segment3Success": segment3Success,
+		}).Warn("One or more segments failed - returning no serviceability")
+		return &models.ServiceabilityV2Response{
+			Success:  false,
+			Partners: []models.PartnerV2Response{},
+		}, nil
 	}
 
 	// Build response
