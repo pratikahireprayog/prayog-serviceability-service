@@ -15,6 +15,7 @@ import (
     intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
     smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
     newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
+    npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -71,6 +72,10 @@ func NewServiceabilityOrchestrator(
         "smile_primary_np_extension_with_pickup": func() OrchestrationStrategy {
             return &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: partnerFactory, Logger: logger}
         },
+        // NP extension with pickup and delivery strategy for product_type=pickup_and_delivery
+        "np_extension_with_pickup_and_delivery": func() OrchestrationStrategy {
+            return &npPickupDelivery.NPExtensionWithPickupAndDeliveryStrategy{PartnerFactory: partnerFactory, Logger: logger}
+        },
         // New international flow using HubOps by-pincode then DHL
         "international": func() OrchestrationStrategy {
             return &newintl.InternationalStrategy{PartnerFactory: partnerFactory, Logger: logger}
@@ -116,19 +121,58 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
     timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
     defer cancel()
 
-    // Decide strategy: if product_type is nba, force pickup strategy; else resolve via templates (by parcel_category)
+    // Decide strategy based on product_type and parcel_category
     var strat OrchestrationStrategy
-    if req != nil && req.ProductType != nil && strings.ToLower(*req.ProductType) == "nba" {
-        strat = &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-    } else if s.orchestratorFactory != nil {
+    
+    // Check for specific product_type strategies first
+    if req != nil && req.ProductType != nil {
+        productType := strings.ToLower(*req.ProductType)
+        switch productType {
+        case "nba":
+            strat = &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+            s.logger.WithFields(logrus.Fields{
+                "component":   "serviceability_orchestrator",
+                "strategy":    "international_with_pickup",
+                "product_type": productType,
+            }).Info("Selected strategy based on product_type")
+        case "pickup_and_delivery":
+            strat = &npPickupDelivery.NPExtensionWithPickupAndDeliveryStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+            s.logger.WithFields(logrus.Fields{
+                "component":   "serviceability_orchestrator",
+                "strategy":    "np_extension_with_pickup_and_delivery",
+                "product_type": productType,
+            }).Info("Selected strategy based on product_type")
+        }
+    }
+    
+    // If no product_type strategy found, resolve via templates (by parcel_category)
+    if strat == nil && s.orchestratorFactory != nil {
         resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
         strat = resolved
+        if strat != nil {
+            s.logger.WithFields(logrus.Fields{
+                "component":      "serviceability_orchestrator",
+                "strategy":       strat.Code(),
+                "parcel_category": req.ParcelCategory,
+            }).Info("Selected strategy based on parcel_category")
+        }
     }
+    
     // Force new international strategy when parcel_category == "international"
     if req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
         strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+        s.logger.WithFields(logrus.Fields{
+            "component":      "serviceability_orchestrator",
+            "strategy":       "international",
+            "parcel_category": *req.ParcelCategory,
+        }).Info("Selected strategy based on parcel_category")
     }
+    
     if strat == nil || strat.Code() == "default" {
+        s.logger.WithFields(logrus.Fields{
+            "component": "serviceability_orchestrator",
+            "strategy":  "default",
+        }).Info("Falling back to default strategy")
         return s.executeDefault(timeoutCtx, req)
     }
 
