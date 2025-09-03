@@ -23,6 +23,18 @@ type Adapter struct {
 func NewAdapter(config config.SmileCargoConfig) *Adapter {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetLevel(logrus.InfoLevel) // Consistent with other adapters
+	
+	// Log configuration
+	logger.WithFields(logrus.Fields{
+		"partner":      "Smile Cargo",
+		"base_url":     config.BaseURL,
+		"service_url":  config.ServiceURL,
+		"enabled":      config.Enabled,
+		"timeout":      config.Timeout,
+		"max_retries":  config.MaxRetries,
+		"retry_delay":  config.RetryDelay,
+	}).Info("🚚 Creating Smile Cargo adapter with configuration")
 	
 	return &Adapter{
 		client: NewSmileCargoClient(config),
@@ -62,7 +74,7 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 		"destination_pincode": request.DestinationPostalCode,
 		"postal_code": request.PostalCode,
 		"parcel_category": request.ParcelCategory,
-	}).Debug("Checking if Smile Cargo supports request")
+	}).Info("🎯 Smile Cargo SupportsRequest called - checking support")
 
 	// Check if we have required postal codes
 	if !a.hasValidPincodes(request) {
@@ -70,7 +82,7 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 			"component": "smile_cargo_adapter",
 			"method":    "SupportsRequest",
 			"reason":    "Invalid pincodes",
-		}).Debug("Request not supported: invalid pincodes")
+		}).Info("Request not supported: invalid pincodes")
 		return false
 	}
 
@@ -78,7 +90,7 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 		"component": "smile_cargo_adapter",
 		"method":    "SupportsRequest",
 		"supported": true,
-	}).Debug("Request supported by Smile Cargo")
+	}).Info("Request supported by Smile Cargo")
 
 	// Partner attribute mapping in database determines supported parcel categories
 	// No hardcoded category filtering needed here
@@ -97,7 +109,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		"source_pincode": request.SourcePostalCode,
 		"destination_pincode": request.DestinationPostalCode,
 		"postal_code": request.PostalCode,
-	}).Info("Starting Smile Cargo serviceability check")
+	}).Info("🚚 Smile Cargo CheckServiceability STARTED - making API call")
 
 	if !a.SupportsRequest(ctx, request) {
 		a.logger.WithFields(logrus.Fields{
@@ -123,14 +135,15 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		"component": "smile_cargo_adapter",
 		"method":    "CheckServiceability",
 		"smile_cargo_request": smileCargoRequest,
-	}).Debug("Converted request to Smile Cargo format")
+	}).Info("Converted request to Smile Cargo format")
 
 	// Make API call
 	a.logger.WithFields(logrus.Fields{
 		"component": "smile_cargo_adapter",
 		"method":    "CheckServiceability",
 		"api_url": a.config.ServiceURL,
-	}).Info("Making Smile Cargo API call")
+		"full_url": a.config.BaseURL + a.config.ServiceURL,
+	}).Info("🌐 Making Smile Cargo API call to external service")
 	
 	response, err := a.client.CheckServiceAvailability(ctx, smileCargoRequest)
 	if err != nil {
@@ -155,7 +168,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		"response_status": response.Status,
 		"data_count": len(response.Data),
 		"response_time_ms": time.Since(startTime).Milliseconds(),
-	}).Info("Smile Cargo API call successful")
+	}).Info("✅ Smile Cargo API call SUCCESSFUL - processing response")
 
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
@@ -168,7 +181,8 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		"total_capabilities": len(result.Capabilities),
 		"has_error": result.Error != nil,
 		"total_time_ms": time.Since(startTime).Milliseconds(),
-	}).Info("Smile Cargo serviceability check completed")
+		"serviceable": len(result.Services) > 0,
+	}).Info("🚚 Smile Cargo serviceability check COMPLETED")
 	
 	return result, nil
 }
@@ -198,7 +212,7 @@ func (a *Adapter) convertToServiceAvailabilityRequest(request *models.Serviceabi
 		"from_pincode": req.FromPincode,
 		"to_pincode": req.ToPincode,
 		"vendor_code": a.config.VendorCode,
-	}).Debug("Converted request to Smile Cargo format")
+	}).Info("Converted request to Smile Cargo format")
 
 	return req
 }
@@ -212,7 +226,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		"data_count": len(response.Data),
 		"partner_id": partnerInfo.PartnerID,
 		"partner_code": partnerInfo.PartnerCode,
-	}).Debug("Starting response conversion")
+	}).Info("Starting response conversion")
 
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
@@ -238,7 +252,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 				"method":    "convertServiceAvailabilityResponse",
 				"from_pincode": *data.FromPincode,
 				"from_active_partners": len(data.ActivePartners),
-			}).Debug("Found from pincode data")
+			}).Info("Found from pincode data")
 		}
 		if data.ToPincode != nil {
 			toPincodeData = &data
@@ -248,7 +262,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 				"method":    "convertServiceAvailabilityResponse",
 				"to_pincode": *data.ToPincode,
 				"to_active_partners": len(data.ActivePartners),
-			}).Debug("Found to pincode data")
+			}).Info("Found to pincode data")
 		}
 	}
 
@@ -343,7 +357,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 			"city": partner.CityName,
 			"first_mile": partner.FirstMile,
 			"last_mile": partner.LastMile,
-		}).Debug("Added source partner capability")
+		}).Info("Added source partner capability")
 	}
 
 	// Add to pincode partners
@@ -375,7 +389,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 			"city": partner.CityName,
 			"first_mile": partner.FirstMile,
 			"last_mile": partner.LastMile,
-		}).Debug("Added destination partner capability")
+		}).Info("Added destination partner capability")
 	}
 
 	result.Capabilities = map[string]interface{}{
@@ -414,7 +428,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 			"service_code": service.ServiceCode,
 			"service_name": service.ServiceName,
 			"delivery_modes_count": len(service.DeliveryModes),
-		}).Debug("Created service for partner")
+		}).Info("Created service for partner")
 	}
 
 	result.Services = services
@@ -460,7 +474,7 @@ func (a *Adapter) getDeliveryModes(partner map[string]interface{}) []string {
 		"air": partner["air"],
 		"rail": partner["rail"],
 		"extracted_modes": modes,
-	}).Debug("Extracted delivery modes from partner")
+	}).Info("Extracted delivery modes from partner")
 	
 	return modes
 }
@@ -484,7 +498,7 @@ func (a *Adapter) hasValidPincodes(request *models.ServiceabilityV2Request) bool
 		"source_postal_code": request.SourcePostalCode,
 		"destination_postal_code": request.DestinationPostalCode,
 		"postal_code": request.PostalCode,
-	}).Debug("Validating pincodes for Smile Cargo")
+	}).Info("Validating pincodes for Smile Cargo")
 
 	// Need source pincode
 	if request.SourcePostalCode == nil || *request.SourcePostalCode == "" {
@@ -492,7 +506,7 @@ func (a *Adapter) hasValidPincodes(request *models.ServiceabilityV2Request) bool
 			"component": "smile_cargo_adapter",
 			"method":    "hasValidPincodes",
 			"reason":    "Missing source postal code",
-		}).Debug("Pincode validation failed: missing source")
+		}).Info("Pincode validation failed: missing source")
 		return false
 	}
 
@@ -505,7 +519,7 @@ func (a *Adapter) hasValidPincodes(request *models.ServiceabilityV2Request) bool
 			"component": "smile_cargo_adapter",
 			"method":    "hasValidPincodes",
 			"reason":    "Missing destination postal code",
-		}).Debug("Pincode validation failed: missing destination")
+		}).Info("Pincode validation failed: missing destination")
 		return false
 	}
 
@@ -520,7 +534,7 @@ func (a *Adapter) hasValidPincodes(request *models.ServiceabilityV2Request) bool
 			}
 			return *request.PostalCode
 		}(),
-	}).Debug("Pincode validation successful")
+	}).Info("Pincode validation successful")
 
 	return hasDestination
 }
