@@ -10,18 +10,39 @@ type ServiceAvailabilityRequest struct {
 
 // ServiceAvailabilityResponse represents response from Smile Cargo API
 type ServiceAvailabilityResponse struct {
-	Data []ServiceAvailabilityData `json:"data"`
+	Status int                    `json:"status"`
+	Data   []ServiceAvailabilityData `json:"data"`
 }
 
 // ServiceAvailabilityData represents individual data entry in the response
 type ServiceAvailabilityData struct {
-	FromPincode     *int             `json:"fromPincode,omitempty"`
-	ToPincode       *int             `json:"toPincode,omitempty"`
-	BigShipPartners []BigShipPartner `json:"bigShipPartners"`
-	SmilePartner    *SmilePartner    `json:"smilePartner"`
+	FromPincode      *int                `json:"fromPincode,omitempty"`
+	ToPincode        *int                `json:"toPincode,omitempty"`
+	ActivePartners   []ActivePartner     `json:"activePartners"`
 }
 
-// BigShipPartner represents big ship partner information (ignored if smilePartner is null)
+// ActivePartner represents active partner information from the new API
+type ActivePartner struct {
+	PartnerCode   string  `json:"partnerCode"`
+	IsActive      bool    `json:"isActive"`
+	City          string  `json:"city"`
+	CityName      string  `json:"cityName"`
+	DistrictName  string  `json:"districtname"`
+	Status        string  `json:"status"`
+	Zone          string  `json:"zone"`
+	FirstMile     bool    `json:"firstMile"`
+	LastMile      bool    `json:"lastMile"`
+	HubCode       string  `json:"hubCode"`
+	COD           bool    `json:"cod"`
+	ToPay         bool    `json:"toPay"`
+	Surface       bool    `json:"surface"`
+	Air           bool    `json:"air"`
+	Rail          bool    `json:"rail"`
+	ActiveDate    *string `json:"activedate"`
+	Vendor        string  `json:"vendor"`
+}
+
+// Legacy types for backward compatibility (if needed)
 type BigShipPartner struct {
 	PartnerName string `json:"partnerName"`
 	CourierType string `json:"courierType"` // "Surface", "Air"
@@ -33,7 +54,7 @@ type BigShipPartner struct {
 	Status      bool   `json:"status"`
 }
 
-// SmilePartner represents Smile partner information (null means not serviceable)
+// Legacy SmilePartner for backward compatibility
 type SmilePartner struct {
 	Status           bool   `json:"status"`
 	City             string `json:"city"`

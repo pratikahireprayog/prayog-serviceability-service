@@ -335,10 +335,10 @@ func LoadIntegrationConfig() IntegrationConfig {
 			SandboxMode:   getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
 		},
 		SmileCargo: SmileCargoConfig{
-			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://apis.delcaper.com"),
+			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),
 			APIKey:      getEnvOrDefault("SMILE_CARGO_API_KEY", ""),
 			VendorCode:  getEnvOrDefault("SMILE_CARGO_VENDOR_CODE", "bhav19"),
-			ServiceURL:  getEnvOrDefault("SMILE_CARGO_SERVICE_URL", "/delivery-orchestrator/service-availability/v3"),
+			ServiceURL:  getEnvOrDefault("SMILE_CARGO_SERVICE_URL", "/cargo-api/partner-pincode-serviceability/check-serviceability"),
 			QuoteURL:    getEnvOrDefault("SMILE_CARGO_QUOTE_URL", "/api/v1/quote"),
 			TrackingURL: getEnvOrDefault("SMILE_CARGO_TRACKING_URL", "/api/v1/tracking"),
 			Timeout:     getEnvAsDurationOrDefault("SMILE_CARGO_TIMEOUT", 45*time.Second),

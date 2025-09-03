@@ -124,109 +124,153 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// CRITICAL BUSINESS RULE: SmilePartner must exist in BOTH "from" and "to" objects
-	// for the service to be considered serviceable
-	var fromSmilePartner *SmilePartner
-	var toSmilePartner *SmilePartner
-	var hasFromPartner = false
-	var hasToPartner = false
+	// NEW BUSINESS RULE: Check if activePartners length > 1 in BOTH from and to pincodes
+	var fromPincodeData *ServiceAvailabilityData
+	var toPincodeData *ServiceAvailabilityData
+	var hasFromData = false
+	var hasToData = false
 
-    // Check all data entries and separate "from" and "to" entries
-    validPartners := make([]*SmilePartner, 0, 2)
-    for _, data := range response.Data {
-		// Check if this is a "from" entry (has fromPincode)
-		if data.FromPincode != nil && data.SmilePartner != nil && data.SmilePartner.Status {
-			fromSmilePartner = data.SmilePartner
-			hasFromPartner = true
+	// Separate "from" and "to" entries from API response
+	for _, data := range response.Data {
+		if data.FromPincode != nil {
+			fromPincodeData = &data
+			hasFromData = true
 		}
-
-		// Check if this is a "to" entry (has toPincode)
-		if data.ToPincode != nil && data.SmilePartner != nil && data.SmilePartner.Status {
-			toSmilePartner = data.SmilePartner
-			hasToPartner = true
+		if data.ToPincode != nil {
+			toPincodeData = &data
+			hasToData = true
 		}
-
-        // Track any valid smilePartner entries regardless of explicit from/to tagging
-        if data.SmilePartner != nil && data.SmilePartner.Status {
-            validPartners = append(validPartners, data.SmilePartner)
-        }
 	}
 
-    // Fallback: If explicit from/to not identified but we have at least two valid entries,
-    // assign first as from and second as to.
-    if (!hasFromPartner || !hasToPartner) && len(validPartners) >= 2 {
-        if !hasFromPartner {
-            fromSmilePartner = validPartners[0]
-            hasFromPartner = true
-        }
-        if !hasToPartner {
-            toSmilePartner = validPartners[1]
-            hasToPartner = true
-        }
-    }
-
-    // Service is only available if BOTH from and to have valid SmilePartners
-    if !hasFromPartner || !hasToPartner {
-        reason := "Smile Cargo not serviceable: SmilePartner missing in "
-        if !hasFromPartner && !hasToPartner {
-            reason += "both 'from' and 'to' objects"
-        } else if !hasFromPartner {
-            reason += "'from' object"
-        } else {
-            reason += "'to' object"
-        }
-        result.ErrorMessage = &reason
-        // Leave Capabilities and Metadata empty so orchestrator excludes this partner
-        return result
-    }
-
-    // Additional business rules:
-    // - From pincode requires firstMile = true
-    // - To pincode requires lastMile = true
-    if fromSmilePartner != nil && !fromSmilePartner.FirstMile {
-        msg := "Smile Cargo not serviceable: firstMile must be true for source pincode"
-        result.ErrorMessage = &msg
-        return result
-    }
-    if toSmilePartner != nil && !toSmilePartner.LastMile {
-        msg := "Smile Cargo not serviceable: lastMile must be true for destination pincode"
-        result.ErrorMessage = &msg
-        return result
-    }
-
-	// Both SmilePartners found and active
-
-	// Create the new capabilities structure based on the final payload format
-	capabilities := map[string]interface{}{
-		"source_postal_code": map[string]interface{}{
-			"status":    fromSmilePartner.Status,
-			"lastMile":  fromSmilePartner.LastMile,
-			"firstMile": fromSmilePartner.FirstMile,
-			"cod":       fromSmilePartner.COD,
-			"toPay":     fromSmilePartner.ToPay,
-		},
-		"destination_postal_code": map[string]interface{}{
-			"status":    toSmilePartner.Status,
-			"lastMile":  toSmilePartner.LastMile,
-			"firstMile": toSmilePartner.FirstMile,
-			"cod":       toSmilePartner.COD,
-			"toPay":     toSmilePartner.ToPay,
-		},
+	// Service is only available if BOTH from and to have data
+	if !hasFromData || !hasToData {
+		reason := "Smile Cargo not serviceable: missing data for "
+		if !hasFromData && !hasToData {
+			reason += "both 'from' and 'to' pincodes"
+		} else if !hasFromData {
+			reason += "'from' pincode"
+		} else {
+			reason += "'to' pincode"
+		}
+		result.ErrorMessage = &reason
+		return result
 	}
 
-	result.Capabilities = capabilities
+	// Check if both pincodes have multiple active partners (length > 1)
+	fromPartnersCount := len(fromPincodeData.ActivePartners)
+	toPartnersCount := len(toPincodeData.ActivePartners)
 
-	// Smile Cargo doesn't have individual services, only capabilities
-	// Remove the services array as per user request
-	result.Services = []models.ServiceV2{} // Empty services array
+	if fromPartnersCount <= 1 || toPartnersCount <= 1 {
+		reason := fmt.Sprintf("Smile Cargo not serviceable: insufficient active partners. From: %d, To: %d (need >1 for both)", fromPartnersCount, toPartnersCount)
+		result.ErrorMessage = &reason
+		return result
+	}
 
-    // Set metadata
-    result.Metadata["reason"] = "Smile Cargo serviceable: smilePartner present at source and destination with required first/last mile"
-	result.Metadata["from_city"] = fromSmilePartner.CityName
-	result.Metadata["to_city"] = toSmilePartner.CityName
-	result.Metadata["area_availability"] = toSmilePartner.AreaAvailability
+	// SERVICEABLE: Both pincodes have multiple active partners
+	// Build capabilities for all active partners
+	allPartners := make([]map[string]interface{}, 0)
+	
+	// Add from pincode partners
+	for _, partner := range fromPincodeData.ActivePartners {
+		partnerCapability := map[string]interface{}{
+			"pincode_type": "source",
+			"partner_code": partner.PartnerCode,
+			"is_active":    partner.IsActive,
+			"city":         partner.CityName,
+			"district":     partner.DistrictName,
+			"zone":         partner.Zone,
+			"first_mile":   partner.FirstMile,
+			"last_mile":    partner.LastMile,
+			"hub_code":     partner.HubCode,
+			"cod":          partner.COD,
+			"to_pay":       partner.ToPay,
+			"surface":      partner.Surface,
+			"air":          partner.Air,
+			"rail":         partner.Rail,
+			"vendor":       partner.Vendor,
+		}
+		allPartners = append(allPartners, partnerCapability)
+	}
+
+	// Add to pincode partners
+	for _, partner := range toPincodeData.ActivePartners {
+		partnerCapability := map[string]interface{}{
+			"pincode_type": "destination",
+			"partner_code": partner.PartnerCode,
+			"is_active":    partner.IsActive,
+			"city":         partner.CityName,
+			"district":     partner.DistrictName,
+			"zone":         partner.Zone,
+			"first_mile":   partner.FirstMile,
+			"last_mile":    partner.LastMile,
+			"hub_code":     partner.HubCode,
+			"cod":          partner.COD,
+			"to_pay":       partner.ToPay,
+			"surface":      partner.Surface,
+			"air":          partner.Air,
+			"rail":         partner.Rail,
+			"vendor":       partner.Vendor,
+		}
+		allPartners = append(allPartners, partnerCapability)
+	}
+
+	result.Capabilities = map[string]interface{}{
+		"active_partners": allPartners,
+		"from_partners_count": fromPartnersCount,
+		"to_partners_count":   toPartnersCount,
+		"total_partners":      len(allPartners),
+	}
+
+	// Create individual services for each active partner
+	services := make([]models.ServiceV2, 0)
+	for _, partner := range allPartners {
+		// Convert delivery modes to map[string]bool format
+		deliveryModesMap := make(map[string]bool)
+		deliveryModes := a.getDeliveryModes(partner)
+		for _, mode := range deliveryModes {
+			deliveryModesMap[mode] = true
+		}
+		
+		service := models.ServiceV2{
+			ServiceCode:   partner["partner_code"].(string),
+			ServiceName:   fmt.Sprintf("Cargo Service - %s", partner["city"]),
+			TATDays:       0, // Default TAT for cargo
+			IsCOD:         partner["cod"].(bool),
+			Pickup:        partner["first_mile"].(bool),
+			Delivery:      partner["last_mile"].(bool),
+			Insurance:     false, // Default for cargo
+			ProductTypes:  map[string]bool{"cargo": true},
+			DeliveryModes: deliveryModesMap,
+		}
+		services = append(services, service)
+	}
+
+	result.Services = services
+
+	// Set metadata
+	result.Metadata["reason"] = fmt.Sprintf("Smile Cargo serviceable: %d active partners at source, %d at destination", fromPartnersCount, toPartnersCount)
+	result.Metadata["from_city"] = fromPincodeData.ActivePartners[0].CityName
+	result.Metadata["to_city"] = toPincodeData.ActivePartners[0].CityName
+	result.Metadata["serviceable"] = true
 
 	return result
+}
+
+// getDeliveryModes extracts delivery modes from partner capabilities
+func (a *Adapter) getDeliveryModes(partner map[string]interface{}) []string {
+	modes := make([]string, 0)
+	
+	if surface, ok := partner["surface"].(bool); ok && surface {
+		modes = append(modes, "SURFACE")
+	}
+	if air, ok := partner["air"].(bool); ok && air {
+		modes = append(modes, "AIR")
+	}
+	if rail, ok := partner["rail"].(bool); ok && rail {
+		modes = append(modes, "RAIL")
+	}
+	
+	return modes
 }
 
 // IsCargoRequest determines if this is a cargo/freight request
