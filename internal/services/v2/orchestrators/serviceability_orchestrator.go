@@ -16,6 +16,7 @@ import (
     smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
     newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
     npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
+    cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -80,6 +81,10 @@ func NewServiceabilityOrchestrator(
         "international": func() OrchestrationStrategy {
             return &newintl.InternationalStrategy{PartnerFactory: partnerFactory, Logger: logger}
         },
+        // Cargo strategy for cargo/freight requests
+        "cargo": func() OrchestrationStrategy {
+            return &cargoStrategy.CargoStrategy{PartnerFactory: partnerFactory, Logger: logger}
+        },
     }
     // Configure Journey Templates base URL from environment (JOURNEY_TEMPLATE_URL), defaulting to sandbox
     baseURL := os.Getenv("JOURNEY_TEMPLATE_URL")
@@ -142,6 +147,13 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
                 "strategy":    "np_extension_with_pickup_and_delivery",
                 "product_type": productType,
             }).Info("Selected strategy based on product_type")
+        case "cargo":
+            strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+            s.logger.WithFields(logrus.Fields{
+                "component":   "serviceability_orchestrator",
+                "strategy":    "cargo",
+                "product_type": productType,
+            }).Info("Selected cargo strategy based on product_type")
         }
     }
     
@@ -166,6 +178,16 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
             "strategy":       "international",
             "parcel_category": *req.ParcelCategory,
         }).Info("Selected strategy based on parcel_category")
+    }
+    
+    // Force cargo strategy when parcel_category == "cargo"
+    if req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "cargo" {
+        strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+        s.logger.WithFields(logrus.Fields{
+            "component":      "serviceability_orchestrator",
+            "strategy":       "cargo",
+            "parcel_category": *req.ParcelCategory,
+        }).Info("Selected cargo strategy based on parcel_category")
     }
     
     if strat == nil || strat.Code() == "default" {

@@ -302,8 +302,8 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		"to_pincode": *toPincodeData.ToPincode,
 	}).Info("Checking active partners count")
 
-	if fromPartnersCount <= 1 || toPartnersCount <= 1 {
-		reason := fmt.Sprintf("Smile Cargo not serviceable: insufficient active partners. From: %d, To: %d (need >1 for both)", fromPartnersCount, toPartnersCount)
+	if fromPartnersCount < 1 || toPartnersCount < 1 {
+		reason := fmt.Sprintf("Smile Cargo not serviceable: insufficient active partners. From: %d, To: %d (need >=1 for both)", fromPartnersCount, toPartnersCount)
 		
 		a.logger.WithFields(logrus.Fields{
 			"component": "smile_cargo_adapter",
@@ -324,7 +324,7 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		"to_partners_count": toPartnersCount,
 	}).Info("Service available: sufficient active partners found")
 
-	// SERVICEABLE: Both pincodes have multiple active partners
+	// SERVICEABLE: Both pincodes have at least 1 active partner
 	// Build capabilities for all active partners
 	allPartners := make([]map[string]interface{}, 0)
 	
