@@ -123,6 +123,50 @@ func (h *LocationHandler) GetAllCountries(c *fiber.Ctx) error {
 	return c.JSON(countries)
 }
 
+// GetCountriesByCodes retrieves multiple countries by comma-separated codes
+func (h *LocationHandler) GetCountriesByCodes(c *fiber.Ctx) error {
+	codesParam := c.Query("codes")
+	if strings.TrimSpace(codesParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "codes parameter is required (comma-separated country codes)",
+		})
+	}
+
+	// Split comma-separated codes and get countries
+	codes := strings.Split(codesParam, ",")
+	for i, code := range codes {
+		codes[i] = strings.TrimSpace(code)
+	}
+	countries, err := h.locationService.Countries().GetByCodes(c.Context(), codes)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(countries)
+}
+
+// GetCountriesByName retrieves countries by name search (case-insensitive partial match)
+func (h *LocationHandler) GetCountriesByName(c *fiber.Ctx) error {
+	nameParam := c.Query("name")
+	if strings.TrimSpace(nameParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "name parameter is required for country search",
+		})
+	}
+
+	// Get countries by name (service handles the search logic)
+	countries, err := h.locationService.Countries().GetByName(c.Context(), nameParam)
+	if err != nil {
+		return h.handleError(c, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Countries retrieved successfully",
+		"data":    countries,
+	})
+}
+
 // CreateCountry creates a new country
 func (h *LocationHandler) CreateCountry(c *fiber.Ctx) error {
 	var req dtos.CreateCountryRequest

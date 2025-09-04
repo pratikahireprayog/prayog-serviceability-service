@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
@@ -14,13 +16,30 @@ import (
 type Adapter struct {
 	client *SmileCargoClient
 	config config.SmileCargoConfig
+	logger *logrus.Logger
 }
 
 // NewAdapter creates a new Smile Cargo adapter instance
 func NewAdapter(config config.SmileCargoConfig) *Adapter {
+	logger := logrus.New()
+	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetLevel(logrus.InfoLevel) // Consistent with other adapters
+	
+	// Log configuration
+	logger.WithFields(logrus.Fields{
+		"partner":      "Smile Cargo",
+		"base_url":     config.BaseURL,
+		"service_url":  config.ServiceURL,
+		"enabled":      config.Enabled,
+		"timeout":      config.Timeout,
+		"max_retries":  config.MaxRetries,
+		"retry_delay":  config.RetryDelay,
+	}).Info("🚚 Creating Smile Cargo adapter with configuration")
+	
 	return &Adapter{
 		client: NewSmileCargoClient(config),
 		config: config,
+		logger: logger,
 	}
 }
 
@@ -48,10 +67,30 @@ func (a *Adapter) IsEnabled() bool {
 
 // SupportsRequest checks if Smile Cargo supports the given request
 func (a *Adapter) SupportsRequest(ctx context.Context, request *models.ServiceabilityV2Request) bool {
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "SupportsRequest",
+		"source_pincode": request.SourcePostalCode,
+		"destination_pincode": request.DestinationPostalCode,
+		"postal_code": request.PostalCode,
+		"parcel_category": request.ParcelCategory,
+	}).Info("🎯 Smile Cargo SupportsRequest called - checking support")
+
 	// Check if we have required postal codes
 	if !a.hasValidPincodes(request) {
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "SupportsRequest",
+			"reason":    "Invalid pincodes",
+		}).Info("Request not supported: invalid pincodes")
 		return false
 	}
+
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "SupportsRequest",
+		"supported": true,
+	}).Info("Request supported by Smile Cargo")
 
 	// Partner attribute mapping in database determines supported parcel categories
 	// No hardcoded category filtering needed here
@@ -60,7 +99,25 @@ func (a *Adapter) SupportsRequest(ctx context.Context, request *models.Serviceab
 
 // CheckServiceability checks serviceability for the request
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+	startTime := time.Now()
+	
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "CheckServiceability",
+		"partner_id": partnerInfo.PartnerID,
+		"partner_code": partnerInfo.PartnerCode,
+		"source_pincode": request.SourcePostalCode,
+		"destination_pincode": request.DestinationPostalCode,
+		"postal_code": request.PostalCode,
+	}).Info("🚚 Smile Cargo CheckServiceability STARTED - making API call")
+
 	if !a.SupportsRequest(ctx, request) {
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "CheckServiceability",
+			"reason":    "Request not supported",
+		}).Warn("Request not supported by Smile Cargo")
+		
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -74,10 +131,28 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 
 	// Convert request to Smile Cargo format
 	smileCargoRequest := a.convertToServiceAvailabilityRequest(request)
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "CheckServiceability",
+		"smile_cargo_request": smileCargoRequest,
+	}).Info("Converted request to Smile Cargo format")
 
 	// Make API call
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "CheckServiceability",
+		"api_url": a.config.ServiceURL,
+		"full_url": a.config.BaseURL + a.config.ServiceURL,
+	}).Info("🌐 Making Smile Cargo API call to external service")
+	
 	response, err := a.client.CheckServiceAvailability(ctx, smileCargoRequest)
 	if err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "CheckServiceability",
+			"error": err.Error(),
+		}).Error("Smile Cargo API call failed")
+		
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -87,9 +162,29 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "CheckServiceability",
+		"response_status": response.Status,
+		"data_count": len(response.Data),
+		"response_time_ms": time.Since(startTime).Milliseconds(),
+	}).Info("✅ Smile Cargo API call SUCCESSFUL - processing response")
+
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
-	return a.convertServiceAvailabilityResponse(response, partnerInfo), nil
+	result := a.convertServiceAvailabilityResponse(response, partnerInfo)
+	
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "CheckServiceability",
+		"total_services": len(result.Services),
+		"total_capabilities": len(result.Capabilities),
+		"has_error": result.Error != nil,
+		"total_time_ms": time.Since(startTime).Milliseconds(),
+		"serviceable": len(result.Services) > 0,
+	}).Info("🚚 Smile Cargo serviceability check COMPLETED")
+	
+	return result, nil
 }
 
 // convertToServiceAvailabilityRequest converts v2 request to Smile Cargo format
@@ -111,11 +206,28 @@ func (a *Adapter) convertToServiceAvailabilityRequest(request *models.Serviceabi
 		req.ToPincode = *request.PostalCode
 	}
 
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "convertToServiceAvailabilityRequest",
+		"from_pincode": req.FromPincode,
+		"to_pincode": req.ToPincode,
+		"vendor_code": a.config.VendorCode,
+	}).Info("Converted request to Smile Cargo format")
+
 	return req
 }
 
 // convertServiceAvailabilityResponse converts Smile Cargo response to common format
 func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabilityResponse, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "convertServiceAvailabilityResponse",
+		"response_status": response.Status,
+		"data_count": len(response.Data),
+		"partner_id": partnerInfo.PartnerID,
+		"partner_code": partnerInfo.PartnerCode,
+	}).Info("Starting response conversion")
+
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -124,109 +236,247 @@ func (a *Adapter) convertServiceAvailabilityResponse(response *ServiceAvailabili
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// CRITICAL BUSINESS RULE: SmilePartner must exist in BOTH "from" and "to" objects
-	// for the service to be considered serviceable
-	var fromSmilePartner *SmilePartner
-	var toSmilePartner *SmilePartner
-	var hasFromPartner = false
-	var hasToPartner = false
+	// NEW BUSINESS RULE: Check if activePartners length > 1 in BOTH from and to pincodes
+	var fromPincodeData *ServiceAvailabilityData
+	var toPincodeData *ServiceAvailabilityData
+	var hasFromData = false
+	var hasToData = false
 
-    // Check all data entries and separate "from" and "to" entries
-    validPartners := make([]*SmilePartner, 0, 2)
-    for _, data := range response.Data {
-		// Check if this is a "from" entry (has fromPincode)
-		if data.FromPincode != nil && data.SmilePartner != nil && data.SmilePartner.Status {
-			fromSmilePartner = data.SmilePartner
-			hasFromPartner = true
+	// Separate "from" and "to" entries from API response
+	for _, data := range response.Data {
+		if data.FromPincode != nil {
+			fromPincodeData = &data
+			hasFromData = true
+			a.logger.WithFields(logrus.Fields{
+				"component": "smile_cargo_adapter",
+				"method":    "convertServiceAvailabilityResponse",
+				"from_pincode": *data.FromPincode,
+				"from_active_partners": len(data.ActivePartners),
+			}).Info("Found from pincode data")
 		}
-
-		// Check if this is a "to" entry (has toPincode)
-		if data.ToPincode != nil && data.SmilePartner != nil && data.SmilePartner.Status {
-			toSmilePartner = data.SmilePartner
-			hasToPartner = true
+		if data.ToPincode != nil {
+			toPincodeData = &data
+			hasToData = true
+			a.logger.WithFields(logrus.Fields{
+				"component": "smile_cargo_adapter",
+				"method":    "convertServiceAvailabilityResponse",
+				"to_pincode": *data.ToPincode,
+				"to_active_partners": len(data.ActivePartners),
+			}).Info("Found to pincode data")
 		}
-
-        // Track any valid smilePartner entries regardless of explicit from/to tagging
-        if data.SmilePartner != nil && data.SmilePartner.Status {
-            validPartners = append(validPartners, data.SmilePartner)
-        }
 	}
 
-    // Fallback: If explicit from/to not identified but we have at least two valid entries,
-    // assign first as from and second as to.
-    if (!hasFromPartner || !hasToPartner) && len(validPartners) >= 2 {
-        if !hasFromPartner {
-            fromSmilePartner = validPartners[0]
-            hasFromPartner = true
-        }
-        if !hasToPartner {
-            toSmilePartner = validPartners[1]
-            hasToPartner = true
-        }
-    }
-
-    // Service is only available if BOTH from and to have valid SmilePartners
-    if !hasFromPartner || !hasToPartner {
-        reason := "Smile Cargo not serviceable: SmilePartner missing in "
-        if !hasFromPartner && !hasToPartner {
-            reason += "both 'from' and 'to' objects"
-        } else if !hasFromPartner {
-            reason += "'from' object"
-        } else {
-            reason += "'to' object"
-        }
-        result.ErrorMessage = &reason
-        // Leave Capabilities and Metadata empty so orchestrator excludes this partner
-        return result
-    }
-
-    // Additional business rules:
-    // - From pincode requires firstMile = true
-    // - To pincode requires lastMile = true
-    if fromSmilePartner != nil && !fromSmilePartner.FirstMile {
-        msg := "Smile Cargo not serviceable: firstMile must be true for source pincode"
-        result.ErrorMessage = &msg
-        return result
-    }
-    if toSmilePartner != nil && !toSmilePartner.LastMile {
-        msg := "Smile Cargo not serviceable: lastMile must be true for destination pincode"
-        result.ErrorMessage = &msg
-        return result
-    }
-
-	// Both SmilePartners found and active
-
-	// Create the new capabilities structure based on the final payload format
-	capabilities := map[string]interface{}{
-		"source_postal_code": map[string]interface{}{
-			"status":    fromSmilePartner.Status,
-			"lastMile":  fromSmilePartner.LastMile,
-			"firstMile": fromSmilePartner.FirstMile,
-			"cod":       fromSmilePartner.COD,
-			"toPay":     fromSmilePartner.ToPay,
-		},
-		"destination_postal_code": map[string]interface{}{
-			"status":    toSmilePartner.Status,
-			"lastMile":  toSmilePartner.LastMile,
-			"firstMile": toSmilePartner.FirstMile,
-			"cod":       toSmilePartner.COD,
-			"toPay":     toSmilePartner.ToPay,
-		},
+	// Service is only available if BOTH from and to have data
+	if !hasFromData || !hasToData {
+		reason := "Smile Cargo not serviceable: missing data for "
+		if !hasFromData && !hasToData {
+			reason += "both 'from' and 'to' pincodes"
+		} else if !hasFromData {
+			reason += "'from' pincode"
+		} else {
+			reason += "'to' pincode"
+		}
+		
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "convertServiceAvailabilityResponse",
+			"has_from_data": hasFromData,
+			"has_to_data": hasToData,
+			"reason": reason,
+		}).Warn("Service not available: missing pincode data")
+		
+		result.ErrorMessage = &reason
+		return result
 	}
 
-	result.Capabilities = capabilities
+	// Check if both pincodes have multiple active partners (length > 1)
+	fromPartnersCount := len(fromPincodeData.ActivePartners)
+	toPartnersCount := len(toPincodeData.ActivePartners)
 
-	// Smile Cargo doesn't have individual services, only capabilities
-	// Remove the services array as per user request
-	result.Services = []models.ServiceV2{} // Empty services array
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "convertServiceAvailabilityResponse",
+		"from_partners_count": fromPartnersCount,
+		"to_partners_count": toPartnersCount,
+		"from_pincode": *fromPincodeData.FromPincode,
+		"to_pincode": *toPincodeData.ToPincode,
+	}).Info("Checking active partners count")
 
-    // Set metadata
-    result.Metadata["reason"] = "Smile Cargo serviceable: smilePartner present at source and destination with required first/last mile"
-	result.Metadata["from_city"] = fromSmilePartner.CityName
-	result.Metadata["to_city"] = toSmilePartner.CityName
-	result.Metadata["area_availability"] = toSmilePartner.AreaAvailability
+	if fromPartnersCount < 1 || toPartnersCount < 1 {
+		reason := fmt.Sprintf("Smile Cargo not serviceable: insufficient active partners. From: %d, To: %d (need >=1 for both)", fromPartnersCount, toPartnersCount)
+		
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "convertServiceAvailabilityResponse",
+			"from_partners_count": fromPartnersCount,
+			"to_partners_count": toPartnersCount,
+			"reason": reason,
+		}).Warn("Service not available: insufficient active partners")
+		
+		result.ErrorMessage = &reason
+		return result
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "convertServiceAvailabilityResponse",
+		"from_partners_count": fromPartnersCount,
+		"to_partners_count": toPartnersCount,
+	}).Info("Service available: sufficient active partners found")
+
+	// SERVICEABLE: Both pincodes have at least 1 active partner
+	// Build capabilities for all active partners
+	allPartners := make([]map[string]interface{}, 0)
+	
+	// Add from pincode partners
+	for _, partner := range fromPincodeData.ActivePartners {
+		partnerCapability := map[string]interface{}{
+			"pincode_type": "source",
+			"partner_code": partner.PartnerCode,
+			"is_active":    partner.IsActive,
+			"city":         partner.CityName,
+			"district":     partner.DistrictName,
+			"zone":         partner.Zone,
+			"first_mile":   partner.FirstMile,
+			"last_mile":    partner.LastMile,
+			"hub_code":     partner.HubCode,
+			"cod":          partner.COD,
+			"to_pay":       partner.ToPay,
+			"surface":      partner.Surface,
+			"air":          partner.Air,
+			"rail":         partner.Rail,
+			"vendor":       partner.Vendor,
+		}
+		allPartners = append(allPartners, partnerCapability)
+		
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "convertServiceAvailabilityResponse",
+			"partner_code": partner.PartnerCode,
+			"pincode_type": "source",
+			"city": partner.CityName,
+			"first_mile": partner.FirstMile,
+			"last_mile": partner.LastMile,
+		}).Info("Added source partner capability")
+	}
+
+	// Add to pincode partners
+	for _, partner := range toPincodeData.ActivePartners {
+		partnerCapability := map[string]interface{}{
+			"pincode_type": "destination",
+			"partner_code": partner.PartnerCode,
+			"is_active":    partner.IsActive,
+			"city":         partner.CityName,
+			"district":     partner.DistrictName,
+			"zone":         partner.Zone,
+			"first_mile":   partner.FirstMile,
+			"last_mile":    partner.LastMile,
+			"hub_code":     partner.HubCode,
+			"cod":          partner.COD,
+			"to_pay":       partner.ToPay,
+			"surface":      partner.Surface,
+			"air":          partner.Air,
+			"rail":         partner.Rail,
+			"vendor":       partner.Vendor,
+		}
+		allPartners = append(allPartners, partnerCapability)
+		
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "convertServiceAvailabilityResponse",
+			"partner_code": partner.PartnerCode,
+			"pincode_type": "destination",
+			"city": partner.CityName,
+			"first_mile": partner.FirstMile,
+			"last_mile": partner.LastMile,
+		}).Info("Added destination partner capability")
+	}
+
+	result.Capabilities = map[string]interface{}{
+		"active_partners": allPartners,
+		"from_partners_count": fromPartnersCount,
+		"to_partners_count":   toPartnersCount,
+		"total_partners":      len(allPartners),
+	}
+
+	// Create individual services for each active partner
+	services := make([]models.ServiceV2, 0)
+	for _, partner := range allPartners {
+		// Convert delivery modes to map[string]bool format
+		deliveryModesMap := make(map[string]bool)
+		deliveryModes := a.getDeliveryModes(partner)
+		for _, mode := range deliveryModes {
+			deliveryModesMap[mode] = true
+		}
+		
+		service := models.ServiceV2{
+			ServiceCode:   partner["partner_code"].(string),
+			ServiceName:   fmt.Sprintf("Cargo Service - %s", partner["city"]),
+			TATDays:       0, // Default TAT for cargo
+			IsCOD:         partner["cod"].(bool),
+			Pickup:        partner["first_mile"].(bool),
+			Delivery:      partner["last_mile"].(bool),
+			Insurance:     false, // Default for cargo
+			ProductTypes:  map[string]bool{"cargo": true},
+			DeliveryModes: deliveryModesMap,
+		}
+		services = append(services, service)
+		
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "convertServiceAvailabilityResponse",
+			"service_code": service.ServiceCode,
+			"service_name": service.ServiceName,
+			"delivery_modes_count": len(service.DeliveryModes),
+		}).Info("Created service for partner")
+	}
+
+	result.Services = services
+
+	// Set metadata
+	result.Metadata["reason"] = fmt.Sprintf("Smile Cargo serviceable: %d active partners at source, %d at destination", fromPartnersCount, toPartnersCount)
+	result.Metadata["from_city"] = fromPincodeData.ActivePartners[0].CityName
+	result.Metadata["to_city"] = toPincodeData.ActivePartners[0].CityName
+	result.Metadata["serviceable"] = true
+
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "convertServiceAvailabilityResponse",
+		"total_services": len(services),
+		"total_capabilities": len(result.Capabilities),
+		"from_city": result.Metadata["from_city"],
+		"to_city": result.Metadata["to_city"],
+		"serviceable": result.Metadata["serviceable"],
+	}).Info("Response conversion completed successfully")
 
 	return result
+}
+
+// getDeliveryModes extracts delivery modes from partner capabilities
+func (a *Adapter) getDeliveryModes(partner map[string]interface{}) []string {
+	modes := make([]string, 0)
+	
+	if surface, ok := partner["surface"].(bool); ok && surface {
+		modes = append(modes, "SURFACE")
+	}
+	if air, ok := partner["air"].(bool); ok && air {
+		modes = append(modes, "AIR")
+	}
+	if rail, ok := partner["rail"].(bool); ok && rail {
+		modes = append(modes, "RAIL")
+	}
+	
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "getDeliveryModes",
+		"partner_code": partner["partner_code"],
+		"surface": partner["surface"],
+		"air": partner["air"],
+		"rail": partner["rail"],
+		"extracted_modes": modes,
+	}).Info("Extracted delivery modes from partner")
+	
+	return modes
 }
 
 // IsCargoRequest determines if this is a cargo/freight request
@@ -242,14 +492,49 @@ func (a *Adapter) IsCargoRequest(request *models.ServiceabilityV2Request) bool {
 
 // hasValidPincodes checks if request has valid pincodes for Smile Cargo
 func (a *Adapter) hasValidPincodes(request *models.ServiceabilityV2Request) bool {
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "hasValidPincodes",
+		"source_postal_code": request.SourcePostalCode,
+		"destination_postal_code": request.DestinationPostalCode,
+		"postal_code": request.PostalCode,
+	}).Info("Validating pincodes for Smile Cargo")
+
 	// Need source pincode
 	if request.SourcePostalCode == nil || *request.SourcePostalCode == "" {
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "hasValidPincodes",
+			"reason":    "Missing source postal code",
+		}).Info("Pincode validation failed: missing source")
 		return false
 	}
 
 	// Need destination pincode
 	hasDestination := (request.DestinationPostalCode != nil && *request.DestinationPostalCode != "") ||
 		(request.PostalCode != nil && *request.PostalCode != "")
+
+	if !hasDestination {
+		a.logger.WithFields(logrus.Fields{
+			"component": "smile_cargo_adapter",
+			"method":    "hasValidPincodes",
+			"reason":    "Missing destination postal code",
+		}).Info("Pincode validation failed: missing destination")
+		return false
+	}
+
+	a.logger.WithFields(logrus.Fields{
+		"component": "smile_cargo_adapter",
+		"method":    "hasValidPincodes",
+		"valid":     true,
+		"source":    *request.SourcePostalCode,
+		"destination": func() string {
+			if request.DestinationPostalCode != nil {
+				return *request.DestinationPostalCode
+			}
+			return *request.PostalCode
+		}(),
+	}).Info("Pincode validation successful")
 
 	return hasDestination
 }

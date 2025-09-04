@@ -29,12 +29,16 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 		countries.Post("/",
 			validationMiddleware.ValidateBody(&dtos.CreateCountryRequest{}),
 			handler.CreateCountry)
+		countries.Get("/by-codes", handler.GetCountriesByCodes)
+		countries.Get("/by-code", handler.GetCountryByCode)
+		countries.Get("/by-name", handler.GetCountriesByName)
+		countries.Get("/by-names", handler.GetCountriesByName)
+		countries.Get("/code/:code", handler.GetCountryByCode)
 		countries.Get("/:id", handler.GetCountryByID)
 		countries.Put("/:id",
 			validationMiddleware.ValidateBody(&dtos.UpdateCountryRequest{}),
 			handler.UpdateCountry)
 		countries.Delete("/:id", handler.DeleteCountry)
-		countries.Get("/code/:code", handler.GetCountryByCode)
 	}
 
 	// Region Type routes

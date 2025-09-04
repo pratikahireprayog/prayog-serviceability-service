@@ -44,7 +44,7 @@ func (h *LocationHandler) parsePagination(c *fiber.Ctx) *dtos.PaginationRequest 
 	if offset < 0 {
 		offset = 0
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > 200 {
 		limit = 10
 	}
 
@@ -218,6 +218,45 @@ func (h *LocationHandler) GetAllCountriesWithoutPagination(c *fiber.Ctx) error {
 	countries, err := h.locationService.Countries().GetAllWithoutPagination(c.Context())
 	if err != nil {
 		return h.handleError(c, err, "GetAllCountriesWithoutPagination")
+	}
+
+	return c.JSON(countries)
+}
+
+// GetCountriesByCodes retrieves countries by multiple codes
+func (h *LocationHandler) GetCountriesByCodes(c *fiber.Ctx) error {
+	codesParam := c.Query("codes")
+	if strings.TrimSpace(codesParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "codes parameter is required (comma-separated country codes)",
+		})
+	}
+
+	// Split comma-separated codes and get countries
+	codes := strings.Split(codesParam, ",")
+	for i, code := range codes {
+		codes[i] = strings.TrimSpace(code)
+	}
+	countries, err := h.locationService.Countries().GetByCodes(c.Context(), codes)
+	if err != nil {
+		return h.handleError(c, err, "GetCountriesByCodes")
+	}
+
+	return c.JSON(countries)
+}
+
+// GetCountriesByName retrieves countries by name search
+func (h *LocationHandler) GetCountriesByName(c *fiber.Ctx) error {
+	nameParam := c.Query("name")
+	if strings.TrimSpace(nameParam) == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "name parameter is required for country search",
+		})
+	}
+
+	countries, err := h.locationService.Countries().GetByName(c.Context(), nameParam)
+	if err != nil {
+		return h.handleError(c, err, "GetCountriesByName")
 	}
 
 	return c.JSON(countries)

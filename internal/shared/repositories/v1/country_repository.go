@@ -96,6 +96,16 @@ func (r *countryRepository) GetByCodes(ctx context.Context, codes []string) ([]m
 	return countries, nil
 }
 
+// GetByName retrieves countries by name (excludes soft-deleted records)
+func (r *countryRepository) GetByName(ctx context.Context, name string) ([]models.Country, error) {
+	var countries []models.Country
+	err := r.db.WithContext(ctx).Where("name ILIKE ? AND is_active = ?", "%"+name+"%", true).Find(&countries).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by name: %w", err)
+	}
+	return countries, nil
+}
+
 // GetAll retrieves all countries with pagination (excludes soft-deleted records)
 func (r *countryRepository) GetAll(ctx context.Context, offset, limit int) ([]models.Country, int64, error) {
 	var countries []models.Country

@@ -12,6 +12,7 @@ type CountryRepository interface {
 	GetByCode(ctx context.Context, code string) (*models.Country, error)
 	GetByCodeWithDeleted(ctx context.Context, code string) (*models.Country, error)
 	GetByCodes(ctx context.Context, codes []string) ([]models.Country, error)
+	GetByName(ctx context.Context, name string) ([]models.Country, error)
 	GetAll(ctx context.Context, offset, limit int) ([]models.Country, int64, error)
 	GetAllWithoutPagination(ctx context.Context) ([]models.Country, error)
 	GetAllWithDeleted(ctx context.Context, offset, limit int) ([]models.Country, int64, error)

@@ -100,6 +100,11 @@ func (c *SmileCargoClient) CheckServiceAvailability(ctx context.Context, request
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	// Check if API response indicates success (status 200)
+	if serviceResp.Status != 200 {
+		return nil, fmt.Errorf("Smile Cargo API returned error status: %d", serviceResp.Status)
+	}
+
 	return &serviceResp, nil
 }
 

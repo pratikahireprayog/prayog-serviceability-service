@@ -22,7 +22,6 @@ func NewCountryService(repo repositories.CountryRepository) CountryService {
 		repo: repo,
 	}
 }
-
 // GetByID retrieves a country by its ID
 func (s *countryService) GetByID(ctx context.Context, id string) (*dtos.CountryResponse, error) {
 	if strings.TrimSpace(id) == "" {
@@ -138,6 +137,50 @@ func (s *countryService) GetByCodes(ctx context.Context, codes []string) (*dtos.
 	}, nil
 }
 
+// GetByName retrieves countries by name search
+func (s *countryService) GetByName(ctx context.Context, name string) (*dtos.CountryListResponse, error) {
+	if strings.TrimSpace(name) == "" {
+		return &dtos.CountryListResponse{
+			Success: true,
+			Message: "No search name provided",
+			Data:    []dtos.CountryResponse{},
+			Pagination: dtos.PaginationResponse{
+				Offset:      0,
+				Limit:       0,
+				Total:       0,
+				HasNext:     false,
+				HasPrevious: false,
+			},
+		}, nil
+	}
+
+	countries, err := s.repo.GetByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by name: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: fmt.Sprintf("Countries found for name: %s", name),
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
+}
+
 // GetAll retrieves all countries with pagination
 func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error) {
 	if req == nil {
@@ -151,7 +194,7 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	if req.Limit < 1 || req.Limit > 100 {
+	if req.Limit < 1 || req.Limit > 200 {
 		req.Limit = 10
 	}
 
@@ -213,6 +256,7 @@ func (s *countryService) GetAllWithoutPagination(ctx context.Context) (*dtos.Cou
 		},
 	}, nil
 }
+
 
 // GetAllWithDeleted retrieves all countries including soft-deleted ones (admin operation)
 func (s *countryService) GetAllWithDeleted(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error) {

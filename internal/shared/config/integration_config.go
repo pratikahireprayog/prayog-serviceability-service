@@ -318,7 +318,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			CacheTTL:     getEnvAsDurationOrDefault("SMILE_ECOM_CACHE_TTL", 15*time.Minute),
 		},
 		DHL: DHLConfig{
-			BaseURL:       getEnvOrDefault("DHL_BASE_URL", ""),
+			BaseURL:       getEnvOrDefault("DHL_BASE_URL", "https://express.api.dhl.com/mydhlapi/test"),
 			Username:      getEnvOrDefault("DHL_USERNAME", ""),
 			Password:      getEnvOrDefault("DHL_PASSWORD", ""),
 			BasicAuth:     getEnvOrDefault("DHL_BASIC_AUTH", ""),
@@ -330,15 +330,15 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Timeout:       getEnvAsDurationOrDefault("DHL_TIMEOUT", 30*time.Second),
 			MaxRetries:    getEnvAsIntOrDefault("DHL_MAX_RETRIES", 3),
 			RetryDelay:    getEnvAsDurationOrDefault("DHL_RETRY_DELAY", 2*time.Second),
-			Enabled:       getEnvAsBoolOrDefault("DHL_ENABLED", true), // Disabled by default
+			Enabled:       getEnvAsBoolOrDefault("DHL_ENABLED", true), // Enabled by default
 			Rating:        4.7,
 			SandboxMode:   getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
 		},
 		SmileCargo: SmileCargoConfig{
-			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://apis.delcaper.com"),
+			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),
 			APIKey:      getEnvOrDefault("SMILE_CARGO_API_KEY", ""),
 			VendorCode:  getEnvOrDefault("SMILE_CARGO_VENDOR_CODE", "bhav19"),
-			ServiceURL:  getEnvOrDefault("SMILE_CARGO_SERVICE_URL", "/delivery-orchestrator/service-availability/v3"),
+			ServiceURL:  getEnvOrDefault("SMILE_CARGO_SERVICE_URL", "/cargo-api/partner-pincode-serviceability/check-serviceability"),
 			QuoteURL:    getEnvOrDefault("SMILE_CARGO_QUOTE_URL", "/api/v1/quote"),
 			TrackingURL: getEnvOrDefault("SMILE_CARGO_TRACKING_URL", "/api/v1/tracking"),
 			Timeout:     getEnvAsDurationOrDefault("SMILE_CARGO_TIMEOUT", 45*time.Second),

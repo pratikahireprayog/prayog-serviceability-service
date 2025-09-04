@@ -219,6 +219,11 @@ func (h *ServiceabilityV2Handler) validateBasicRequest(request *modelsv1.Service
 		return errors.ErrInvalidCountryCode(*request.CountryCode)
 	}
 
+	// Validate destination country code if provided
+	if request.DestinationCountryCode != nil && len(*request.DestinationCountryCode) != 2 {
+		return errors.ErrInvalidCountryCode(*request.DestinationCountryCode)
+	}
+
 	// Validate parcel category if provided
 	if request.ParcelCategory != nil && *request.ParcelCategory != "" {
 		validCategories := []string{"ecomm", "courier", "cargo", "international", "hyperlocal"}
