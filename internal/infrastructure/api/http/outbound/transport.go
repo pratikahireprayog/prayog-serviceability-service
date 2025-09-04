@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"prayog-serviceability-service/internal/infrastructure/resilience"
+
+	"github.com/sirupsen/logrus"
 )
 
 // HTTPTransport provides HTTP transport with resilience patterns
@@ -23,6 +25,7 @@ type HTTPTransport struct {
 	baseURL        string
 	defaultHeaders map[string]string
 	enableLogging  bool
+	logger         *logrus.Logger
 }
 
 // Config holds configuration for HTTP transport
@@ -39,6 +42,10 @@ type Config struct {
 
 // NewHTTPTransport creates a new HTTP transport with resilience patterns
 func NewHTTPTransport(config Config) *HTTPTransport {
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
 	// Create HTTP client
 	httpClient := &http.Client{
 		Timeout: config.Timeout,
@@ -58,6 +65,7 @@ func NewHTTPTransport(config Config) *HTTPTransport {
 		baseURL:        strings.TrimSuffix(config.BaseURL, "/"),
 		defaultHeaders: config.DefaultHeaders,
 		enableLogging:  config.EnableLogging,
+		logger:         logger,
 	}
 }
 
@@ -250,17 +258,78 @@ func (ht *HTTPTransport) UpdateConfig(config Config) {
 	ht.timeoutManager.UpdateConfig(config.TimeoutConfig)
 }
 
-// logRequest logs HTTP request details
+// redactSensitiveHeaders redacts sensitive header values for logging
+func (ht *HTTPTransport) redactSensitiveHeaders(headers map[string]string) map[string]string {
+	sensitiveHeaders := []string{"authorization", "basic", "token", "api-key", "x-api-key", "bearer"}
+	redactedHeaders := make(map[string]string)
+
+	for key, value := range headers {
+		keyLower := strings.ToLower(key)
+		isSensitive := false
+
+		for _, sensitive := range sensitiveHeaders {
+			if strings.Contains(keyLower, sensitive) {
+				isSensitive = true
+				break
+			}
+		}
+
+		if isSensitive {
+			redactedHeaders[key] = "[REDACTED]"
+		} else {
+			redactedHeaders[key] = value
+		}
+	}
+
+	return redactedHeaders
+}
+
+// logRequest logs HTTP request details with proper structured logging
 func (ht *HTTPTransport) logRequest(method, url string, headers map[string]string) {
-	fmt.Printf("[%s] HTTP %s %s (headers: %v)\n", ht.serviceName, method, url, headers)
+	if !ht.enableLogging {
+		return
+	}
+
+	ht.logger.WithFields(logrus.Fields{
+		"service":    ht.serviceName,
+		"method":     method,
+		"url":        url,
+		"headers":    ht.redactSensitiveHeaders(headers),
+		"event_type": "http_request",
+	}).Debug("HTTP request started")
 }
 
-// logResponse logs HTTP response details
+// logResponse logs HTTP response details with proper structured logging
 func (ht *HTTPTransport) logResponse(statusCode, bodyLength int) {
-	fmt.Printf("[%s] HTTP Response %d (body: %d bytes)\n", ht.serviceName, statusCode, bodyLength)
+	if !ht.enableLogging {
+		return
+	}
+
+	logLevel := logrus.InfoLevel
+	if statusCode >= 400 {
+		logLevel = logrus.WarnLevel
+	}
+	if statusCode >= 500 {
+		logLevel = logrus.ErrorLevel
+	}
+
+	ht.logger.WithFields(logrus.Fields{
+		"service":     ht.serviceName,
+		"status_code": statusCode,
+		"body_size":   bodyLength,
+		"event_type":  "http_response",
+	}).Log(logLevel, "HTTP response received")
 }
 
-// logError logs error details
+// logError logs error details with proper structured logging
 func (ht *HTTPTransport) logError(message string, err error) {
-	fmt.Printf("[%s] ERROR: %s - %v\n", ht.serviceName, message, err)
+	if !ht.enableLogging {
+		return
+	}
+
+	ht.logger.WithFields(logrus.Fields{
+		"service":    ht.serviceName,
+		"error":      err.Error(),
+		"event_type": "http_error",
+	}).Error(message)
 }

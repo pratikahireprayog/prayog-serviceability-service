@@ -2,9 +2,9 @@ package middleware
 
 import (
 	"errors"
-	"net/http"
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"prayog-serviceability-service/internal/shared/constants/v1"
 )
 
@@ -18,7 +18,7 @@ type AuthConfig struct {
 
 // Auth creates a middleware that checks for a valid API key in Authorization header.
 // Supports both "Bearer <token>" and "ApiKey <token>" formats.
-func Auth(apiKeys []string) Middleware {
+func Auth(apiKeys []string) fiber.Handler {
 	authConfig := AuthConfig{
 		APIKeys: apiKeys,
 		SkipPaths: []string{
@@ -28,40 +28,45 @@ func Auth(apiKeys []string) Middleware {
 		},
 	}
 
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip auth for configured paths
-			path := r.URL.Path
-			for _, skipPath := range authConfig.SkipPaths {
-				if path == skipPath {
-					next.ServeHTTP(w, r)
-					return
-				}
+	return func(c *fiber.Ctx) error {
+		// Skip auth for configured paths
+		path := c.Path()
+		for _, skipPath := range authConfig.SkipPaths {
+			if path == skipPath {
+				return c.Next()
 			}
+		}
 
-			// Extract API key from Authorization header
-			apiKey, err := extractAPIKey(r)
-			if err != nil {
-				RespondWithError(w, constants.StatusUnauthorized, constants.MsgMissingCredentials, constants.ErrorCodeMissingCredentials)
-				return
-			}
+		// Extract API key from Authorization header
+		apiKey, err := extractAPIKey(c)
+		if err != nil {
+			return c.Status(constants.StatusUnauthorized).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    constants.ErrorCodeMissingCredentials,
+					"message": constants.MsgMissingCredentials,
+				},
+			})
+		}
 
-			// Validate API key
-			if !isValidAPIKey(apiKey, authConfig.APIKeys) {
-				RespondWithError(w, constants.StatusUnauthorized, constants.MsgInvalidToken, constants.ErrorCodeInvalidToken)
-				return
-			}
+		// Validate API key
+		if !isValidAPIKey(apiKey, authConfig.APIKeys) {
+			return c.Status(constants.StatusUnauthorized).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    constants.ErrorCodeInvalidToken,
+					"message": constants.MsgInvalidToken,
+				},
+			})
+		}
 
-			// Continue to next handler
-			next.ServeHTTP(w, r)
-		})
+		// Continue to next handler
+		return c.Next()
 	}
 }
 
 // extractAPIKey extracts the API key from the Authorization header.
 // Supports both "Bearer <token>" and "ApiKey <token>" formats.
-func extractAPIKey(r *http.Request) (string, error) {
-	authHeader := r.Header.Get("Authorization")
+func extractAPIKey(c *fiber.Ctx) (string, error) {
+	authHeader := c.Get("Authorization")
 	if authHeader == "" {
 		return "", errors.New("missing authorization header")
 	}

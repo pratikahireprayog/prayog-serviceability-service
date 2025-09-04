@@ -1,0 +1,330 @@
+package internationalstrategy
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"fmt"
+	"net/http"
+	"time"
+    "os"
+    "strings"
+
+	"github.com/sirupsen/logrus"
+	"prayog-serviceability-service/internal/services/v2/partners/common"
+	"prayog-serviceability-service/internal/services/v2/partners/factory"
+	"prayog-serviceability-service/internal/services/v2/partners/dhl"
+	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
+)
+
+// InternationalStrategy orchestrates international flow using HubOps by-pincode → DHL
+// Steps:
+// 1) Call HubOps by-pincode with source postal code
+// 2) Build addresses[0] from nearestInternationalHub
+// 3) Call DHL with source = nearestInternationalHub.pincode, destination = request destination
+// 4) Return response with DHL partner (if serviceable) and addresses
+type InternationalStrategy struct {
+	PartnerFactory factory.PartnerAdapterFactory
+	Logger         *logrus.Logger
+}
+
+func (s *InternationalStrategy) Code() string { return "international" }
+
+func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.ServiceabilityV2Request) (*modelsv1.ServiceabilityV2Response, error) {
+	if s.Logger == nil {
+		s.Logger = logrus.New()
+	}
+	if s.PartnerFactory == nil {
+		return &modelsv1.ServiceabilityV2Response{Success: false, Partners: []modelsv1.PartnerV2Response{}}, nil
+	}
+
+	// Determine source postal code
+	sourcePin := ""
+	if req.SourcePostalCode != nil && *req.SourcePostalCode != "" {
+		sourcePin = *req.SourcePostalCode
+	} else if req.PostalCode != nil && *req.PostalCode != "" {
+		sourcePin = *req.PostalCode
+	}
+	if sourcePin == "" {
+		s.Logger.WithField("component", "international_strategy").Warn("source postal code missing; returning not serviceable")
+		return &modelsv1.ServiceabilityV2Response{Success: false, Partners: []modelsv1.PartnerV2Response{}}, nil
+	}
+
+	// 1) Call HubOps by-pincode API
+	hubResp, err := s.fetchHubByPincode(ctx, sourcePin)
+	if err != nil {
+		s.Logger.WithError(err).WithFields(logrus.Fields{
+			"component":  "international_strategy",
+			"source_pin": sourcePin,
+		}).Warn("HubOps by-pincode call failed; proceeding without addresses")
+	}
+
+	// Build addresses from nearestInternationalHub if available
+	var addresses []modelsv1.DetailedAddress
+	if hubResp != nil && hubResp.NearestInternationalHub != nil {
+		addr := toDetailedAddress(hubResp.NearestInternationalHub)
+		addresses = []modelsv1.DetailedAddress{addr}
+	}
+
+	// 3) Call DHL with adjusted source pincode when available
+	partners := make([]modelsv1.PartnerV2Response, 0)
+	// Direct DHL rates API call in strategy
+	{
+		baseURL := "https://express.api.dhl.com/mydhlapi/test"
+		{
+			// Build DHL request
+			srcPin := sourcePin
+			if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.Pincode != nil {
+				srcPin = fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
+			}
+			dstPin := ""
+			if req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
+				dstPin = *req.DestinationPostalCode
+			} else if req.PostalCode != nil && *req.PostalCode != "" {
+				dstPin = *req.PostalCode
+			}
+			dstCC := "IN"
+			if req.CountryCode != nil && *req.CountryCode != "" { dstCC = strings.ToUpper(*req.CountryCode) }
+			shipperCity := "Unknown City"
+			if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" { shipperCity = *hubResp.NearestInternationalHub.City }
+			receiverCity := "Unknown City"
+
+			dhlReq := dhl.RatesRequest{
+				CustomerDetails: dhl.CustomerDetails{
+					ShipperDetails: dhl.ShipperDetails{ PostalCode: srcPin, CityName: shipperCity, CountryCode: "IN" },
+					ReceiverDetails: dhl.ReceiverDetails{ PostalCode: dstPin, CityName: receiverCity, CountryCode: dstCC },
+				},
+				Accounts: []dhl.Account{{ TypeCode: "shipper", Number: "533748932" }},
+				ProductsAndServices: []dhl.ProductAndService{{ ProductCode: "P", LocalProductCode: "P" }},
+				PayerCountryCode: "IN",
+				PlannedShippingDateAndTime: nextBusinessDayOnePMIST(),
+				UnitOfMeasurement: "metric",
+				IsCustomsDeclarable: true,
+				EstimatedDeliveryDate: dhl.EstimatedDeliveryDate{ IsRequested: true, TypeCode: "QDDC" },
+				ReturnStandardProductsOnly: true,
+				Packages: []dhl.Package{{ Weight: defaultWeight(req), Dimensions: dhl.Dimensions{ Length: defaultLen(req), Width: defaultWid(req), Height: defaultHei(req) }}},
+			}
+
+			url := fmt.Sprintf("%s/rates?strictValidation=false", baseURL)
+			body, _ := json.Marshal(dhlReq)
+			reqHTTP, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+			reqHTTP.Header.Set("Content-Type", "application/json")
+			reqHTTP.Header.Set("Accept", "application/json")
+			reqHTTP.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")
+			reqHTTP.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT")
+			reqHTTP.Header.Set("Plugin-Name", "")
+			reqHTTP.Header.Set("Plugin-Version", "")
+			reqHTTP.Header.Set("Shipping-System-Platform-Name", "")
+			reqHTTP.Header.Set("Shipping-System-Platform-Version", "")
+			reqHTTP.Header.Set("Webstore-Platform-Name", "")
+			reqHTTP.Header.Set("Webstore-Platform-Version", "")
+			reqHTTP.Header.Set("X-Version", "2.12.0")
+			// Authorization header (hardcoded Basic auth)
+			reqHTTP.Header.Set("Authorization", "Basic c2hyZWVtYXJ1dDlJTjpEJDZwUCM0blZAMmdCXjB6")
+			client := &http.Client{ Timeout: 15 * time.Second }
+			resp, doErr := client.Do(reqHTTP)
+			if doErr != nil {
+				s.Logger.WithError(doErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("DHL HTTP call failed")
+			} else {
+				defer resp.Body.Close()
+				var rates dhl.RatesResponse
+				if resp.StatusCode == http.StatusOK {
+					if decErr := json.NewDecoder(resp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
+						cap := map[string]interface{}{}
+						prod := rates.Products[0]
+						cap["total_transit_days"] = prod.DeliveryCapabilities.TotalTransitDays
+						cap["estimated_delivery_date_and_time"] = prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime
+						p := modelsv1.PartnerV2Response{
+							PartnerID:   "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
+							PartnerCode: "dhl",
+							Rating:      0,
+							Capabilities: cap,
+							Metadata:    map[string]interface{}{"source_country_code":"IN","destination_country_code":dstCC},
+						}
+						partners = append(partners, p)
+					} else if decErr != nil {
+						s.Logger.WithError(decErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("Failed to decode DHL response")
+					}
+				} else {
+					b, _ := io.ReadAll(resp.Body)
+					s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl","status":resp.StatusCode,"body":string(b)}).Warn("DHL returned non-200")
+				}
+			}
+		}
+	}
+
+	resp := &modelsv1.ServiceabilityV2Response{
+		Success:  len(partners) > 0,
+		Partners: partners,
+	}
+	if len(addresses) > 0 {
+		resp.Addresses = addresses
+	}
+	return resp, nil
+}
+
+// HubOps API integration
+const hubOpsURL = "https://qaapis.hubops.innofulfill.com/smcs-webapp/hubops-serviceability/by-pincode"
+
+type hubOpsRequest struct {
+	PostalCode string `json:"postalCode"`
+}
+
+type hubInfo struct {
+	PremiseID           *int64  `json:"premiseId"`
+	PremiseName         *string `json:"premiseName"`
+	City                *string `json:"city"`
+	Address             *string `json:"address"`
+	AddressLine1        *string `json:"addressLine1"`
+	AddressLine2        *string `json:"addressLine2"`
+	Pincode             *int64  `json:"pincode"`
+	State               *string `json:"state"`
+	Latitude            *string `json:"latitude"`
+	Longitude           *string `json:"longitude"`
+	PersonalEmailId     *string     `json:"personalEmailId"`
+	OfficialEmailId     *string     `json:"officialEmailId"`
+	PersonalNumber      interface{} `json:"personalNumber"`
+	OfficialNumber      interface{} `json:"officialNumber"`
+}
+
+type hubOpsResponse struct {
+	NearestHub              *hubInfo `json:"nearestHub"`
+	NearestInternationalHub *hubInfo `json:"nearestInternationalHub"`
+	Nearest3PLHub           *hubInfo `json:"nearest3PLHub"`
+}
+
+func (s *InternationalStrategy) fetchHubByPincode(ctx context.Context, pin string) (*hubOpsResponse, error) {
+	body, _ := json.Marshal(hubOpsRequest{PostalCode: pin})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hubOpsURL, bytes.NewBuffer(body))
+	if err != nil { return nil, err }
+	req.Header.Set("Content-Type", "application/json")
+    if cookie := os.Getenv("HUBOPS_COOKIE"); cookie != "" { req.Header.Set("Cookie", cookie) }
+
+	client := &http.Client{ Timeout: 5 * time.Second }
+	resp, err := client.Do(req)
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("hubops API status %d", resp.StatusCode)
+	}
+	var parsed hubOpsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func toDetailedAddress(h *hubInfo) modelsv1.DetailedAddress {
+	addr := modelsv1.DetailedAddress{ Type: "INTERNATIONAL_HUB_ADDRESS", AddressName: "WAREHOUSE" }
+	if h == nil { return addr }
+	if h.Pincode != nil { addr.Zip = fmt.Sprintf("%v", *h.Pincode) }
+	if h.PremiseName != nil { addr.Name = *h.PremiseName }
+	// Prefer official contact details, fallback to personal
+	if s := anyToString(h.OfficialNumber); s != "" { addr.Phone = s } else { addr.Phone = anyToString(h.PersonalNumber) }
+	if h.OfficialEmailId != nil && *h.OfficialEmailId != "" { addr.Email = *h.OfficialEmailId } else if h.PersonalEmailId != nil { addr.Email = *h.PersonalEmailId }
+	if h.AddressLine1 != nil { addr.Street = *h.AddressLine1 } else if h.Address != nil { addr.Street = *h.Address }
+	// No explicit landmark field in payload; leave empty
+	if h.City != nil { addr.City = *h.City }
+	if h.State != nil { addr.State = *h.State }
+	// Country not provided; leave empty to avoid incorrect data
+	if h.Latitude != nil { if v, ok := toFloat(*h.Latitude); ok { addr.Latitude = &v } }
+	if h.Longitude != nil { if v, ok := toFloat(*h.Longitude); ok { addr.Longitude = &v } }
+	return addr
+}
+
+func toFloat(s string) (float64, bool) {
+	var f float64
+	// simple parse without importing strconv to keep deps minimal in this file
+	// however, to ensure correctness, we will use fmt.Sscanf
+	if _, err := fmt.Sscanf(s, "%f", &f); err != nil { return 0, false }
+	return f, true
+}
+
+// anyToString converts number or string to string
+func anyToString(v interface{}) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case float64:
+		return fmt.Sprintf("%.0f", t)
+	case int:
+		return fmt.Sprintf("%d", t)
+	case int64:
+		return fmt.Sprintf("%d", t)
+	default:
+		b, _ := json.Marshal(t)
+		return string(b)
+	}
+}
+
+func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (modelsv1.PartnerV2Response, bool) {
+	if res == nil { return modelsv1.PartnerV2Response{}, false }
+	if res.ErrorMessage != nil { return modelsv1.PartnerV2Response{}, false }
+	hasServices := len(res.Services) > 0
+	hasCaps := len(res.Capabilities) > 0
+	hasMeta := len(res.Metadata) > 0
+	if !(hasServices || hasCaps || hasMeta) { return modelsv1.PartnerV2Response{}, false }
+	partnerID := "unknown"
+	if res.PartnerID != nil { partnerID = res.PartnerID.String() }
+	return modelsv1.PartnerV2Response{
+		PartnerID:       partnerID,
+		PartnerCode:     code,
+		PartnerName:     "",
+		Rating:          0,
+		Services:        res.Services,
+		PartnerServices: res.PartnerServices,
+		Capabilities:    res.Capabilities,
+		Error:           res.ErrorMessage,
+		ResponseTime:    res.ResponseTime,
+		Metadata:        res.Metadata,
+	}, true
+}
+
+// Helpers for DHL request defaults
+func nextBusinessDayOnePMIST() string {
+    loc, err := time.LoadLocation("Asia/Kolkata")
+    if err != nil {
+        loc = time.FixedZone("GMT+05:30", 5*60*60+30*60)
+    }
+    now := time.Now().In(loc)
+    next := now.Add(24 * time.Hour)
+    for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
+        next = next.Add(24 * time.Hour)
+    }
+    t := time.Date(next.Year(), next.Month(), next.Day(), 13, 0, 0, 0, loc)
+    return t.Format("2006-01-02T15:04:05") + "GMT+05:30"
+}
+
+func defaultWeight(req *modelsv1.ServiceabilityV2Request) float64 {
+    if req != nil && len(req.Packages) > 0 && req.Packages[0].Weight != nil && req.Packages[0].Weight.Value > 0 {
+        return req.Packages[0].Weight.Value
+    }
+    return 1
+}
+
+func defaultLen(req *modelsv1.ServiceabilityV2Request) float64 {
+    if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Length > 0 {
+        return req.Packages[0].Dimensions.Length
+    }
+    return 10
+}
+
+func defaultWid(req *modelsv1.ServiceabilityV2Request) float64 {
+    if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Width > 0 {
+        return req.Packages[0].Dimensions.Width
+    }
+    return 10
+}
+
+func defaultHei(req *modelsv1.ServiceabilityV2Request) float64 {
+    if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Height > 0 {
+        return req.Packages[0].Dimensions.Height
+    }
+    return 10
+}
+
+
+

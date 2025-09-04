@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/shared/dtos/v1"
-	"prayog-serviceability-service/internal/shared/services/v1"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -93,28 +93,37 @@ func (h *GeoLocationHandler) GetAllGeoLocations(c *fiber.Ctx) error {
 	// Parse optional filters from query parameters
 	filters := &dtos.GeoLocationFilters{}
 
-	if countryCode := c.Query("country_code"); countryCode != "" {
-		filters.CountryCode = &countryCode
+	// Parse multiple country codes from comma-separated values
+	if countryCodesParam := c.Query("country_codes"); countryCodesParam != "" {
+		var countryCodes []string
+		// Split by comma and clean each country code
+		for _, countryCode := range strings.Split(countryCodesParam, ",") {
+			countryCode = strings.TrimSpace(strings.ToUpper(countryCode))
+			if countryCode != "" {
+				countryCodes = append(countryCodes, countryCode)
+			}
+		}
+		if len(countryCodes) > 0 {
+			filters.CountryCodes = countryCodes
+		}
 	}
 
-	// Parse multiple postal codes from query parameters
-	queryArgs := c.Request().URI().QueryArgs()
-	var postalCodes []string
-	queryArgs.VisitAll(func(key, value []byte) {
-		if string(key) == "postal_code" {
-			postalCode := strings.TrimSpace(string(value))
+	// Parse multiple postal codes from comma-separated values
+	if postalCodesParam := c.Query("postal_codes"); postalCodesParam != "" {
+		var postalCodes []string
+		// Split by comma and clean each postal code
+		for _, postalCode := range strings.Split(postalCodesParam, ",") {
+			postalCode = strings.TrimSpace(postalCode)
 			if postalCode != "" {
 				postalCodes = append(postalCodes, postalCode)
 			}
 		}
-	})
-	if len(postalCodes) > 0 {
-		filters.PostalCodes = postalCodes
+		if len(postalCodes) > 0 {
+			filters.PostalCodes = postalCodes
+		}
 	}
 
-	if name := c.Query("name"); name != "" {
-		filters.Name = &name
-	}
+
 
 	if featureCode := c.Query("feature_code"); featureCode != "" {
 		filters.FeatureCode = &featureCode

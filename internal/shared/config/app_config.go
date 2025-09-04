@@ -20,6 +20,7 @@ type DBConfig struct {
 	MaxOpenConns    int           `mapstructure:"DB_MAX_OPEN_CONNS"`
 	MaxIdleConns    int           `mapstructure:"DB_MAX_IDLE_CONNS"`
 	ConnMaxLifetime time.Duration `mapstructure:"DB_CONN_MAX_LIFETIME"`
+	QueryTimeout    time.Duration `mapstructure:"DB_QUERY_TIMEOUT"`
 }
 
 // LogConfig contains logging configuration
@@ -37,12 +38,18 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration `mapstructure:"SERVER_IDLE_TIMEOUT"`
 }
 
+// ServiceabilityConfig contains serviceability-specific configuration
+type ServiceabilityConfig struct {
+	ReturnOnlyServiceablePartners bool `mapstructure:"RETURN_ONLY_SERVICEABLE_PARTNERS"`
+}
+
 // AppConfig holds all application configuration
 type AppConfig struct {
-	DB          DBConfig
-	Log         LogConfig
-	Server      ServerConfig
-	Integration IntegrationConfig
+	DB             DBConfig
+	Log            LogConfig
+	Server         ServerConfig
+	Serviceability ServiceabilityConfig
+	Integration    IntegrationConfig
 }
 
 // DSN returns the PostgreSQL connection string
@@ -64,6 +71,7 @@ func (db *DBConfig) GetConnectionInfo() map[string]interface{} {
 		"max_open_conns":    db.MaxOpenConns,
 		"max_idle_conns":    db.MaxIdleConns,
 		"conn_max_lifetime": db.ConnMaxLifetime.String(),
+		"query_timeout":     db.QueryTimeout.String(),
 	}
 }
 
@@ -107,6 +115,7 @@ func LoadAppConfig() (*AppConfig, error) {
 			MaxOpenConns:    getEnvAsIntOrDefault("DB_MAX_OPEN_CONNS", 0),    // 0 = unlimited
 			MaxIdleConns:    getEnvAsIntOrDefault("DB_MAX_IDLE_CONNS", 1000), // High idle pool
 			ConnMaxLifetime: getEnvAsDurationOrDefault("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+			QueryTimeout:    getEnvAsDurationOrDefault("DB_QUERY_TIMEOUT", 30*time.Second),
 		},
 		Log: LogConfig{
 			Level:      getEnvOrDefault("LOG_LEVEL", "info"),
@@ -118,6 +127,9 @@ func LoadAppConfig() (*AppConfig, error) {
 			ReadTimeout:  getEnvAsDurationOrDefault("SERVER_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getEnvAsDurationOrDefault("SERVER_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:  getEnvAsDurationOrDefault("SERVER_IDLE_TIMEOUT", 120*time.Second),
+		},
+		Serviceability: ServiceabilityConfig{
+			ReturnOnlyServiceablePartners: getEnvAsBoolOrDefault("RETURN_ONLY_SERVICEABLE_PARTNERS", true),
 		},
 		Integration: LoadIntegrationConfig(),
 	}

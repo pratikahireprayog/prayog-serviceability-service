@@ -26,6 +26,7 @@ type CreateGeoLocationRequest struct {
 	Elevation        *int       `json:"elevation,omitempty"`
 	DEM              *int       `json:"dem,omitempty"`
 	Timezone         *string    `json:"timezone,omitempty"`
+	IsActive         *bool      `json:"is_active,omitempty"`
 	ModificationDate *time.Time `json:"modification_date,omitempty"`
 }
 
@@ -48,6 +49,7 @@ type UpdateGeoLocationRequest struct {
 	Elevation      *int     `json:"elevation,omitempty"`
 	DEM            *int     `json:"dem,omitempty"`
 	Timezone       *string  `json:"timezone,omitempty"`
+	IsActive       *bool    `json:"is_active,omitempty"`
 }
 
 // GeoLocationResponse represents geo location response
@@ -77,10 +79,9 @@ type GeoLocationResponse struct {
 
 // GeoLocationFilters represents basic filters for geo location queries
 type GeoLocationFilters struct {
-	CountryCode *string  `json:"country_code,omitempty" query:"country_code"`
-	PostalCodes []string `json:"postal_codes,omitempty" query:"postal_code"`
-	Name        *string  `json:"name,omitempty" query:"name"`
-	FeatureCode *string  `json:"feature_code,omitempty" query:"feature_code"`
+	CountryCodes []string `json:"country_codes,omitempty" query:"country_codes"`
+	PostalCodes  []string `json:"postal_codes,omitempty" query:"postal_codes"`
+	FeatureCode  *string  `json:"feature_code,omitempty" query:"feature_code"`
 }
 
 // GeoLocationListResponse represents list of geo locations with pagination
