@@ -70,6 +70,74 @@ func (s *countryService) GetByCode(ctx context.Context, code string) (*dtos.Coun
 	return CountryToResponse(country), nil
 }
 
+// GetByCodes retrieves countries by their codes
+func (s *countryService) GetByCodes(ctx context.Context, codes []string) (*dtos.CountryListResponse, error) {
+	if len(codes) == 0 {
+		return &dtos.CountryListResponse{
+			Success: true,
+			Message: "No countries found",
+			Data:    []dtos.CountryResponse{},
+			Pagination: dtos.PaginationResponse{
+				Offset:      0,
+				Limit:       0,
+				Total:       0,
+				HasNext:     false,
+				HasPrevious: false,
+			},
+		}, nil
+	}
+
+	// Normalize and validate codes
+	normalizedCodes := make([]string, 0, len(codes))
+	for _, code := range codes {
+		code = strings.ToLower(strings.TrimSpace(code))
+		if code != "" && len(code) >= 2 && len(code) <= 3 {
+			normalizedCodes = append(normalizedCodes, code)
+		}
+	}
+
+	if len(normalizedCodes) == 0 {
+		return &dtos.CountryListResponse{
+			Success: true,
+			Message: "No valid country codes provided",
+			Data:    []dtos.CountryResponse{},
+			Pagination: dtos.PaginationResponse{
+				Offset:      0,
+				Limit:       0,
+				Total:       0,
+				HasNext:     false,
+				HasPrevious: false,
+			},
+		}, nil
+	}
+
+	countries, err := s.repo.GetByCodes(ctx, normalizedCodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get countries by codes: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: "Countries retrieved successfully",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
+		},
+	}, nil
+}
+
 // GetAll retrieves all countries with pagination
 func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest) (*dtos.CountryListResponse, error) {
 	if req == nil {
@@ -114,6 +182,34 @@ func (s *countryService) GetAll(ctx context.Context, req *dtos.PaginationRequest
 			Total:       total,
 			HasNext:     hasNext,
 			HasPrevious: hasPrevious,
+		},
+	}, nil
+}
+// GetAllWithoutPagination retrieves all countries without pagination limits
+func (s *countryService) GetAllWithoutPagination(ctx context.Context) (*dtos.CountryListResponse, error) {
+	countries, err := s.repo.GetAllWithoutPagination(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all countries: %w", err)
+	}
+
+	// Convert models to response DTOs
+	responses := make([]dtos.CountryResponse, len(countries))
+	for i, country := range countries {
+		if response := CountryToResponse(&country); response != nil {
+			responses[i] = *response
+		}
+	}
+
+	return &dtos.CountryListResponse{
+		Success: true,
+		Message: "All countries retrieved successfully",
+		Data:    responses,
+		Pagination: dtos.PaginationResponse{
+			Offset:      0,
+			Limit:       len(responses),
+			Total:       int64(len(responses)),
+			HasNext:     false,
+			HasPrevious: false,
 		},
 	}, nil
 }

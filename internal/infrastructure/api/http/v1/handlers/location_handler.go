@@ -182,13 +182,42 @@ func (h *LocationHandler) GetCountryByCode(c *fiber.Ctx) error {
 	return c.JSON(country)
 }
 
-// GetAllCountries retrieves all countries with pagination
+// GetAllCountries retrieves all countries with pagination or by codes
 func (h *LocationHandler) GetAllCountries(c *fiber.Ctx) error {
+	// Check if codes parameter is provided
+	codesParam := c.Query("codes")
+	if codesParam != "" {
+		// Parse comma-separated codes
+		codes := strings.Split(codesParam, ",")
+		// Trim whitespace from each code
+		for i, code := range codes {
+			codes[i] = strings.TrimSpace(code)
+		}
+		
+		countries, err := h.locationService.Countries().GetByCodes(c.Context(), codes)
+		if err != nil {
+			return h.handleError(c, err, "GetAllCountries")
+		}
+		
+		return c.JSON(countries)
+	}
+
+	// Default behavior: get all countries with pagination
 	pagination := h.parsePagination(c)
 
 	countries, err := h.locationService.Countries().GetAll(c.Context(), pagination)
 	if err != nil {
 		return h.handleError(c, err, "GetAllCountries")
+	}
+
+	return c.JSON(countries)
+}
+
+// GetAllCountriesWithoutPagination retrieves all countries without pagination limits
+func (h *LocationHandler) GetAllCountriesWithoutPagination(c *fiber.Ctx) error {
+	countries, err := h.locationService.Countries().GetAllWithoutPagination(c.Context())
+	if err != nil {
+		return h.handleError(c, err, "GetAllCountriesWithoutPagination")
 	}
 
 	return c.JSON(countries)

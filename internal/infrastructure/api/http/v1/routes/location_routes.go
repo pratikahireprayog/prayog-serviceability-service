@@ -26,6 +26,7 @@ func RegisterLocationRoutes(router fiber.Router, handler *handlers.LocationHandl
 	countries := router.Group("/countries")
 	{
 		countries.Get("/", handler.GetAllCountries)
+		countries.Get("/all", handler.GetAllCountriesWithoutPagination)
 		countries.Post("/",
 			validationMiddleware.ValidateBody(&dtos.CreateCountryRequest{}),
 			handler.CreateCountry)
