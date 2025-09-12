@@ -2,9 +2,11 @@ package shipyaari
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 
+	"github.com/sirupsen/logrus"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
@@ -15,10 +17,11 @@ type ShipyaariAdapter struct {
 	*common.HTTPBaseAdapter
 	client *Client
 	config config.ShipyaariConfig
+	db     *sql.DB
 }
 
 // NewShipyaariAdapter creates a new Shipyaari adapter
-func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
+func NewShipyaariAdapter(cfg config.ShipyaariConfig, db *sql.DB) common.PartnerAdapter {
 	// Create partner config
 	partnerConfig := common.GetPartnerConfigDefaults("shipyaari", "Shipyaari", common.AdapterTypeHTTP)
 	partnerConfig.Timeout = cfg.Timeout
@@ -57,6 +60,7 @@ func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
 		HTTPBaseAdapter: baseAdapter,
 		client:          client,
 		config:          cfg,
+		db:              db,
 	}
 
 	return adapter
@@ -64,6 +68,27 @@ func NewShipyaariAdapter(cfg config.ShipyaariConfig) common.PartnerAdapter {
 
 // CheckServiceability checks serviceability for the request
 func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+	// Mandatory DB precheck against common_pincodes: require first_mile for source and last_mile for destination
+	if s.db == nil {
+		logrus.WithFields(logrus.Fields{
+			"component": "shipyaari_adapter",
+			"stage":     "db_precheck",
+		}).Info("DB handle is nil; excluding Shipyaari due to mandatory DB precheck")
+		return nil, nil
+	}
+	ok, err := s.checkPincodeCapabilities(ctx, request)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"component": "shipyaari_adapter",
+			"stage":     "db_precheck",
+			"error":     err,
+		}).Info("DB precheck failed; excluding Shipyaari")
+		return nil, nil
+	}
+	if !ok {
+		// Not serviceable per DB → exclude Shipyaari
+		return nil, nil
+	}
 	// Basic validation
 	// Ensure defaults for missing package details before validating
 	cp := *request
@@ -112,6 +137,85 @@ func (s *ShipyaariAdapter) CheckServiceability(ctx context.Context, request *mod
 	// Convert response and return
 	// The orchestrator will set PartnerCode and PartnerName from database
 	return s.transformResponse(response, partnerInfo), nil
+}
+
+// checkPincodeCapabilities verifies first_mile for source pincode and last_mile for destination pincode in public.common_pincodes
+func (s *ShipyaariAdapter) checkPincodeCapabilities(ctx context.Context, req *models.ServiceabilityV2Request) (bool, error) {
+    source := getSourcePincode(req)
+    dest := getDestinationPincode(req)
+    if source == "" || dest == "" {
+        return false, fmt.Errorf("source and destination pincodes are required for Shipyaari DB precheck")
+    }
+
+    // Debug: log the pincodes being checked
+    logrus.WithFields(logrus.Fields{
+        "component":   "shipyaari_adapter",
+        "stage":       "db_precheck",
+        "source":      source,
+        "destination": dest,
+    }).Info("Checking pincodes in common_pincodes")
+
+    // Source: first_mile must be true
+    var srcFirstMile sql.NullBool
+    if err := s.db.QueryRowContext(ctx, "SELECT first_mile FROM public.common_pincodes WHERE pincode = $1", source).Scan(&srcFirstMile); err != nil {
+        if err == sql.ErrNoRows {
+            logrus.WithFields(logrus.Fields{
+                "component": "shipyaari_adapter",
+                "stage":     "db_precheck",
+                "pincode":   source,
+            }).Info("Source pincode not found in common_pincodes")
+            return false, nil
+        }
+        logrus.WithFields(logrus.Fields{
+            "component": "shipyaari_adapter",
+            "stage":     "db_precheck",
+            "pincode":   source,
+            "error":     err,
+        }).Info("Error querying source pincode")
+        return false, fmt.Errorf("failed to query source pincode: %w", err)
+    }
+    logrus.WithFields(logrus.Fields{
+        "component":  "shipyaari_adapter",
+        "stage":      "db_precheck",
+        "pincode":    source,
+        "first_mile": srcFirstMile.Bool,
+        "valid":      srcFirstMile.Valid,
+    }).Info("Source first_mile fetched")
+
+    // Destination: last_mile must be true
+    var dstLastMile sql.NullBool
+    if err := s.db.QueryRowContext(ctx, "SELECT last_mile FROM public.common_pincodes WHERE pincode = $1", dest).Scan(&dstLastMile); err != nil {
+        if err == sql.ErrNoRows {
+            logrus.WithFields(logrus.Fields{
+                "component": "shipyaari_adapter",
+                "stage":     "db_precheck",
+                "pincode":   dest,
+            }).Info("Destination pincode not found in common_pincodes")
+            return false, nil
+        }
+        logrus.WithFields(logrus.Fields{
+            "component": "shipyaari_adapter",
+            "stage":     "db_precheck",
+            "pincode":   dest,
+            "error":     err,
+        }).Info("Error querying destination pincode")
+        return false, fmt.Errorf("failed to query destination pincode: %w", err)
+    }
+    logrus.WithFields(logrus.Fields{
+        "component":  "shipyaari_adapter",
+        "stage":      "db_precheck",
+        "pincode":    dest,
+        "last_mile":  dstLastMile.Bool,
+        "valid":      dstLastMile.Valid,
+    }).Info("Destination last_mile fetched")
+
+    decision := srcFirstMile.Valid && srcFirstMile.Bool && dstLastMile.Valid && dstLastMile.Bool
+    logrus.WithFields(logrus.Fields{
+        "component":      "shipyaari_adapter",
+        "stage":          "db_precheck",
+        "is_serviceable": decision,
+    }).Info("DB precheck decision")
+    return decision, nil
 }
 
 // Initialize performs any necessary initialization
@@ -234,10 +338,12 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 	destPincode := getDestinationPincode(req)
 
     // Debug: log the raw string pincodes before conversion
-    if s.GetMetrics() != nil { // lightweight guard to avoid adding a logger dependency
-        // Using fmt.Printf to avoid logger dep; acceptable for debug visibility
-        fmt.Printf("[shipyaari] transformRequest pincodes (str) - source: %s, destination: %s\n", sourcePincode, destPincode)
-    }
+    logrus.WithFields(logrus.Fields{
+        "component":   "shipyaari_adapter",
+        "stage":       "transform_request",
+        "source":      sourcePincode,
+        "destination": destPincode,
+    }).Info("Shipyaari transformRequest pincodes (str)")
 
 	// Validate pincodes are not empty
 	if sourcePincode == "" {
@@ -259,9 +365,12 @@ func (s *ShipyaariAdapter) transformRequest(req *models.ServiceabilityV2Request)
 	}
 
     // Debug: log the converted integer pincodes
-    if s.GetMetrics() != nil {
-        fmt.Printf("[shipyaari] transformRequest pincodes (int) - pickup: %d, delivery: %d\n", pickupPincode, deliveryPincode)
-    }
+    logrus.WithFields(logrus.Fields{
+        "component": "shipyaari_adapter",
+        "stage":     "transform_request",
+        "pickup":    pickupPincode,
+        "delivery":  deliveryPincode,
+    }).Info("Shipyaari transformRequest pincodes (int)")
 
     shipyaariReq := &ServiceabilityRequest{
 		PickupPincode:   pickupPincode,
@@ -292,7 +401,7 @@ func (s *ShipyaariAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	//     "partner_name": "XPRESSBEES",
 	//     "service_mode": "SURFACE",
 	//     "applied_weight": 1,
-	//     "invoice_value": 10,
+	//     "invoice value": 10,
 	//     "collectable_amount": 0,
 	//     "insurance": 0,
 	//     "base": 10,

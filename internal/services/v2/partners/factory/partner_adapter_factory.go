@@ -259,9 +259,9 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 		"delcaper_enabled": f.config.Delcaper.Enabled,
 	}).Info("Delcaper configuration status")
 	
-	// Initialize Shipyaari adapter with real implementation
+	// Initialize Shipyaari adapter with DB precheck implementation
 	if f.config.Shipyaari.Enabled {
-		f.implementations["shipyaari"] = shipyaari.NewShipyaariAdapter(f.config.Shipyaari)
+		f.implementations["shipyaari"] = shipyaari.NewShipyaariAdapter(f.config.Shipyaari, f.db)
 		f.logger.WithFields(logrus.Fields{
 			"component": "partner_adapter_factory",
 			"adapter":   "shipyaari",
