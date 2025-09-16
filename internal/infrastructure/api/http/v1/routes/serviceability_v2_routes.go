@@ -16,4 +16,8 @@ func RegisterServiceabilityV2Routes(router fiber.Router, handler *handlers.Servi
 
 	// GET /health - V2 health check
 	router.Get("/health", handler.GetHealthV2)
+
+	// Public simplified endpoint group
+	publicGroup := router.Group("/public")
+	publicGroup.Post("/check", handler.CheckServiceabilityPublic)
 }

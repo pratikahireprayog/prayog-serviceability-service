@@ -27,6 +27,7 @@ type PartnerAdaptersConfig struct {
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
+	UniUni       UniUniConfig       `yaml:"uniuni" json:"uniuni"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -133,6 +134,20 @@ type PorterConfig struct {
 	Timeout     time.Duration `yaml:"timeout" json:"timeout"`
 	MaxRetries  int           `yaml:"max_retries" json:"max_retries"`
 	RetryDelay  time.Duration `yaml:"retry_delay" json:"retry_delay"`
+}
+
+// UniUniConfig configuration for UniUni partner adapter (HTTP-based)
+type UniUniConfig struct {
+    TokenBaseURL string        `yaml:"token_base_url" json:"token_base_url"`
+    APIBaseURL   string        `yaml:"api_base_url" json:"api_base_url"`
+    Timeout      time.Duration `yaml:"timeout" json:"timeout"`
+    MaxRetries   int           `yaml:"max_retries" json:"max_retries"`
+    RetryDelay   time.Duration `yaml:"retry_delay" json:"retry_delay"`
+    Enabled      bool          `yaml:"enabled" json:"enabled"`
+    Rating       float64       `yaml:"rating" json:"rating"`
+    GrantType    string        `yaml:"grant_type" json:"grant_type"`
+    ClientID     string        `yaml:"client_id" json:"client_id"`
+    ClientSecret string        `yaml:"client_secret" json:"client_secret"`
 }
 
 // PartnerServiceConfig holds configuration for Partner Service integration
@@ -377,6 +392,18 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Timeout:    getEnvAsDurationOrDefault("PORTER_TIMEOUT", 30*time.Second),
 			MaxRetries: getEnvAsIntOrDefault("PORTER_MAX_RETRIES", 3),
 			RetryDelay: getEnvAsDurationOrDefault("PORTER_RETRY_DELAY", 1*time.Second),
+		},
+		UniUni: UniUniConfig{
+			TokenBaseURL: getEnvOrDefault("UNIUNI_TOKEN_BASE_URL", "https://prm-api.uniuni.com"),
+			APIBaseURL:   getEnvOrDefault("UNIUNI_API_BASE_URL", "https://prm-api.qa.uniuni.com"),
+			Timeout:      getEnvAsDurationOrDefault("UNIUNI_TIMEOUT", 30*time.Second),
+			MaxRetries:   getEnvAsIntOrDefault("UNIUNI_MAX_RETRIES", 2),
+			RetryDelay:   getEnvAsDurationOrDefault("UNIUNI_RETRY_DELAY", 1*time.Second),
+			Enabled:      getEnvAsBoolOrDefault("UNIUNI_ENABLED", true),
+			Rating:       4.1,
+			GrantType:    getEnvOrDefault("UNIUNI_GRANT_TYPE", "client_credentials"),
+			ClientID:     getEnvOrDefault("UNIUNI_CLIENT_ID", "100552"),
+			ClientSecret: getEnvOrDefault("UNIUNI_CLIENT_SECRET", "acad964f336dff02415362087539c9f2"),
 		},
 	}
 

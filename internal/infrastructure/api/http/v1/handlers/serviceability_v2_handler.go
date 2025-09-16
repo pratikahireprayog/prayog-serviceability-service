@@ -39,6 +39,43 @@ func NewServiceabilityV2Handler(
 	}
 }
 
+// CheckServiceabilityPublic handles POST /public/check (V2 simplified boolean check)
+// It accepts the same payload as POST /serviceability/v2/check and returns a minimal JSON.
+func (h *ServiceabilityV2Handler) CheckServiceabilityPublic(c *fiber.Ctx) error {
+    h.logger.Debug("V2 public serviceability check requested")
+
+    type publicResp struct {
+        Success       bool `json:"success"`
+        IsServiceable bool `json:"is_serviceable"`
+    }
+
+    var request modelsv1.ServiceabilityV2Request
+    if err := c.BodyParser(&request); err != nil {
+        h.logger.WithError(err).Error("Failed to parse request body for public check")
+        return h.errorHandler.HandleParsingError(c, err)
+    }
+
+    if err := h.validator.Struct(&request); err != nil {
+        h.logger.WithError(err).Error("Request validation failed for public check")
+        return h.errorHandler.HandleValidationError(c, err)
+    }
+
+    response, err := h.v2Orchestrator.CheckServiceability(c.Context(), &request)
+    if err != nil {
+        if serviceErr, ok := err.(*errors.ServiceError); ok {
+            return c.Status(serviceErr.HTTPStatus).JSON(publicResp{Success: false, IsServiceable: false})
+        }
+        return c.Status(fiber.StatusOK).JSON(publicResp{Success: false, IsServiceable: false})
+    }
+
+    isServiceable := false
+    if response != nil {
+        isServiceable = response.Success
+    }
+
+    return c.Status(fiber.StatusOK).JSON(publicResp{Success: true, IsServiceable: isServiceable})
+}
+
 // CheckServiceability handles POST /check (V2 single serviceability check)
 func (h *ServiceabilityV2Handler) CheckServiceability(c *fiber.Ctx) error {
 	h.logger.Debug("V2 single serviceability check requested")

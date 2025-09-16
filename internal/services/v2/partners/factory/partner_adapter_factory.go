@@ -18,6 +18,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
+	"prayog-serviceability-service/internal/services/v2/partners/uniuni"
 	"prayog-serviceability-service/internal/shared/config"
 )
 
@@ -344,6 +345,20 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "porter",
 		}).Warn("Porter adapter not enabled in config")
+	}
+
+	// Initialize UniUni adapter
+	if f.config.UniUni.Enabled {
+		f.implementations["uniuni"] = uniuni.NewAdapter(f.config.UniUni)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "uniuni",
+		}).Info("Initialized uniuni adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "uniuni",
+		}).Warn("UniUni adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{

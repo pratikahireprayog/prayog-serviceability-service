@@ -215,6 +215,9 @@ func (s *Server) setupRoutes() error {
 		} else {
 			// Register V2 serviceability routes under /serviceability/v2/
 			routes.RegisterServiceabilityV2Routes(v2, v2ServiceabilityHandler)
+
+			// Register UniUni routes under /serviceability/v2/uniuni
+			routes.RegisterUniUniRoutes(v2, s.config.Integration.PartnerAdapters.UniUni)
 		}
 
 		// Add a status route for the V2 serviceability service
