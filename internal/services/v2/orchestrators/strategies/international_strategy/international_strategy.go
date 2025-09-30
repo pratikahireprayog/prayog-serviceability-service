@@ -4,26 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
-    "os"
-    "strings"
+
+	"prayog-serviceability-service/internal/services/v2/partners/common"
+	"prayog-serviceability-service/internal/services/v2/partners/dhl"
+	"prayog-serviceability-service/internal/services/v2/partners/factory"
+	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
 
 	"github.com/sirupsen/logrus"
-	"prayog-serviceability-service/internal/services/v2/partners/common"
-	"prayog-serviceability-service/internal/services/v2/partners/factory"
-	"prayog-serviceability-service/internal/services/v2/partners/dhl"
-	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
 )
 
-// InternationalStrategy orchestrates international flow using HubOps by-pincode → DHL
-// Steps:
-// 1) Call HubOps by-pincode with source postal code
-// 2) Build addresses[0] from nearestInternationalHub
-// 3) Call DHL with source = nearestInternationalHub.pincode, destination = request destination
-// 4) Return response with DHL partner (if serviceable) and addresses
+// InternationalStrategy orchestrates international flow using HubOps by-pincode → DHL & Aramex
 type InternationalStrategy struct {
 	PartnerFactory factory.PartnerAdapterFactory
 	Logger         *logrus.Logger
@@ -55,19 +51,15 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 	sourceCountryCode := "IN"  // Default to India
 	destinationCountryCode := "US"  // Default to USA
 
-	// Use the new explicit source_country_code field if available
 	if req.SourceCountryCode != nil && *req.SourceCountryCode != "" {
 		sourceCountryCode = strings.ToUpper(*req.SourceCountryCode)
 	} else if req.CountryCode != nil && *req.CountryCode != "" {
-		// Fallback to generic country_code for source
 		sourceCountryCode = strings.ToUpper(*req.CountryCode)
 	}
 
-	// Use the new explicit destination_country_code field if available
 	if req.DestinationCountryCode != nil && *req.DestinationCountryCode != "" {
 		destinationCountryCode = strings.ToUpper(*req.DestinationCountryCode)
 	} else if req.CountryCode != nil && *req.CountryCode != "" {
-		// Fallback to generic country_code for destination
 		destinationCountryCode = strings.ToUpper(*req.CountryCode)
 	}
 
@@ -87,23 +79,16 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		addresses = []modelsv1.DetailedAddress{addr}
 	}
 
-	// 3) Call DHL with adjusted source pincode when available
+	// 3) Call DHL & Aramex with adjusted source pincode when available
 	partners := make([]modelsv1.PartnerV2Response, 0)
 	
-	// Direct DHL rates API call in strategy
-	// DHL base URL from .env with fallback to hardcoded
-	baseURL := os.Getenv("DHL_BASE_URL")
-	if baseURL == "" {
-		baseURL = ""
-	}
-	
-	// Build DHL request - Use HubOps nearestInternationalHub for SOURCE only
+	// Determine source and destination pincodes for carrier calls
 	srcPin := sourcePin
 	dstPin := sourcePin  // Default to source pincode
 		
 	// Extract pincode and city from nearestInternationalHub
 	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.Pincode != nil {
-		// Use nearestInternationalHub pincode for SOURCE only in DHL
+		// Use nearestInternationalHub pincode for SOURCE only in carriers
 		hubPincode := fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
 		srcPin = hubPincode  // ← HubOps pincode as SOURCE
 		
@@ -118,22 +103,52 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 			"component": "international_strategy",
 			"original_source_pin": sourcePin,
 			"hub_pincode": hubPincode,
-			"dhl_source_pin": srcPin,        // ← HubOps pincode
-			"dhl_destination_pin": dstPin,   // ← Request destination_postal_code
-		}).Info("Using HubOps pincode as source, request destination as destination for DHL")
+			"carrier_source_pin": srcPin,        // ← HubOps pincode
+			"carrier_destination_pin": dstPin,   // ← Request destination_postal_code
+		}).Info("Using HubOps pincode as source, request destination as destination for carriers")
 	}
 	
 	// Use the resolved country codes
-	dstCC := destinationCountryCode  // Use the resolved destination country code
+	dstCC := destinationCountryCode
 	shipperCity := "Unknown City"
 	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" { 
 		shipperCity = *hubResp.NearestInternationalHub.City 
 	}
 	receiverCity := "Unknown City"
 
+	// Call DHL (existing code)
+	dhlPartner := s.callDHL(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	if dhlPartner.PartnerCode != "" {
+		partners = append(partners, dhlPartner)
+	}
+
+	// Call Aramex using the existing adapter (new code)
+	aramexPartner := s.callAramexViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	if aramexPartner.PartnerCode != "" {
+		partners = append(partners, aramexPartner)
+	}
+
+	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
+		Success:  len(partners) > 0,
+		Partners: partners,
+	}
+	if len(addresses) > 0 {
+		serviceabilityResp.Addresses = addresses
+	}
+	return serviceabilityResp, nil
+}
+
+// callDHL - extracted existing DHL call into separate function
+func (s *InternationalStrategy) callDHL(ctx context.Context, req *modelsv1.ServiceabilityV2Request, srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string) modelsv1.PartnerV2Response {
+	// DHL base URL from .env with fallback to hardcoded
+	baseURL := os.Getenv("DHL_BASE_URL")
+	if baseURL == "" {
+		baseURL = ""
+	}
+	
 	dhlReq := dhl.RatesRequest{
 		CustomerDetails: dhl.CustomerDetails{
-			ShipperDetails: dhl.ShipperDetails{ PostalCode: srcPin, CityName: shipperCity, CountryCode: sourceCountryCode },
+			ShipperDetails: dhl.ShipperDetails{ PostalCode: srcPin, CityName: shipperCity, CountryCode: srcCC },
 			ReceiverDetails: dhl.ReceiverDetails{ PostalCode: dstPin, CityName: receiverCity, CountryCode: dstCC },
 		},
 		Accounts: []dhl.Account{{ TypeCode: "shipper", Number: "533748932" }},
@@ -158,7 +173,7 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		"destination_pincode": dstPin,
 		"source_city": shipperCity,
 		"destination_city": receiverCity,
-		"source_country": sourceCountryCode,
+		"source_country": srcCC,
 		"destination_country": dstCC,
 		"weight": defaultWeight(req),
 		"dimensions": fmt.Sprintf("%.2fx%.2fx%.2f", defaultLen(req), defaultWid(req), defaultHei(req)),
@@ -189,42 +204,114 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 	dhlResp, doErr := client.Do(reqHTTP)
 	if doErr != nil {
 		s.Logger.WithError(doErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("DHL HTTP call failed")
-	} else {
-		defer dhlResp.Body.Close()
-		var rates dhl.RatesResponse
-		if dhlResp.StatusCode == http.StatusOK {
-			if decErr := json.NewDecoder(dhlResp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
-				cap := map[string]interface{}{}
-				prod := rates.Products[0]
-				cap["total_transit_days"] = prod.DeliveryCapabilities.TotalTransitDays
-				cap["estimated_delivery_date_and_time"] = prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime
-				p := modelsv1.PartnerV2Response{
-					PartnerID:   "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
-					PartnerCode: "dhl",
-					Rating:      0,
-					Capabilities: cap,
-					Metadata:    map[string]interface{}{"source_country_code":sourceCountryCode,"destination_country_code":dstCC},
-				}
-				partners = append(partners, p)
-			} else if decErr != nil {
-				s.Logger.WithError(decErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("Failed to decode DHL response")
+		return modelsv1.PartnerV2Response{}
+	}
+	defer dhlResp.Body.Close()
+	var rates dhl.RatesResponse
+	if dhlResp.StatusCode == http.StatusOK {
+		if decErr := json.NewDecoder(dhlResp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
+			cap := map[string]interface{}{}
+			prod := rates.Products[0]
+			cap["total_transit_days"] = prod.DeliveryCapabilities.TotalTransitDays
+			cap["estimated_delivery_date_and_time"] = prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime
+			return modelsv1.PartnerV2Response{
+				PartnerID:   "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
+				PartnerCode: "dhl",
+				Rating:      0,
+				Capabilities: cap,
+				Metadata:    map[string]interface{}{"source_country_code":srcCC,"destination_country_code":dstCC},
 			}
-		} else {
-			b, _ := io.ReadAll(dhlResp.Body)
-			s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl","status":dhlResp.StatusCode,"body":string(b)}).Warn("DHL returned non-200")
+		} else if decErr != nil {
+			s.Logger.WithError(decErr).WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl"}).Warn("Failed to decode DHL response")
 		}
+	} else {
+		b, _ := io.ReadAll(dhlResp.Body)
+		s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"dhl","status":dhlResp.StatusCode,"body":string(b)}).Warn("DHL returned non-200")
 	}
-
-	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
-		Success:  len(partners) > 0,
-		Partners: partners,
-	}
-	if len(addresses) > 0 {
-		serviceabilityResp.Addresses = addresses
-	}
-	return serviceabilityResp, nil
+	
+	return modelsv1.PartnerV2Response{}
 }
 
+// callAramexViaAdapter - uses existing Aramex adapter for serviceability check
+func (s *InternationalStrategy) callAramexViaAdapter(ctx context.Context, req *modelsv1.ServiceabilityV2Request, srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string) modelsv1.PartnerV2Response {
+    // Get Aramex adapter from factory - returns (adapter, found)
+    aramexAdapter, adapterFound := s.PartnerFactory.GetAdapter("aramex")
+    
+    s.Logger.WithFields(logrus.Fields{
+        "adapterFound": adapterFound,
+        "adapterNil":   aramexAdapter == nil,
+    }).Info("Aramex adapter lookup result")
+    
+    if !adapterFound {
+        s.Logger.WithFields(logrus.Fields{
+            "component": "international_strategy",
+            "partner":   "aramex",
+        }).Warn("Aramex adapter not found in factory")
+        return modelsv1.PartnerV2Response{}
+    }
+    
+    if aramexAdapter == nil {
+        s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"aramex"}).Warn("Aramex adapter is nil")
+        return modelsv1.PartnerV2Response{}
+    }
+
+    // Prepare request for Aramex adapter
+    aramexReq := &modelsv1.ServiceabilityV2Request{
+        SourcePostalCode:       &srcPin,
+        DestinationPostalCode:  &dstPin,
+        SourceCountryCode:      &srcCC,
+        DestinationCountryCode: &dstCC,
+        Packages:               req.Packages,
+        PostalCode:             req.PostalCode,
+        CountryCode:            req.CountryCode,
+    }
+
+    partnerInfo := common.PartnerInfo{
+        PartnerCode: "aramex",
+    }
+
+    s.Logger.WithFields(logrus.Fields{
+        "component":           "international_strategy",
+        "partner":             "aramex", 
+        "action":              "aramex_serviceability_check",
+        "source_pincode":      srcPin,
+        "destination_pincode": dstPin,
+        "source_country":      srcCC,
+        "destination_country": dstCC,
+        "request":             aramexReq, // Log the actual request
+    }).Info("Calling Aramex adapter for serviceability")
+
+    // Call Aramex adapter
+    result, serviceabilityErr := aramexAdapter.CheckServiceability(ctx, aramexReq, partnerInfo)
+    s.Logger.WithFields(logrus.Fields{
+        "resultReceived": result != nil,
+        "hasError":       serviceabilityErr != nil,
+    }).Info("Aramex adapter CheckServiceability completed")
+
+    if serviceabilityErr != nil {
+        s.Logger.WithError(serviceabilityErr).WithFields(logrus.Fields{
+            "component": "international_strategy",
+            "partner":   "aramex",
+        }).Warn("Aramex adapter call failed")
+        return modelsv1.PartnerV2Response{}
+    }
+
+    // Use the special Aramex converter
+    partnerResp := s.convertAramexResult(result, srcCC, dstCC)
+    
+    if partnerResp.PartnerCode != "" {
+        s.Logger.WithFields(logrus.Fields{
+            "servicesCount": len(partnerResp.Services),
+            "serviceable":   len(partnerResp.Services) > 0,
+        }).Info("Successfully created Aramex partner response")
+        return partnerResp
+    }
+
+    s.Logger.Warn("Failed to create Aramex partner response")
+    return modelsv1.PartnerV2Response{}
+}
+
+// [Rest of the file remains exactly the same - all existing HubOps, helper functions, etc.]
 // HubOps API integration
 var hubOpsURL = func() string {
 	if url := os.Getenv("SMILE_HUBOPS_BY_SOURCE_PINCODE"); url != "" {
@@ -393,5 +480,74 @@ func defaultHei(req *modelsv1.ServiceabilityV2Request) float64 {
     return 10
 }
 
+// convertAramexResult - special handler for Aramex responses
+func (s *InternationalStrategy) convertAramexResult(res *common.PartnerServiceabilityResult, srcCC, dstCC string) modelsv1.PartnerV2Response {
+	if res == nil {
+		return modelsv1.PartnerV2Response{}
+	}
 
+	// Check if serviceable from metadata
+	isServiceable := false
+	if res.Metadata != nil {
+		if serviceable, ok := res.Metadata["is_serviceable"].(bool); ok {
+			isServiceable = serviceable
+		}
+	}
 
+	// Create capabilities based on metadata
+	capabilities := make(map[string]interface{})
+	if res.Metadata != nil {
+		// Copy relevant metadata to capabilities
+		if transitDays, ok := res.Metadata["total_transit_days"]; ok {
+			capabilities["total_transit_days"] = transitDays
+		}
+		if deliveryDate, ok := res.Metadata["estimated_delivery_date_and_time"]; ok {
+			capabilities["estimated_delivery_date_and_time"] = deliveryDate
+		}
+	}
+
+	// Create services if serviceable
+	var services []modelsv1.ServiceV2
+	if isServiceable {
+		service := modelsv1.ServiceV2{
+			ServiceName: "Aramex International Express",
+			TATDays:     3, // Default for international
+			Pickup:      true,
+			Delivery:    true,
+			Insurance:   true,
+			ProductTypes: map[string]bool{
+				"document":     true,
+				"non_document": true,
+				"commercial":   true,
+			},
+			DeliveryModes: map[string]bool{
+				"express":  true,
+				"standard": false,
+			},
+		}
+		services = []modelsv1.ServiceV2{service}
+	}
+
+	partnerID := "unknown"
+	if res.PartnerID != nil {
+		partnerID = res.PartnerID.String()
+	}
+
+	return modelsv1.PartnerV2Response{
+		PartnerID:       partnerID,
+		PartnerCode:     "aramex",
+		PartnerName:     "Aramex",
+		Rating:          0,
+		Services:        services,
+		PartnerServices: res.PartnerServices,
+		Capabilities:    capabilities,
+		Error:           res.ErrorMessage,
+		ResponseTime:    res.ResponseTime,
+		Metadata: map[string]interface{}{
+			"source_country_code":      srcCC,
+			"destination_country_code": dstCC,
+			"flow":                     "international",
+			"aramex_metadata":          res.Metadata,
+		},
+	}
+}

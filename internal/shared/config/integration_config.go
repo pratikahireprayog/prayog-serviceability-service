@@ -27,6 +27,7 @@ type PartnerAdaptersConfig struct {
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
+	Aramex       AramexConfig       `yaml:"aramex" json:"aramex"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -81,6 +82,24 @@ type DHLConfig struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled"`
 	Rating        float64       `yaml:"rating" json:"rating"`
 	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
+}
+
+// AramexConfig configuration for Aramex partner adapter (international shipping)
+type AramexConfig struct {
+	Enabled            bool          `yaml:"enabled" json:"enabled"`
+	BaseURL            string        `yaml:"base_url" json:"base_url"`
+	Username           string        `yaml:"username" json:"username"`
+	Password           string        `yaml:"password" json:"password"`
+	AccountNumber      string        `yaml:"account_number" json:"account_number"`
+	AccountPin         string        `yaml:"account_pin" json:"account_pin"`
+	AccountEntity      string        `yaml:"account_entity" json:"account_entity"`
+	AccountCountryCode string        `yaml:"account_country_code" json:"account_country_code"`
+	Source             int           `yaml:"source" json:"source"`
+	Timeout            time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries         int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay         time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Rating             float64       `yaml:"rating" json:"rating"`
+	SandboxMode        bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
 }
 
 // SmileCargoConfig configuration for Smile Cargo partner adapter (cargo/freight)
@@ -334,6 +353,22 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:        4.7,
 			SandboxMode:   getEnvAsBoolOrDefault("DHL_SANDBOX_MODE", true),
 		},
+		Aramex: AramexConfig{
+			Enabled:            getEnvAsBoolOrDefault("ARAMEX_ENABLED", true),
+			BaseURL:            getEnvOrDefault("ARAMEX_BASE_URL", "https://ws.aramex.net"),
+			Username:           getEnvOrDefault("ARAMEX_USERNAME", "test.api@aramex.com"),
+			Password:           getEnvOrDefault("ARAMEX_PASSWORD", "Aramex@12345"),
+			AccountNumber:      getEnvOrDefault("ARAMEX_ACCOUNT_NUMBER", "60531487"),
+			AccountPin:         getEnvOrDefault("ARAMEX_ACCOUNT_PIN", "654654"),
+			AccountEntity:      getEnvOrDefault("ARAMEX_ACCOUNT_ENTITY", "BOM"),
+			AccountCountryCode: getEnvOrDefault("ARAMEX_ACCOUNT_COUNTRY_CODE", "IN"),
+			Source:             getEnvAsIntOrDefault("ARAMEX_SOURCE", 24),
+			Timeout:            getEnvAsDurationOrDefault("ARAMEX_TIMEOUT", 30*time.Second),
+			MaxRetries:         getEnvAsIntOrDefault("ARAMEX_MAX_RETRIES", 3),
+			RetryDelay:         getEnvAsDurationOrDefault("ARAMEX_RETRY_DELAY", 1*time.Second),
+			Rating:             4.3,
+			SandboxMode:        getEnvAsBoolOrDefault("ARAMEX_SANDBOX_MODE", true),
+		},
 		SmileCargo: SmileCargoConfig{
 			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),
 			APIKey:      getEnvOrDefault("SMILE_CARGO_API_KEY", ""),
@@ -349,7 +384,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			MinWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MIN_WEIGHT_KG", 25.0),   // 25kg minimum for cargo
 			MaxWeightKG: getEnvAsFloatOrDefault("SMILE_CARGO_MAX_WEIGHT_KG", 5000.0), // 5 ton maximum
 		},
-		Delcaper: DelcaperConfig{ 
+		Delcaper: DelcaperConfig{
 			BaseURL:           getEnvOrDefault("DELCAPER_BASE_URL", "https://apis.delcaper.com"),
 			Email:             getEnvOrDefault("DELCAPER_EMAIL", "atharva.bodke@shreemaruti.com"),
 			Password:          getEnvOrDefault("DELCAPER_PASSWORD", "Atharva@PRS2024"),
