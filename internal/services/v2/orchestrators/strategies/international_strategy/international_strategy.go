@@ -128,6 +128,12 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		partners = append(partners, aramexPartner)
 	}
 
+	// Call FedEx using the adapter
+	fedexPartner := s.callFedExViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	if fedexPartner.PartnerCode != "" {
+		partners = append(partners, fedexPartner)
+	}
+
 	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
 		Partners: partners,
@@ -311,6 +317,167 @@ func (s *InternationalStrategy) callAramexViaAdapter(ctx context.Context, req *m
     return modelsv1.PartnerV2Response{}
 }
 
+
+// callFedExViaAdapter - uses existing FedEx adapter for serviceability check
+func (s *InternationalStrategy) callFedExViaAdapter(ctx context.Context, req *modelsv1.ServiceabilityV2Request, srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string) modelsv1.PartnerV2Response {
+    // Get FedEx adapter from factory - returns (adapter, found)
+    fedexAdapter, adapterFound := s.PartnerFactory.GetAdapter("fedex")
+    
+    s.Logger.WithFields(logrus.Fields{
+        "adapterFound": adapterFound,
+        "adapterNil":   fedexAdapter == nil,
+    }).Info("FedEx adapter lookup result")
+    
+    if !adapterFound {
+        s.Logger.WithFields(logrus.Fields{
+            "component": "international_strategy",
+            "partner":   "fedex",
+        }).Warn("FedEx adapter not found in factory")
+        return modelsv1.PartnerV2Response{}
+    }
+    
+    if fedexAdapter == nil {
+        s.Logger.WithFields(logrus.Fields{"component":"international_strategy","partner":"fedex"}).Warn("FedEx adapter is nil")
+        return modelsv1.PartnerV2Response{}
+    }
+
+    // Prepare request for FedEx adapter
+    fedexReq := &modelsv1.ServiceabilityV2Request{
+        SourcePostalCode:       &srcPin,
+        DestinationPostalCode:  &dstPin,
+        SourceCountryCode:      &srcCC,
+        DestinationCountryCode: &dstCC,
+        Packages:               req.Packages,
+        PostalCode:             req.PostalCode,
+        CountryCode:            req.CountryCode,
+    }
+
+    partnerInfo := common.PartnerInfo{
+        PartnerCode: "fedex",
+    }
+
+    s.Logger.WithFields(logrus.Fields{
+        "component":           "international_strategy",
+        "partner":             "fedex", 
+        "action":              "fedex_serviceability_check",
+        "source_pincode":      srcPin,
+        "destination_pincode": dstPin,
+        "source_country":      srcCC,
+        "destination_country": dstCC,
+        "request":             fedexReq, // Log the actual request
+    }).Info("Calling FedEx adapter for serviceability")
+
+    // Call FedEx adapter
+    result, serviceabilityErr := fedexAdapter.CheckServiceability(ctx, fedexReq, partnerInfo)
+    s.Logger.WithFields(logrus.Fields{
+        "resultReceived": result != nil,
+        "hasError":       serviceabilityErr != nil,
+    }).Info("FedEx adapter CheckServiceability completed")
+
+    if serviceabilityErr != nil {
+        s.Logger.WithError(serviceabilityErr).WithFields(logrus.Fields{
+            "component": "international_strategy",
+            "partner":   "fedex",
+        }).Warn("FedEx adapter call failed")
+        return modelsv1.PartnerV2Response{}
+    }
+
+    // Use the special FedEx converter
+    partnerResp := s.convertFedExResult(result, srcCC, dstCC)
+    
+    if partnerResp.PartnerCode != "" {
+        s.Logger.WithFields(logrus.Fields{
+            "servicesCount": len(partnerResp.Services),
+            "serviceable":   len(partnerResp.Services) > 0,
+        }).Info("Successfully created FedEx partner response")
+        return partnerResp
+    }
+
+
+    s.Logger.Warn("Failed to create FedEx partner response")
+    return modelsv1.PartnerV2Response{}
+}
+
+// convertFedExResult - special handler for FedEx responses
+func (s *InternationalStrategy) convertFedExResult(res *common.PartnerServiceabilityResult, srcCC, dstCC string) modelsv1.PartnerV2Response {
+    if res == nil {
+        return modelsv1.PartnerV2Response{}
+    }
+
+    // Check if serviceable from metadata or services
+    isServiceable := len(res.Services) > 0
+    if res.Metadata != nil {
+        if serviceable, ok := res.Metadata["is_serviceable"].(bool); ok {
+            isServiceable = serviceable
+        }
+    }
+
+    // Create capabilities based on metadata
+    capabilities := make(map[string]interface{})
+    if res.Metadata != nil {
+        // Copy relevant metadata to capabilities
+        if transitDays, ok := res.Metadata["transit_days"]; ok {
+            capabilities["total_transit_days"] = transitDays
+        }
+        if deliveryDate, ok := res.Metadata["estimated_delivery_date"]; ok {
+            capabilities["estimated_delivery_date_and_time"] = deliveryDate
+        }
+        if availableServices, ok := res.Metadata["available_services_count"]; ok {
+            capabilities["available_services"] = availableServices
+        }
+    }
+
+    // Use existing services or create default ones if serviceable
+    var services []modelsv1.ServiceV2
+    if isServiceable {
+        if len(res.Services) > 0 {
+            // Use the services from the result
+            services = res.Services
+        } else {
+            // Create default service for FedEx
+            service := modelsv1.ServiceV2{
+                ServiceName: "FedEx International Express",
+                TATDays:     3, // Default for international
+                Pickup:      true,
+                Delivery:    true,
+                Insurance:   true,
+                ProductTypes: map[string]bool{
+                    "document":     true,
+                    "non_document": true,
+                    "commercial":   true,
+                },
+                DeliveryModes: map[string]bool{
+                    "express":  true,
+                    "standard": false,
+                },
+            }
+            services = []modelsv1.ServiceV2{service}
+        }
+    }
+
+    partnerID := "unknown"
+    if res.PartnerID != nil {
+        partnerID = res.PartnerID.String()
+    }
+
+    return modelsv1.PartnerV2Response{
+        PartnerID:       partnerID,
+        PartnerCode:     "fedex",
+        PartnerName:     "FedEx",
+        Rating:          0,
+        Services:        services,
+        PartnerServices: res.PartnerServices,
+        Capabilities:    capabilities,
+        Error:           res.ErrorMessage,
+        ResponseTime:    res.ResponseTime,
+        Metadata: map[string]interface{}{
+            "source_country_code":      srcCC,
+            "destination_country_code": dstCC,
+            "flow":                     "international",
+            "fedex_metadata":           res.Metadata,
+        },
+    }
+}
 // [Rest of the file remains exactly the same - all existing HubOps, helper functions, etc.]
 // HubOps API integration
 var hubOpsURL = func() string {
