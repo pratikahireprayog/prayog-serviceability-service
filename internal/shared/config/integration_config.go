@@ -28,6 +28,7 @@ type PartnerAdaptersConfig struct {
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
 	Aramex       AramexConfig       `yaml:"aramex" json:"aramex"`
+	FedEx        FedExConfig        `yaml:"fedex" json:"fedex"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -100,6 +101,19 @@ type AramexConfig struct {
 	RetryDelay         time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Rating             float64       `yaml:"rating" json:"rating"`
 	SandboxMode        bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
+}
+
+type FedExConfig struct {
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	BaseURL       string        `yaml:"base_url" json:"base_url"`
+	ClientID      string        `yaml:"client_id" json:"client_id"`
+	ClientSecret  string        `yaml:"client_secret" json:"client_secret"`
+	AccountNumber string        `yaml:"account_number" json:"account_number"`
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay    time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Rating        float64       `yaml:"rating" json:"rating"`
+	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
 }
 
 // SmileCargoConfig configuration for Smile Cargo partner adapter (cargo/freight)
@@ -369,6 +383,18 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:             4.3,
 			SandboxMode:        getEnvAsBoolOrDefault("ARAMEX_SANDBOX_MODE", true),
 		},
+		FedEx: FedExConfig{
+			Enabled:       getEnvAsBoolOrDefault("FEDEX_ENABLED", true),
+			BaseURL:       getEnvOrDefault("FEDEX_BASE_URL", "https://apis-sandbox.fedex.com"),
+			ClientID:      getEnvOrDefault("FEDEX_CLIENT_ID", ""),
+			ClientSecret:  getEnvOrDefault("FEDEX_CLIENT_SECRET", ""),
+			AccountNumber: getEnvOrDefault("FEDEX_ACCOUNT_NUMBER", "510087020"),
+			Timeout:       getEnvAsDurationOrDefault("FEDEX_TIMEOUT", 30*time.Second),
+			MaxRetries:    getEnvAsIntOrDefault("FEDEX_MAX_RETRIES", 3),
+			RetryDelay:    getEnvAsDurationOrDefault("FEDEX_RETRY_DELAY", 2*time.Second),
+			Rating:        4.6,
+			SandboxMode:   getEnvAsBoolOrDefault("FEDEX_SANDBOX_MODE", true),
+		},	
 		SmileCargo: SmileCargoConfig{
 			BaseURL:     getEnvOrDefault("SMILE_CARGO_BASE_URL", "https://qaapis.delcaper.com"),
 			APIKey:      getEnvOrDefault("SMILE_CARGO_API_KEY", ""),
