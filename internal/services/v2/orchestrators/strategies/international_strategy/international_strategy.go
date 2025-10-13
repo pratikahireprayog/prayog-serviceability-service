@@ -79,59 +79,64 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		addresses = []modelsv1.DetailedAddress{addr}
 	}
 
-	// 3) Call DHL & Aramex with adjusted source pincode when available
-	partners := make([]modelsv1.PartnerV2Response, 0)
-	
-	// Determine source and destination pincodes for carrier calls
-	srcPin := sourcePin
-	dstPin := sourcePin  // Default to source pincode
-		
-	// Extract pincode and city from nearestInternationalHub
+	// 3) Determine source and destination pincodes for carriers
+	srcPin := ""
+	dstPin := ""
+
 	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.Pincode != nil {
-		// Use nearestInternationalHub pincode for SOURCE only in carriers
-		hubPincode := fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
-		srcPin = hubPincode  // ← HubOps pincode as SOURCE
-		
-		// Use request destination_postal_code as DESTINATION
-		if req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
-			dstPin = *req.DestinationPostalCode  // ← Request destination as DESTINATION
-		} else if req.PostalCode != nil && *req.PostalCode != "" {
-			dstPin = *req.PostalCode  // ← Fallback
-		}
-		
-		s.Logger.WithFields(logrus.Fields{
-			"component": "international_strategy",
-			"original_source_pin": sourcePin,
-			"hub_pincode": hubPincode,
-			"carrier_source_pin": srcPin,        // ← HubOps pincode
-			"carrier_destination_pin": dstPin,   // ← Request destination_postal_code
-		}).Info("Using HubOps pincode as source, request destination as destination for carriers")
+		srcPin = fmt.Sprintf("%v", *hubResp.NearestInternationalHub.Pincode)
 	}
-	
-	// Use the resolved country codes
-	dstCC := destinationCountryCode
+
+	if srcPin == "" {
+		srcPin = sourcePin
+	}
+
+	if req.DestinationPostalCode != nil && *req.DestinationPostalCode != "" {
+		dstPin = *req.DestinationPostalCode
+	} else if req.PostalCode != nil && *req.PostalCode != "" {
+		dstPin = *req.PostalCode
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component":                "international_strategy",
+		"original_source_pin":      sourcePin,
+		"hub_source_pin":           srcPin,
+		"destination_pin":          dstPin,
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destinationCountryCode,
+	}).Info("Resolved source and destination pincodes for international carriers")
+
+	// Extract city info from hub
 	shipperCity := "Unknown City"
-	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" { 
-		shipperCity = *hubResp.NearestInternationalHub.City 
+	if hubResp != nil && hubResp.NearestInternationalHub != nil && hubResp.NearestInternationalHub.City != nil && *hubResp.NearestInternationalHub.City != "" {
+		shipperCity = *hubResp.NearestInternationalHub.City
 	}
 	receiverCity := "Unknown City"
 
-	// Call DHL (existing code)
-	dhlPartner := s.callDHL(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	partners := make([]modelsv1.PartnerV2Response, 0)
+
+	// Call DHL
+	dhlPartner := s.callDHL(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
 	if dhlPartner.PartnerCode != "" {
 		partners = append(partners, dhlPartner)
 	}
 
-	// Call Aramex using the existing adapter (new code)
-	aramexPartner := s.callAramexViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	// Call Aramex
+	aramexPartner := s.callAramexViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
 	if aramexPartner.PartnerCode != "" {
 		partners = append(partners, aramexPartner)
 	}
 
-	// Call FedEx using the adapter
-	fedexPartner := s.callFedExViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, dstCC, shipperCity, receiverCity)
+	// Call FedEx
+	fedexPartner := s.callFedExViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
 	if fedexPartner.PartnerCode != "" {
 		partners = append(partners, fedexPartner)
+	}
+
+	// Call ShipCube
+	shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	if shipcubePartner.PartnerCode != "" {
+		partners = append(partners, shipcubePartner)
 	}
 
 	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
@@ -478,6 +483,129 @@ func (s *InternationalStrategy) convertFedExResult(res *common.PartnerServiceabi
         },
     }
 }
+
+func (s *InternationalStrategy) callShipCubeViaAdapter(
+	ctx context.Context,
+	req *modelsv1.ServiceabilityV2Request,
+	srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string,
+) modelsv1.PartnerV2Response {
+
+	// Get ShipCube adapter from factory
+	adapter, adapterFound := s.PartnerFactory.GetAdapter("shipcube")
+	s.Logger.WithFields(logrus.Fields{
+		"adapterFound": adapterFound,
+		"adapterNil":   adapter == nil,
+	}).Info("ShipCube adapter lookup result")
+
+	if !adapterFound || adapter == nil {
+		s.Logger.WithFields(logrus.Fields{
+			"component": "international_strategy",
+			"partner":   "SHIPCUBE",
+		}).Warn("ShipCube adapter not found or nil")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	// Prepare request for ShipCube adapter
+	shipcubeReq := &modelsv1.ServiceabilityV2Request{
+		SourcePostalCode:       &srcPin,
+		DestinationPostalCode:  &dstPin,
+		SourceCountryCode:      &srcCC,
+		DestinationCountryCode: &dstCC,
+		Packages:               req.Packages,
+		PostalCode:             req.PostalCode,
+		CountryCode:            req.CountryCode,
+	}
+
+	partnerInfo := common.PartnerInfo{
+		PartnerCode: "shipcube",
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component":           "international_strategy",
+		"partner":             "SHIPCUBE",
+		"action":              "shipcube_serviceability_check",
+		"source_pincode":      srcPin,
+		"destination_pincode": dstPin,
+		"source_country":      srcCC,
+		"destination_country": dstCC,
+		"request":             shipcubeReq,
+	}).Info("Calling ShipCube adapter for serviceability")
+
+	// Call ShipCube adapter
+	result, err := adapter.CheckServiceability(ctx, shipcubeReq, partnerInfo)
+	s.Logger.WithFields(logrus.Fields{
+		"resultReceived": result != nil,
+		"hasError":       err != nil,
+	}).Info("ShipCube adapter CheckServiceability completed")
+
+	if err != nil {
+		s.Logger.WithError(err).WithFields(logrus.Fields{
+			"component": "international_strategy",
+			"partner":   "SHIPCUBE",
+		}).Warn("ShipCube adapter call failed")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	// Convert ShipCube result to PartnerV2Response
+	partnerResp := s.convertShipCubeResult(result, srcCC, dstCC)
+	if partnerResp.PartnerCode != "" {
+		s.Logger.WithFields(logrus.Fields{
+			"servicesCount": len(partnerResp.Services),
+			"serviceable":   len(partnerResp.Services) > 0,
+		}).Info("Successfully created ShipCube partner response")
+		return partnerResp
+	}
+
+	s.Logger.Warn("Failed to create ShipCube partner response")
+	return modelsv1.PartnerV2Response{}
+}
+
+func (s *InternationalStrategy) convertShipCubeResult(
+	result *common.PartnerServiceabilityResult,
+	srcCC, dstCC string,
+) modelsv1.PartnerV2Response {
+
+	if result == nil {
+		return modelsv1.PartnerV2Response{}
+	}
+
+	isServiceable := result != nil && len(result.Services) > 0
+
+	partnerResp := modelsv1.PartnerV2Response{
+		PartnerCode: result.PartnerCode,
+		Services:    []modelsv1.ServiceV2{},
+	}
+
+	// If serviceable, map services
+	if isServiceable {
+		for _, svc := range result.Services {
+			service := modelsv1.ServiceV2{
+				ServiceName: svc.ServiceName,
+				TATDays:     svc.TATDays,
+				Pickup:      svc.Pickup,
+				Delivery:    svc.Delivery,
+				Insurance:   svc.Insurance,
+				ProductTypes: map[string]bool{
+					"document":     true,
+					"non_document": true,
+					"commercial":   true,
+				},
+				DeliveryModes: map[string]bool{
+					"express":  true,
+					"standard": true,
+				},
+			}
+			partnerResp.Services = append(partnerResp.Services, service)
+		}
+	}
+
+	// Optional: attach metadata for logging/debugging
+	partnerResp.Metadata = result.Metadata
+
+	return partnerResp
+}
+
+
 // [Rest of the file remains exactly the same - all existing HubOps, helper functions, etc.]
 // HubOps API integration
 var hubOpsURL = func() string {

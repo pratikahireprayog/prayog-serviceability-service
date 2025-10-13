@@ -42,6 +42,9 @@ func getPartnerDisplayName(code string) string {
 		"smile_ecom":    "Smile Ecommerce",
 		"shipyaari":     "Shipyaari",
 		"smile_courier": "Smile Courier",
+		"aramex":   	 "aramex",
+		"fedex":		 "fedex",
+		"shipcube":		 "shipcube",
 	}
 
 	if name, exists := nameMap[code]; exists {
