@@ -24,18 +24,8 @@ type Adapter struct {
 
 // NewAdapter creates a new FedEx adapter instance
 func NewAdapter(config config.FedExConfig, geolocationService services.GeolocationService, hubLocationService services.HubLocationService) *Adapter {
-	// Initialize logger
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
-
-	// Log configuration with redacted sensitive fields
-	logger.WithFields(logrus.Fields{
-		"partner":        "FedEx",
-		"base_url":       config.BaseURL,
-		"client_id":      redactField(config.ClientID),
-		"enabled":        config.Enabled,
-		"account_number": redactField(config.AccountNumber),
-	}).Info("Creating FedEx adapter")
 
 	return &Adapter{
 		client:             NewFedExClient(config),
@@ -44,17 +34,6 @@ func NewAdapter(config config.FedExConfig, geolocationService services.Geolocati
 		hubLocationService: hubLocationService,
 		logger:             logger,
 	}
-}
-
-// redactField safely redacts sensitive fields for logging
-func redactField(field string) string {
-	if field == "" {
-		return "[EMPTY]"
-	}
-	if len(field) <= 3 {
-		return "[REDACTED]"
-	}
-	return field[:3] + "***"
 }
 
 // GetAdapterType returns the adapter type
@@ -70,8 +49,7 @@ func (a *Adapter) IsEnabled() bool {
 // CheckServiceability checks if FedEx can service the given request
 func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
-	fmt.Print("==============================================")
-	// Structured start log
+
 	partnerID := ""
 	if partnerInfo.PartnerID != nil {
 		partnerID = partnerInfo.PartnerID.String()
@@ -111,7 +89,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 
 // checkInternationalServiceability implements the international serviceability flow for FedEx
 func (a *Adapter) checkInternationalServiceability(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
-	// Step 1: Extract postal codes from request
+	// Extract postal codes from request
 	sourcePincode := *request.SourcePostalCode
 	destinationPincode := *request.DestinationPostalCode
 
@@ -121,7 +99,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	}
 	a.logger.WithFields(logrus.Fields{
 		"component":           "fedex_adapter",
-		"step":                1,
 		"partner_code":        partnerInfo.PartnerCode,
 		"partner_id":          pid,
 		"partner":             "FedEx",
@@ -130,15 +107,14 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"flow":                "international",
 	}).Info("Starting FedEx international serviceability check")
 
-	// Step 2: Set country codes from request
-	sourceCountryCode := "IN"      // Default to India
-	destinationCountryCode := "US" // Default to USA
+	// Set country codes from request
+	sourceCountryCode := ""
+	destinationCountryCode := ""
 
 	// Use the new explicit source_country_code field if available
 	if request.SourceCountryCode != nil && *request.SourceCountryCode != "" {
 		sourceCountryCode = *request.SourceCountryCode
 	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		// Fallback to generic country_code for source
 		sourceCountryCode = *request.CountryCode
 	}
 
@@ -146,35 +122,31 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	if request.DestinationCountryCode != nil && *request.DestinationCountryCode != "" {
 		destinationCountryCode = *request.DestinationCountryCode
 	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		// Fallback to generic country_code for destination
 		destinationCountryCode = *request.CountryCode
 	}
 
 	a.logger.WithFields(logrus.Fields{
 		"component":                "fedex_adapter",
-		"step":                     2,
 		"partner_code":             partnerInfo.PartnerCode,
 		"partner_id":               pid,
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
 	}).Info("Using request-provided country codes")
 
-	// Step 3: Create FedEx serviceability request
-	fedexRequest := a.createServiceabilityRequest(ctx, request, sourceCountryCode, destinationCountryCode)
+	// Create FedEx serviceability request
+	fedexRequest := a.createServiceabilityRequest(request, sourceCountryCode, destinationCountryCode)
 
 	a.logger.WithFields(logrus.Fields{
 		"component":                "fedex_adapter",
-		"step":                     3,
 		"partner_code":             partnerInfo.PartnerCode,
 		"partner_id":               pid,
 		"source_country_code":      sourceCountryCode,
 		"destination_country_code": destinationCountryCode,
 	}).Info("Built FedEx serviceability request")
 
-	// Step 4: Call FedEx API
+	// Call FedEx API
 	a.logger.WithFields(logrus.Fields{
 		"component":    "fedex_adapter",
-		"step":         4,
 		"partner_code": partnerInfo.PartnerCode,
 		"partner_id":   pid,
 	}).Info("Calling FedEx serviceability API")
@@ -183,7 +155,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 	if err != nil {
 		a.logger.WithError(err).WithFields(logrus.Fields{
 			"component":    "fedex_adapter",
-			"step":         4,
 			"partner_code": partnerInfo.PartnerCode,
 			"partner_id":   pid,
 		}).Warn("FedEx serviceability API call failed")
@@ -200,7 +171,7 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		}, nil
 	}
 
-	// Step 5: Process response
+	// Process response
 	result := a.convertServiceabilityResponse(serviceabilityResp, partnerInfo)
 	result.ResponseTime = time.Since(startTime)
 	result.Metadata["flow"] = "international"
@@ -215,7 +186,6 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 
 	a.logger.WithFields(logrus.Fields{
 		"component":                "fedex_adapter",
-		"step":                     5,
 		"partner_code":             partnerInfo.PartnerCode,
 		"partner_id":               pid,
 		"partner":                  "FedEx",
@@ -251,68 +221,19 @@ func (a *Adapter) validateFedExRequirements(request *models.ServiceabilityV2Requ
 }
 
 // createServiceabilityRequest creates a FedEx serviceability request
-func (a *Adapter) createServiceabilityRequest(ctx context.Context, request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) ServiceabilityRequest {
-	// Get city names
-	sourceCity := a.getCityName(ctx, *request.SourcePostalCode)
-	destinationCity := a.getCityName(ctx, *request.DestinationPostalCode)
-
-	// Calculate weight
-	weight := 0.5 // Default weight
-	if request.Packages != nil && len(request.Packages) > 0 && request.Packages[0].Weight != nil {
-		weight = request.Packages[0].Weight.Value
-		if weight <= 0 {
-			weight = 0.5 // Minimum weight
-		}
-	}
-
+func (a *Adapter) createServiceabilityRequest(request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) ServiceabilityRequest {
+	// Calculate weight from request
 	return ServiceabilityRequest{
 		OriginAddress: Address{
-			StreetLines:         []string{"Unknown Street"}, // Default address
-			City:                sourceCity,
-			PostalCode:          *request.SourcePostalCode,
-			CountryCode:         sourceCountryCode,
-			StateOrProvinceCode: a.getStateCode(*request.SourcePostalCode),
+			PostalCode:  *request.SourcePostalCode,
+			CountryCode: sourceCountryCode,
 		},
 		DestinationAddress: Address{
-			StreetLines:         []string{"Unknown Street"}, // Default address
-			City:                destinationCity,
-			PostalCode:          *request.DestinationPostalCode,
-			CountryCode:         destinationCountryCode,
-			StateOrProvinceCode: a.getStateCode(*request.DestinationPostalCode),
+			PostalCode:  *request.DestinationPostalCode,
+			CountryCode: destinationCountryCode,
 		},
-		Weight:   weight,
-		ShipDate: time.Now().Format("2006-01-02"),
+		Weight: 1,
 	}
-}
-
-// getCityName gets the city name from geolocation service
-func (a *Adapter) getCityName(ctx context.Context, postalCode string) string {
-	if a.geolocationService == nil {
-		a.logger.WithFields(logrus.Fields{
-			"partner":     "FedEx",
-			"postal_code": postalCode,
-		}).Warn("Geolocation service not available for city lookup")
-		return "Unknown City"
-	}
-
-	cityName, err := a.geolocationService.GetCityNameByPostalCode(ctx, postalCode)
-	if err != nil || cityName == nil || *cityName == "" {
-		a.logger.WithFields(logrus.Fields{
-			"partner":     "FedEx",
-			"postal_code": postalCode,
-			"error":       err,
-		}).Warn("Failed to get city name, using fallback")
-		return "Unknown City"
-	}
-
-	return *cityName
-}
-
-// getStateCode gets the state code from postal code (simplified)
-func (a *Adapter) getStateCode(postalCode string) string {
-	// This is a simplified implementation
-	// In production, you would use a proper postal code to state mapping service
-	return ""
 }
 
 // convertServiceabilityResponse converts FedEx response to common format
@@ -328,7 +249,6 @@ func (a *Adapter) convertServiceabilityResponse(response *ServiceabilityResponse
 	// Set basic serviceability information
 	result.Metadata["is_serviceable"] = response.Serviceable
 	result.Metadata["available_services_count"] = len(response.AvailableServices)
-	result.Metadata["restrictions"] = response.Restrictions
 	result.Metadata["reason"] = "FedEx serviceability check completed"
 
 	if len(response.Errors) > 0 {
@@ -340,14 +260,14 @@ func (a *Adapter) convertServiceabilityResponse(response *ServiceabilityResponse
 		for _, fedexService := range response.AvailableServices {
 			service := models.ServiceV2{
 				ServiceName: fedexService.ServiceName,
-				TATDays:     fedexService.TransitDays,
+				ServiceCode: fedexService.ServiceType,
+				TATDays:     3, // Default TAT for international
 				Pickup:      true,
 				Delivery:    true,
 				Insurance:   true,
 				ProductTypes: map[string]bool{
 					"document":     true,
 					"non_document": true,
-					"commercial":   true,
 				},
 				DeliveryModes: map[string]bool{
 					"express":  true,
@@ -356,14 +276,6 @@ func (a *Adapter) convertServiceabilityResponse(response *ServiceabilityResponse
 			}
 			result.Services = append(result.Services, service)
 		}
-
-		// Add capabilities
-		if len(response.AvailableServices) > 0 {
-			firstService := response.AvailableServices[0]
-			result.Capabilities["estimated_delivery_date"] = firstService.DeliveryDate
-			result.Capabilities["transit_days"] = firstService.TransitDays
-			result.Capabilities["available_services"] = len(response.AvailableServices)
-		}
 	}
 
 	return result
@@ -371,22 +283,19 @@ func (a *Adapter) convertServiceabilityResponse(response *ServiceabilityResponse
 
 // Initialize implements PartnerAdapter interface
 func (a *Adapter) Initialize(ctx context.Context) error {
-	// Test authentication and connectivity
 	a.logger.WithFields(logrus.Fields{
 		"partner": "FedEx",
 	}).Info("Initializing FedEx adapter")
 
-	// Simple health check by trying to authenticate
+	// Test authentication with minimal request
 	testRequest := ServiceabilityRequest{
 		OriginAddress: Address{
 			PostalCode:  "10001",
 			CountryCode: "US",
-			City:        "New York",
 		},
 		DestinationAddress: Address{
 			PostalCode:  "90210",
 			CountryCode: "US",
-			City:        "Beverly Hills",
 		},
 		Weight: 0.5,
 	}
@@ -394,7 +303,6 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 	_, err := a.client.CheckServiceability(ctx, testRequest)
 	if err != nil {
 		a.logger.WithError(err).Warn("FedEx adapter initialization test failed")
-		// Don't return error as this might be due to network issues
 	}
 
 	a.logger.Info("FedEx adapter initialized successfully")
@@ -407,22 +315,19 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 		return false
 	}
 
-	// Simple health check
+	// Simple health check with minimal request
 	testRequest := ServiceabilityRequest{
 		OriginAddress: Address{
 			PostalCode:  "10001",
 			CountryCode: "US",
-			City:        "New York",
 		},
 		DestinationAddress: Address{
-			PostalCode:  "90210", 
+			PostalCode:  "90210",
 			CountryCode: "US",
-			City:        "Beverly Hills",
 		},
 		Weight: 0.5,
 	}
 
-	// Make a quick test call (with timeout)
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
@@ -433,8 +338,8 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 // GetMetrics implements PartnerAdapter interface
 func (a *Adapter) GetMetrics() *common.PartnerMetrics {
 	return &common.PartnerMetrics{
-		PartnerCode:         "", // Will be set by orchestrator from database
-		TotalRequests:       0,  // TODO: Implement actual metrics
+		PartnerCode:         "",
+		TotalRequests:       0,
 		SuccessfulRequests:  0,
 		FailedRequests:      0,
 		AverageResponseTime: 0,
@@ -445,7 +350,6 @@ func (a *Adapter) GetMetrics() *common.PartnerMetrics {
 
 // Shutdown implements PartnerAdapter interface
 func (a *Adapter) Shutdown(ctx context.Context) error {
-	// No cleanup needed for HTTP client
 	a.logger.Info("FedEx adapter shutdown completed")
 	return nil
 }

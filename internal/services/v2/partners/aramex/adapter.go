@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,11 @@ type Adapter struct {
 	geolocationService services.GeolocationService
 	hubLocationService services.HubLocationService
 	logger             *logrus.Logger
+}
+type AramexServiceabilityResp struct {
+    XMLName   xml.Name `xml:"AddressServiceabilityResponse"`
+    HasErrors bool     `xml:"HasErrors"`
+    IsServiced bool    `xml:"IsServiced"`
 }
 
 // NewAdapter creates a new Aramex adapter instance
@@ -113,15 +119,27 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 }
 
 // checkInternationalServiceability implements the international serviceability flow for Aramex
-func (a *Adapter) checkInternationalServiceability(ctx context.Context, request *models.ServiceabilityV2Request, startTime time.Time, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
-	// Step 1: Extract postal codes from request
-	sourcePincode := *request.SourcePostalCode
-	destinationPincode := *request.DestinationPostalCode
+func (a *Adapter) checkInternationalServiceability(
+	ctx context.Context,
+	request *models.ServiceabilityV2Request,
+	startTime time.Time,
+	partnerInfo common.PartnerInfo,
+) (*common.PartnerServiceabilityResult, error) {
+	// Safe extraction of postal codes
+	sourcePincode := ""
+	if request.SourcePostalCode != nil {
+		sourcePincode = *request.SourcePostalCode
+	}
+	destinationPincode := ""
+	if request.DestinationPostalCode != nil {
+		destinationPincode = *request.DestinationPostalCode
+	}
 
 	pid := ""
 	if partnerInfo.PartnerID != nil {
 		pid = partnerInfo.PartnerID.String()
 	}
+
 	a.logger.WithFields(logrus.Fields{
 		"component":           "aramex_adapter",
 		"step":                1,
@@ -133,23 +151,18 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"flow":                "international",
 	}).Info("Starting Aramex international serviceability check")
 
-	// Step 2: Set country codes from request
-	sourceCountryCode := "IN"      // Default to India
-	destinationCountryCode := "US" // Default to USA
-
-	// Use the new explicit source_country_code field if available
+	// Determine country codes safely
+	sourceCountryCode := ""
 	if request.SourceCountryCode != nil && *request.SourceCountryCode != "" {
 		sourceCountryCode = *request.SourceCountryCode
 	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		// Fallback to generic country_code for source
 		sourceCountryCode = *request.CountryCode
 	}
 
-	// Use the new explicit destination_country_code field if available
+	destinationCountryCode := ""
 	if request.DestinationCountryCode != nil && *request.DestinationCountryCode != "" {
 		destinationCountryCode = *request.DestinationCountryCode
 	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		// Fallback to generic country_code for destination
 		destinationCountryCode = *request.CountryCode
 	}
 
@@ -162,155 +175,103 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"destination_country_code": destinationCountryCode,
 	}).Info("Using request-provided country codes")
 
-	// Step 3: Create Aramex API request
+	// Build Aramex request
 	aramexRequest := a.createServiceabilityRequest(ctx, request, sourceCountryCode, destinationCountryCode)
-	a.logger.WithFields(logrus.Fields{	
-		"aramexRequest": aramexRequest,
-	}).Info("Before Hitting aramex api")
 
-	a.logger.WithFields(logrus.Fields{
-		"component":                "aramex_adapter",
-		"step":                     3,
-		"partner_code":             partnerInfo.PartnerCode,
-		"partner_id":               pid,
-		"source_country_code":      sourceCountryCode,
-		"destination_country_code": destinationCountryCode,
-	}).Info("Built Aramex serviceability request")
-
-	// Log full Aramex request payload at INFO level for diagnostics
-	if payload, err := json.Marshal(aramexRequest); err == nil {
-		a.logger.WithFields(logrus.Fields{
-			"component":      "aramex_adapter",
-			"step":           3,
-			"partner_code":   partnerInfo.PartnerCode,
-			"partner_id":     pid,
-			"aramex_request": string(payload),
-		}).Info("Aramex serviceability request payload")
-	} else {
-		a.logger.WithFields(logrus.Fields{
-			"component":    "aramex_adapter",
-			"step":         3,
-			"partner_code": partnerInfo.PartnerCode,
-			"partner_id":   pid,
-			"error":        err.Error(),
-		}).Warn("Failed to marshal Aramex request payload for logging")
+	url := a.config.BaseURL + "/ShippingAPI.V2/Location/Service_1_0.svc/json/IsAddressServiced"
+	bodyBytes, err := json.Marshal(aramexRequest)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to marshal Aramex request: %v", err)
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+		}, nil
 	}
 
-	// Step 4: Call Aramex API
-	a.logger.WithFields(logrus.Fields{
-		"component":    "aramex_adapter",
-		"step":         4,
-		"partner_code": partnerInfo.PartnerCode,
-		"partner_id":   pid,
-	}).Info("Calling Aramex serviceability API")
-
-	var response *ServiceabilityResponse
-	{
-		url := a.config.BaseURL + "/ShippingAPI.V2/Location/Service_1_0.svc/json/IsAddressServiced"
-		body, mErr := json.Marshal(aramexRequest)
-		if mErr != nil {
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        mErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Failed to marshal Aramex request: %v", mErr)}[0],
-			}, nil
-		}
-
-		req, rErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
-		if rErr != nil {
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        rErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Failed to create Aramex request: %v", rErr)}[0],
-			}, nil
-		}
-
-		// Set headers
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		resp, doErr := a.client.httpClient.Do(req)
-		if doErr != nil {
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        doErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Aramex request failed: %v", doErr)}[0],
-			}, nil
-		}
-		defer resp.Body.Close()
-
-		respBody, rdErr := io.ReadAll(resp.Body)
-		if rdErr != nil {
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        rdErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Failed to read Aramex response: %v", rdErr)}[0],
-			}, nil
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			apiErr := &AramexAPIError{
-				StatusCode: resp.StatusCode,
-				RawBody:    string(respBody),
-			}
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        apiErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Aramex API call failed: %v", apiErr)}[0],
-				Metadata:     map[string]interface{}{"status_code": resp.StatusCode, "raw_body": string(respBody)},
-			}, nil
-		}
-
-		var parsed ServiceabilityResponse
-		if uErr := json.Unmarshal(respBody, &parsed); uErr != nil {
-			return &common.PartnerServiceabilityResult{
-				PartnerID:    partnerInfo.PartnerID,
-				PartnerCode:  partnerInfo.PartnerCode,
-				ResponseTime: time.Since(startTime),
-				Error:        uErr,
-				ErrorMessage: &[]string{fmt.Sprintf("Failed to decode Aramex response: %v", uErr)}[0],
-			}, nil
-		}
-		response = &parsed
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to create Aramex request: %v", err)
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+		}, nil
 	}
 
-	// Step 5: Process response
-	result := a.convertServiceabilityResponse(response, partnerInfo)
-	result.ResponseTime = time.Since(startTime)
-	result.Metadata["flow"] = "international"
-	result.Metadata["source_country_code"] = sourceCountryCode
-	result.Metadata["destination_country_code"] = destinationCountryCode
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/xml") // Aramex responds in XML
 
-	// Attach full Aramex response for diagnostics
-	if result.Metadata == nil {
-		result.Metadata = make(map[string]interface{})
+	resp, err := a.client.httpClient.Do(req)
+	if err != nil {
+		errMsg := fmt.Sprintf("Aramex request failed: %v", err)
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+		}, nil
 	}
-	result.Metadata["aramex_response"] = response
+	defer resp.Body.Close()
 
-	a.logger.WithFields(logrus.Fields{
-		"component":                "aramex_adapter",
-		"step":                     5,
-		"partner_code":             partnerInfo.PartnerCode,
-		"partner_id":               pid,
-		"partner":                  "Aramex",
-		"source_country_code":      sourceCountryCode,
-		"destination_country_code": destinationCountryCode,
-		"is_serviceable":           response.IsAddressServiced,
-		"flow":                     "international",
-	}).Info("Aramex international serviceability check completed")
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to read Aramex response: %v", err)
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+		}, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("Aramex API returned status %d: %s", resp.StatusCode, string(respBody))
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+			Metadata: map[string]interface{}{
+				"status_code": resp.StatusCode,
+				"raw_body":    string(respBody),
+			},
+		}, nil
+	}
+
+	// Parse XML response
+	var arResp AramexServiceabilityResp
+	if err := xml.Unmarshal(respBody, &arResp); err != nil {
+		errMsg := fmt.Sprintf("Failed to parse Aramex XML response: %v", err)
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(startTime),
+			ErrorMessage: &errMsg,
+		}, nil
+	}
+
+	a.logger.WithField("aramex_response", arResp).Info("Aramex serviceability response received")
+
+	// Build PartnerServiceabilityResult
+	result := &common.PartnerServiceabilityResult{
+		PartnerID:     partnerInfo.PartnerID,
+		PartnerCode:   partnerInfo.PartnerCode,
+		ResponseTime:  time.Since(startTime),
+		Metadata: map[string]interface{}{
+			"flow":                     "international",
+			"source_country_code":      sourceCountryCode,
+			"destination_country_code": destinationCountryCode,
+			"aramex_response":          arResp,
+			"is_serviceable":           arResp.IsServiced, 
+		},
+	}
 
 	return result, nil
 }
+
 
 // validateAramexRequirements validates Aramex-specific requirements
 func (a *Adapter) validateAramexRequirements(request *models.ServiceabilityV2Request) error {
@@ -336,8 +297,7 @@ func (a *Adapter) validateAramexRequirements(request *models.ServiceabilityV2Req
 // createServiceabilityRequest creates an Aramex serviceability request
 func (a *Adapter) createServiceabilityRequest(ctx context.Context, request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) ServiceabilityRequest {
 	// Get city name for destination
-	destinationCity := a.getCityName(ctx, *request.DestinationPostalCode)
-
+	destinationCity := ""
 	return ServiceabilityRequest{
 		ClientInfo: ClientInfo{
 			UserName:           a.config.Username,
@@ -367,8 +327,8 @@ func (a *Adapter) createServiceabilityRequest(ctx context.Context, request *mode
 			Description:         nil,
 		},
 		ServiceDetails: ServiceDetails{
-			// ProductGroup: "EXP", // Express
-			// ProductType:  "PDX", // Priority Document Express
+			ProductGroup: "EXP",
+			ProductType:  "PPX",
 			ServiceMode:  1,
 		},
 		Transaction: Transaction{

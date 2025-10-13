@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sirupsen/logrus"
 	services "prayog-serviceability-service/internal/services/v1/data"
+	"prayog-serviceability-service/internal/services/v2/partners/aramex"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
+	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_cargo"
@@ -19,6 +20,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
 	"prayog-serviceability-service/internal/shared/config"
+
+	"github.com/sirupsen/logrus"
 )
 
 // PartnerAdapterFactory defines the interface for creating partner adapters in v2
@@ -45,6 +48,8 @@ var adapterImplementationMap = map[string]string{
 	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	"smile_hubops":      "smile_hubops",      // Direct mapping
 	"porter":            "porter",            // Direct mapping
+	"aramex":            "aramex",  
+    "fedex":             "fedex",   
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -225,6 +230,10 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.SmileHubOps, nil
 	case "porter":
 		return f.config.Porter, nil
+	case "aramex":                           
+        return f.config.Aramex, nil
+    case "fedex":                              
+        return f.config.FedEx, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -345,6 +354,42 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"adapter":   "porter",
 		}).Warn("Porter adapter not enabled in config")
 	}
+
+	// Initialize Aramex adapter
+    if f.config.Aramex.Enabled {
+        f.implementations["aramex"] = aramex.NewAdapter(
+			f.config.Aramex, 
+			f.geolocationService, 
+			f.hubLocationService) 
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "aramex",
+        }).Info("Initialized aramex adapter")
+    } else {
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "aramex",
+        }).Warn("Aramex adapter not enabled in config")
+    }
+
+    // Initialize FedEx adapter
+    if f.config.FedEx.Enabled {
+        f.implementations["fedex"] = fedex.NewAdapter(
+			f.config.FedEx,
+			f.geolocationService,
+			f.hubLocationService)
+
+ 
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "fedex",
+        }).Info("Initialized fedex adapter")
+    } else {
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "fedex",
+        }).Warn("FedEx adapter not enabled in config")
+    }
 	
 	f.logger.WithFields(logrus.Fields{
 		"component":      "partner_adapter_factory",

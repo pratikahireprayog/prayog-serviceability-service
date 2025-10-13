@@ -42,9 +42,6 @@ type RequestedShipment struct {
 	PickupType                string                    `json:"pickupType"`
 	RateRequestType           []string                  `json:"rateRequestType"`
 	RequestedPackageLineItems []RequestedPackageLineItem `json:"requestedPackageLineItems"`
-	ShipDate                  string                    `json:"shipDate,omitempty"`
-	TotalWeight               *Weight                   `json:"totalWeight,omitempty"`
-	PackageCount              int                       `json:"packageCount,omitempty"`
 }
 
 type Shipper struct {
@@ -56,118 +53,134 @@ type Recipient struct {
 }
 
 type Address struct {
-	StreetLines         []string `json:"streetLines,omitempty"`
-	City                string   `json:"city"`
-	StateOrProvinceCode string   `json:"stateOrProvinceCode,omitempty"`
-	PostalCode          string   `json:"postalCode"`
-	CountryCode         string   `json:"countryCode"`
-	Residential         bool     `json:"residential,omitempty"`
+	PostalCode  string `json:"postalCode"`
+	CountryCode string `json:"countryCode"`
 }
 
 type RequestedPackageLineItem struct {
-	Weight       Weight      `json:"weight"`
-	Dimensions   Dimensions  `json:"dimensions,omitempty"`
-	CustomerReferences []CustomerReference `json:"customerReferences,omitempty"`
-	Description  string      `json:"description,omitempty"`
+	Weight Weight `json:"weight"`
 }
 
-type Weight struct {
-	Units  string  `json:"units"`
-	Value  float64 `json:"value"`
+type RateOutput struct {
+    Alerts            []FedExAlert      `json:"alerts"`
+    RateReplyDetails  []RateReplyDetail `json:"rateReplyDetails"`
+    QuoteDate         string            `json:"quoteDate"`
+    Encoded           bool              `json:"encoded"`
 }
-
-type Dimensions struct {
-	Length int    `json:"length"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Units  string `json:"units"`
-}
-
-type CustomerReference struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
-
-// RateResponse represents a response from FedEx's rates API
-type RateResponse struct {
-	TransactionID string `json:"transactionId"`
-	Output        Output `json:"output"`
-}
-
 type Output struct {
 	RateReplyDetails []RateReplyDetail `json:"rateReplyDetails"`
-	Quota            []interface{}     `json:"quota,omitempty"`
 	Alerts           []Alert           `json:"alerts,omitempty"`
 	Errors           []APIError        `json:"errors,omitempty"`
 }
 
+type FedExAlert struct {
+    Code      string `json:"code"`
+    Message   string `json:"message"`
+    AlertType string `json:"alertType"`
+}
+
 type RateReplyDetail struct {
-	ServiceType               string                    `json:"serviceType"`
-	ServiceName               string                    `json:"serviceName"`
-	PackagingType             string                    `json:"packagingType"`
-	CustomerMessages          []CustomerMessage         `json:"customerMessages,omitempty"`
-	RatedShipmentDetails      []RatedShipmentDetail     `json:"ratedShipmentDetails"`
-	OperationalDetail         *OperationalDetail        `json:"operationalDetail,omitempty"`
-	SignatureOptionType       string                    `json:"signatureOptionType,omitempty"`
-	ServiceDescription        *ServiceDescription       `json:"serviceDescription,omitempty"`
-	CommitedDetail            *CommitedDetail           `json:"committedDetail,omitempty"`
+    ServiceType          string               `json:"serviceType"`
+    ServiceName          string               `json:"serviceName"`
+    PackagingType        string               `json:"packagingType"`
+    RatedShipmentDetails []RatedShipmentDetail `json:"ratedShipmentDetails"`
+    OperationalDetail    OperationalDetail    `json:"operationalDetail"`
+    SignatureOptionType  string               `json:"signatureOptionType"`
+    ServiceDescription   ServiceDescription   `json:"serviceDescription"`
 }
-
-type CustomerMessage struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
 type RatedShipmentDetail struct {
-	RateType           string    `json:"rateType"`
-	TotalNetCharge     *Charge   `json:"totalNetCharge"`
-	TotalBaseCharge    *Charge   `json:"totalBaseCharge"`
-	TotalNetFedExCharge *Charge  `json:"totalNetFedExCharge,omitempty"`
+    RateType            string       `json:"rateType"`
+    RatedWeightMethod   string       `json:"ratedWeightMethod"`
+    TotalDiscounts      float64      `json:"totalDiscounts"`
+    TotalBaseCharge     float64      `json:"totalBaseCharge"`
+    TotalNetCharge      float64      `json:"totalNetCharge"`
+    TotalNetFedExCharge float64      `json:"totalNetFedExCharge"`
+    ShipmentRateDetail  ShipmentRate `json:"shipmentRateDetail"`
+    RatedPackages       []RatedPackage `json:"ratedPackages"`
+    Currency            string       `json:"currency"`
 }
+
+type RateResponse struct {
+    TransactionID        string         `json:"transactionId"`
+    CustomerTransactionID string        `json:"customerTransactionId"`
+    Output               RateOutput     `json:"output"`
+}
+
+type ShipmentRate struct {
+    RateZone         string       `json:"rateZone"`
+    DimDivisor       int          `json:"dimDivisor"`
+    FuelSurchargePercent float64  `json:"fuelSurchargePercent"`
+    TotalSurcharges  float64      `json:"totalSurcharges"`
+    TotalFreightDiscount float64   `json:"totalFreightDiscount"`
+    SurCharges       []Surcharge  `json:"surCharges"`
+    PricingCode      string       `json:"pricingCode"`
+    TotalBillingWeight Weight      `json:"totalBillingWeight"`
+    Currency         string       `json:"currency"`
+    RateScale        string       `json:"rateScale"`
+}
+
+type RatedPackage struct {
+    GroupNumber            int          `json:"groupNumber"`
+    EffectiveNetDiscount   float64      `json:"effectiveNetDiscount"`
+    PackageRateDetail      PackageRate  `json:"packageRateDetail"`
+}
+
+type PackageRate struct {
+    RateType            string   `json:"rateType"`
+    RatedWeightMethod   string   `json:"ratedWeightMethod"`
+    BaseCharge          float64  `json:"baseCharge"`
+    NetFreight          float64  `json:"netFreight"`
+    TotalSurcharges     float64  `json:"totalSurcharges"`
+    NetFedExCharge      float64  `json:"netFedExCharge"`
+    TotalTaxes          float64  `json:"totalTaxes"`
+    NetCharge           float64  `json:"netCharge"`
+    BillingWeight       Weight   `json:"billingWeight"`
+    Currency            string   `json:"currency"`
+    Surcharges          []Surcharge `json:"surcharges"`
+    TotalFreightDiscounts float64 `json:"totalFreightDiscounts"`
+}
+
+type Weight struct {
+    Units string  `json:"units"`
+    Value float64 `json:"value"`
+}
+
+type Surcharge struct {
+    Type        string  `json:"type"`
+    Description string  `json:"description"`
+    Amount      float64 `json:"amount"`
+}
+
+type OperationalDetail struct {
+    IneligibleForMoneyBackGuarantee bool   `json:"ineligibleForMoneyBackGuarantee"`
+    AstraDescription                string `json:"astraDescription"`
+    AirportID                       string `json:"airportId"`
+    ServiceCode                      string `json:"serviceCode"`
+}
+
+type ServiceDescription struct {
+    ServiceID       string `json:"serviceId"`
+    ServiceType     string `json:"serviceType"`
+    Code            string `json:"code"`
+    Description     string `json:"description"`
+    AstraDescription string `json:"astraDescription"`
+}
+
 
 type Charge struct {
 	Currency string  `json:"currency"`
 	Amount   float64 `json:"amount"`
 }
 
-type OperationalDetail struct {
-	OriginLocationID       string `json:"originLocationId"`
-	DeliveryDay            string `json:"deliveryDay,omitempty"`
-	TransitTime            string `json:"transitTime,omitempty"`
-	IneligibleForMoneyBack bool   `json:"ineligibleForMoneyBack"`
-}
-
-type ServiceDescription struct {
-	ServiceType    string `json:"serviceType"`
-	Code           string `json:"code"`
-	Names          []Name `json:"names"`
-	Description    string `json:"description"`
-	AstraDescription string `json:"astraDescription"`
-}
-
-type Name struct {
-	Type string `json:"type"`
-	Encoding string `json:"encoding"`
-	Value string `json:"value"`
-}
-
-type CommitedDetail struct {
-	Date               string `json:"date"`
-	DayOfWeek          int    `json:"dayOfWeek"`
-	TransitTime        string `json:"transitTime"`
-	CommitTimestamp    string `json:"commitTimestamp,omitempty"`
-	DerivedDestination string `json:"derivedDestination,omitempty"`
-}
-
 type Alert struct {
-	Code        string `json:"code"`
-	Message     string `json:"message"`
-	AlertType   string `json:"alertType"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	AlertType string `json:"alertType"`
 }
 
 type APIError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string   `json:"code"`
+	Message string   `json:"message"`
 	Parameter []string `json:"parameter,omitempty"`
 }
 
@@ -175,25 +188,21 @@ type APIError struct {
 type ServiceabilityRequest struct {
 	OriginAddress      Address `json:"origin_address"`
 	DestinationAddress Address `json:"destination_address"`
-	Weight             float64 `json:"weight,omitempty"`
-	ShipDate           string  `json:"ship_date,omitempty"`
+	Weight             float64 `json:"weight"`
 }
 
 // ServiceabilityResponse for serviceability check
 type ServiceabilityResponse struct {
-	Serviceable        bool      `json:"serviceable"`
-	AvailableServices  []Service `json:"available_services,omitempty"`
-	Restrictions       []string  `json:"restrictions,omitempty"`
-	Errors             []Error   `json:"errors,omitempty"`
+	Serviceable       bool      `json:"serviceable"`
+	AvailableServices []Service `json:"available_services,omitempty"`
+	Errors            []Error   `json:"errors,omitempty"`
 }
 
 type Service struct {
-	ServiceType   string  `json:"service_type"`
-	ServiceName   string  `json:"service_name"`
-	TransitDays   int     `json:"transit_days"`
-	DeliveryDate  string  `json:"delivery_date,omitempty"`
-	Cost          float64 `json:"cost,omitempty"`
-	Currency      string  `json:"currency,omitempty"`
+	ServiceType string  `json:"service_type"`
+	ServiceName string  `json:"service_name"`
+	Cost        float64 `json:"cost,omitempty"`
+	Currency    string  `json:"currency,omitempty"`
 }
 
 type Error struct {
