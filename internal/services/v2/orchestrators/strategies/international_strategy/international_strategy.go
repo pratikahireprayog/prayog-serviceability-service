@@ -133,11 +133,11 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		partners = append(partners, fedexPartner)
 	}
 
-	// Call ShipCube
-	shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
-	if shipcubePartner.PartnerCode != "" {
-		partners = append(partners, shipcubePartner)
-	}
+	// // Call ShipCube
+	// shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	// if shipcubePartner.PartnerCode != "" {
+	// 	partners = append(partners, shipcubePartner)
+	// }
 
 	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
