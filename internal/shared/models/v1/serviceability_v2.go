@@ -26,21 +26,28 @@ type Package struct {
 	Dimensions *Dimensions `json:"dimensions,omitempty" validate:"omitempty"`
 }
 
+// PartnerFilter represents a partner to be queried for serviceability
+type PartnerFilter struct {
+	ID   *string `json:"id,omitempty"`
+	Code string  `json:"code" validate:"required"`
+}
+
 // ServiceabilityV2Request represents the request structure for v2 serviceability checks
 type ServiceabilityV2Request struct {
-	PostalCode            *string   `json:"postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	SourcePostalCode      *string   `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	DestinationPostalCode *string   `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
-	SourceLatitude        *float64  `json:"source_latitude,omitempty"`
-	SourceLongitude       *float64  `json:"source_longitude,omitempty"`
-	DestinationLatitude   *float64  `json:"destination_latitude,omitempty"`
-	DestinationLongitude  *float64  `json:"destination_longitude,omitempty"`
-	CountryCode           *string   `json:"country_code,omitempty" validate:"omitempty,len=2"`
-	SourceCountryCode     *string   `json:"source_country_code,omitempty" validate:"omitempty,len=2"`
-	DestinationCountryCode *string  `json:"destination_country_code,omitempty" validate:"omitempty,len=2"`
-	ParcelCategory        *string   `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
-	ProductType           *string   `json:"product_type,omitempty"`
-	Packages              []Package `json:"packages,omitempty" validate:"omitempty,dive"`
+	PostalCode            *string         `json:"postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	SourcePostalCode      *string         `json:"source_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	DestinationPostalCode *string         `json:"destination_postal_code,omitempty" validate:"omitempty,min=3,max=10"`
+	SourceLatitude        *float64        `json:"source_latitude,omitempty"`
+	SourceLongitude       *float64        `json:"source_longitude,omitempty"`
+	DestinationLatitude   *float64        `json:"destination_latitude,omitempty"`
+	DestinationLongitude  *float64        `json:"destination_longitude,omitempty"`
+	CountryCode           *string         `json:"country_code,omitempty" validate:"omitempty,len=2"`
+	SourceCountryCode     *string         `json:"source_country_code,omitempty" validate:"omitempty,len=2"`
+	DestinationCountryCode *string        `json:"destination_country_code,omitempty" validate:"omitempty,len=2"`
+	ParcelCategory        *string         `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
+	ProductType           *string         `json:"product_type,omitempty"`
+	Packages              []Package       `json:"packages,omitempty" validate:"omitempty,dive"`
+	Partners              []PartnerFilter `json:"partners,omitempty" validate:"omitempty,dive"`
 }
 
 // AddressInfo represents address information in the V2 response
@@ -126,9 +133,10 @@ type V2ResponseMetadata struct {
 
 // V2Filters represents the filters applied to determine eligible partners
 type V2Filters struct {
-	ParcelCategory *string `json:"parcel_category,omitempty"`
-	ProductType    *string `json:"product_type,omitempty"`
-	CountryCode    *string `json:"country_code,omitempty"`
+	ParcelCategory    *string         `json:"parcel_category,omitempty"`
+	ProductType       *string         `json:"product_type,omitempty"`
+	CountryCode       *string         `json:"country_code,omitempty"`
+	RequestedPartners []PartnerFilter `json:"requested_partners,omitempty"`
 }
 
 // BulkServiceabilityV2Request represents bulk requests for v2

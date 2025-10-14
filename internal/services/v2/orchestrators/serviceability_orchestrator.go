@@ -241,9 +241,10 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
                 TotalPartners:    0,
                 ServiceableCount: 0,
                 Filters: models.V2Filters{
-                    CountryCode:    req.CountryCode,
-                    ParcelCategory: req.ParcelCategory,
-                    ProductType:    req.ProductType,
+                    CountryCode:       req.CountryCode,
+                    ParcelCategory:    req.ParcelCategory,
+                    ProductType:       req.ProductType,
+                    RequestedPartners: req.Partners,
                 },
             },
         }, nil
@@ -292,9 +293,10 @@ func (s *serviceabilityOrchestrator) BulkCheckServiceability(ctx context.Context
 					TotalPartners:    0,
 					ServiceableCount: 0,
 					Filters: models.V2Filters{
-						CountryCode:    individualReq.CountryCode,
-						ParcelCategory: individualReq.ParcelCategory,
-						ProductType:    individualReq.ProductType,
+						CountryCode:       individualReq.CountryCode,
+						ParcelCategory:    individualReq.ParcelCategory,
+						ProductType:       individualReq.ProductType,
+						RequestedPartners: individualReq.Partners,
 					},
 				},
 				Error: &models.ErrorResponse{
@@ -599,7 +601,8 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			TotalPartners:    len(partnerResults),
 			ServiceableCount: serviceableCount,
             Filters: models.V2Filters{
-                ParcelCategory: req.ParcelCategory,
+                ParcelCategory:    req.ParcelCategory,
+                RequestedPartners: req.Partners,
             },
 		},
 	}
@@ -716,6 +719,23 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	// Get all supported partners from factory
 	allSupportedPartners := s.partnerFactory.GetSupportedPartners()
 
+	// PRIORITY 1: If specific partners are requested in request body, use ONLY those (strict validation)
+	if req.Partners != nil && len(req.Partners) > 0 {
+		s.logger.WithFields(logrus.Fields{
+			"component":         "serviceability_orchestrator",
+			"requested_partners": func() []string {
+				codes := make([]string, len(req.Partners))
+				for i, p := range req.Partners {
+					codes[i] = p.Code
+				}
+				return codes
+			}(),
+		}).Info("Using specifically requested partners from request body")
+
+		return s.filterRequestedPartners(ctx, req.Partners, allSupportedPartners)
+	}
+
+	// PRIORITY 2: If no specific partners requested, use parcel category filtering
 	// If no parcel category specified, return all supported partners as basic info
 	if req.ParcelCategory == nil || *req.ParcelCategory == "" {
 		partnerInfos := make([]DatabasePartnerInfo, 0, len(allSupportedPartners))
@@ -845,6 +865,76 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}
 
 	return eligiblePartners, nil
+}
+
+// filterRequestedPartners filters partners based on requested partner codes from request body
+// STRICT VALIDATION: Returns error if ANY requested partner is not supported
+func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context, requestedPartners []models.PartnerFilter, allSupportedPartners []string) ([]DatabasePartnerInfo, error) {
+	// Create a map of supported partners for quick lookup (case-insensitive)
+	supportedPartnerMap := make(map[string]string) // lowercase -> actual code
+	for _, partner := range allSupportedPartners {
+		supportedPartnerMap[strings.ToLower(partner)] = partner
+	}
+
+	filteredPartners := make([]DatabasePartnerInfo, 0, len(requestedPartners))
+	invalidPartners := make([]string, 0)
+
+	// Process each requested partner with STRICT validation
+	for _, reqPartner := range requestedPartners {
+		partnerCodeLower := strings.ToLower(reqPartner.Code)
+		
+		// Check if the requested partner is supported
+		if actualCode, exists := supportedPartnerMap[partnerCodeLower]; exists {
+			partnerInfo := DatabasePartnerInfo{
+				PartnerCode: actualCode,
+				PartnerID:   nil, // Will be populated if needed from database
+			}
+
+			// If ID is provided in the request, try to use it
+			if reqPartner.ID != nil && *reqPartner.ID != "" {
+				// Parse the ID (assuming it's a UUID string)
+				if id, err := uuid.Parse(*reqPartner.ID); err == nil {
+					partnerInfo.PartnerID = &id
+				}
+			}
+
+			filteredPartners = append(filteredPartners, partnerInfo)
+
+			s.logger.WithFields(logrus.Fields{
+				"component":        "serviceability_orchestrator",
+				"requested_code":   reqPartner.Code,
+				"matched_code":     actualCode,
+			}).Info("Requested partner is supported")
+		} else {
+			// STRICT: Collect invalid partners to return error
+			invalidPartners = append(invalidPartners, reqPartner.Code)
+			s.logger.WithFields(logrus.Fields{
+				"component":          "serviceability_orchestrator",
+				"requested_code":     reqPartner.Code,
+				"supported_partners": allSupportedPartners,
+			}).Error("Requested partner is not supported")
+		}
+	}
+
+	// STRICT VALIDATION: If ANY partner is invalid, return error
+	if len(invalidPartners) > 0 {
+		errorMsg := fmt.Sprintf("invalid partner code(s): %v. Supported partners: %v", invalidPartners, allSupportedPartners)
+		s.logger.WithFields(logrus.Fields{
+			"component":        "serviceability_orchestrator",
+			"invalid_partners": invalidPartners,
+			"valid_partners":   allSupportedPartners,
+		}).Error("Request contains invalid partner codes")
+		
+		return nil, fmt.Errorf("%s", errorMsg)
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"requested_count": len(requestedPartners),
+		"filtered_count":  len(filteredPartners),
+	}).Info("All requested partners are valid")
+
+	return filteredPartners, nil
 }
 
 // getImplementationCode returns the implementation code for a given database partner code
