@@ -14,6 +14,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
+	"prayog-serviceability-service/internal/services/v2/partners/shipcube"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_cargo"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
@@ -50,6 +51,7 @@ var adapterImplementationMap = map[string]string{
 	"porter":            "porter",            // Direct mapping
 	"aramex":            "aramex",  
     "fedex":             "fedex",   
+	"shipcube": 		 "shipcube",
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -234,6 +236,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
         return f.config.Aramex, nil
     case "fedex":                              
         return f.config.FedEx, nil
+	case "shipcube":                              
+        return f.config.ShipCube, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -389,6 +393,22 @@ func (f *partnerAdapterFactory) initializeImplementations() {
             "component": "partner_adapter_factory",
             "adapter":   "fedex",
         }).Warn("FedEx adapter not enabled in config")
+    }
+
+	if f.config.ShipCube.Enabled {
+        f.implementations["shipcube"] = shipcube.NewAdapter(
+			f.config.ShipCube,
+		)
+
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "shipcube",
+        }).Info("Initialized fedex adapter")
+    } else {
+        f.logger.WithFields(logrus.Fields{
+            "component": "partner_adapter_factory",
+            "adapter":   "shipcube",
+        }).Warn("shipcube adapter not enabled in config")
     }
 	
 	f.logger.WithFields(logrus.Fields{
