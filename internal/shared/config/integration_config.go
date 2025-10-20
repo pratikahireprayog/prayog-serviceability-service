@@ -29,6 +29,7 @@ type PartnerAdaptersConfig struct {
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
 	Aramex       AramexConfig       `yaml:"aramex" json:"aramex"`
 	FedEx        FedExConfig        `yaml:"fedex" json:"fedex"`
+	ShipCube     ShipCubeConfig     `yaml:"shipcube" json:"shipcube"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -244,6 +245,19 @@ type ServiceDefinitionResolverConfig struct {
 	CategoryCacheTTL time.Duration `yaml:"category_cache_ttl" json:"category_cache_ttl"`
 }
 
+// ShipCubeConfig configuration for ShipCube partner adapter
+type ShipCubeConfig struct {
+	BaseURL         string        `yaml:"base_url" json:"base_url"`
+	APIKey          string        `yaml:"api_key" json:"api_key"`
+	CheckServiceURL string        `yaml:"check_service_url" json:"check_service_url"`
+	Timeout         time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries      int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay      time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Rating          float64       `yaml:"rating" json:"rating"`
+}
+
+
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
 	// Environment variables are loaded and prioritized in app_config.go
@@ -439,6 +453,17 @@ func LoadIntegrationConfig() IntegrationConfig {
 			MaxRetries: getEnvAsIntOrDefault("PORTER_MAX_RETRIES", 3),
 			RetryDelay: getEnvAsDurationOrDefault("PORTER_RETRY_DELAY", 1*time.Second),
 		},
+		ShipCube: ShipCubeConfig{
+			BaseURL:         getEnvOrDefault("SHIPCUBE_BASE_URL", "https://api.shipcube.com"),
+			APIKey:          getEnvOrDefault("SHIPCUBE_API_KEY", ""),
+			CheckServiceURL: getEnvOrDefault("SHIPCUBE_CHECK_SERVICE_URL", "/v1/serviceability/check"),
+			Timeout:         getEnvAsDurationOrDefault("SHIPCUBE_TIMEOUT", 30*time.Second),
+			MaxRetries:      getEnvAsIntOrDefault("SHIPCUBE_MAX_RETRIES", 3),
+			RetryDelay:      getEnvAsDurationOrDefault("SHIPCUBE_RETRY_DELAY", 1*time.Second),
+			Enabled:         getEnvAsBoolOrDefault("SHIPCUBE_ENABLED", true),
+			Rating:          4.4,
+		},
+
 	}
 
 	return IntegrationConfig{

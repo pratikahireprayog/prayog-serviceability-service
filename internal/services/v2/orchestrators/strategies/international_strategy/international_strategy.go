@@ -133,11 +133,11 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		partners = append(partners, fedexPartner)
 	}
 
-	// // Call ShipCube
-	// shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
-	// if shipcubePartner.PartnerCode != "" {
-	// 	partners = append(partners, shipcubePartner)
-	// }
+	// Call ShipCube
+	shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	if shipcubePartner.PartnerCode != "" {
+		partners = append(partners, shipcubePartner)
+	}
 
 	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
@@ -460,7 +460,7 @@ func (s *InternationalStrategy) convertFedExResult(res *common.PartnerServiceabi
         }
     }
 
-    partnerID := "unknown"
+    partnerID := "83c5a4ac-b297-466a-9b14-9f2602103737"
     if res.PartnerID != nil {
         partnerID = res.PartnerID.String()
     }
@@ -484,82 +484,6 @@ func (s *InternationalStrategy) convertFedExResult(res *common.PartnerServiceabi
     }
 }
 
-func (s *InternationalStrategy) callShipCubeViaAdapter(
-	ctx context.Context,
-	req *modelsv1.ServiceabilityV2Request,
-	srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string,
-) modelsv1.PartnerV2Response {
-
-	// Get ShipCube adapter from factory
-	adapter, adapterFound := s.PartnerFactory.GetAdapter("shipcube")
-	s.Logger.WithFields(logrus.Fields{
-		"adapterFound": adapterFound,
-		"adapterNil":   adapter == nil,
-	}).Info("ShipCube adapter lookup result")
-
-	if !adapterFound || adapter == nil {
-		s.Logger.WithFields(logrus.Fields{
-			"component": "international_strategy",
-			"partner":   "SHIPCUBE",
-		}).Warn("ShipCube adapter not found or nil")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	// Prepare request for ShipCube adapter
-	shipcubeReq := &modelsv1.ServiceabilityV2Request{
-		SourcePostalCode:       &srcPin,
-		DestinationPostalCode:  &dstPin,
-		SourceCountryCode:      &srcCC,
-		DestinationCountryCode: &dstCC,
-		Packages:               req.Packages,
-		PostalCode:             req.PostalCode,
-		CountryCode:            req.CountryCode,
-	}
-
-	partnerInfo := common.PartnerInfo{
-		PartnerCode: "shipcube",
-	}
-
-	s.Logger.WithFields(logrus.Fields{
-		"component":           "international_strategy",
-		"partner":             "SHIPCUBE",
-		"action":              "shipcube_serviceability_check",
-		"source_pincode":      srcPin,
-		"destination_pincode": dstPin,
-		"source_country":      srcCC,
-		"destination_country": dstCC,
-		"request":             shipcubeReq,
-	}).Info("Calling ShipCube adapter for serviceability")
-
-	// Call ShipCube adapter
-	result, err := adapter.CheckServiceability(ctx, shipcubeReq, partnerInfo)
-	s.Logger.WithFields(logrus.Fields{
-		"resultReceived": result != nil,
-		"hasError":       err != nil,
-	}).Info("ShipCube adapter CheckServiceability completed")
-
-	if err != nil {
-		s.Logger.WithError(err).WithFields(logrus.Fields{
-			"component": "international_strategy",
-			"partner":   "SHIPCUBE",
-		}).Warn("ShipCube adapter call failed")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	// Convert ShipCube result to PartnerV2Response
-	partnerResp := s.convertShipCubeResult(result, srcCC, dstCC)
-	if partnerResp.PartnerCode != "" {
-		s.Logger.WithFields(logrus.Fields{
-			"servicesCount": len(partnerResp.Services),
-			"serviceable":   len(partnerResp.Services) > 0,
-		}).Info("Successfully created ShipCube partner response")
-		return partnerResp
-	}
-
-	s.Logger.Warn("Failed to create ShipCube partner response")
-	return modelsv1.PartnerV2Response{}
-}
-
 func (s *InternationalStrategy) convertShipCubeResult(
 	result *common.PartnerServiceabilityResult,
 	srcCC, dstCC string,
@@ -573,6 +497,7 @@ func (s *InternationalStrategy) convertShipCubeResult(
 
 	partnerResp := modelsv1.PartnerV2Response{
 		PartnerCode: result.PartnerCode,
+		PartnerID: "044eef78-97c0-43b2-bb99-5cae2833a63d",
 		Services:    []modelsv1.ServiceV2{},
 	}
 
@@ -823,7 +748,7 @@ func (s *InternationalStrategy) convertAramexResult(res *common.PartnerServiceab
 		services = []modelsv1.ServiceV2{service}
 	}
 
-	partnerID := "unknown"
+	partnerID := "5b0795d4-ef0b-40ae-8ed4-c2cabbbecc4b"
 	if res.PartnerID != nil {
 		partnerID = res.PartnerID.String()
 	}
@@ -845,4 +770,115 @@ func (s *InternationalStrategy) convertAramexResult(res *common.PartnerServiceab
 			"aramex_metadata":          res.Metadata,
 		},
 	}
+
+}
+
+func (s *InternationalStrategy) callShipCubeViaAdapter(
+	ctx context.Context,
+	req *modelsv1.ServiceabilityV2Request,
+	srcPin, dstPin, srcCC, dstCC, srcCity, dstCity string,
+) modelsv1.PartnerV2Response {
+
+	// Step 1: Validate US ZIPs centrally
+	isValid, city := s.validateUSZipCodeWithDetails(ctx, dstPin, dstCC)
+	if !isValid {
+		s.Logger.WithFields(logrus.Fields{
+			"component":       "international_strategy",
+			"partner":         "shipcube",
+			"destination_zip": dstPin,
+			"country_code":    dstCC,
+		}).Warn("ShipCube skipped: invalid destination ZIP")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	if city != "" {
+		dstCity = city
+	}
+
+	// Step 2: Get adapter
+	adapter, found := s.PartnerFactory.GetAdapter("shipcube")
+	if !found || adapter == nil {
+		s.Logger.Warn("ShipCube adapter not available")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	// Step 3: Prepare base request (no duplication)
+	serviceReq := &modelsv1.ServiceabilityV2Request{
+		SourcePostalCode:       &srcPin,
+		DestinationPostalCode:  &dstPin,
+		SourceCountryCode:      &srcCC,
+		DestinationCountryCode: &dstCC,
+		Packages:               req.Packages,
+	}
+
+	// Step 4: Partner info
+	partnerInfo := common.PartnerInfo{
+		PartnerCode: "shipcube",
+	}
+
+	// Step 5: Delegate to adapter (all partner logic stays there)
+	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
+	if err != nil {
+		s.Logger.WithError(err).Warn("ShipCube adapter call failed")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	// Step 6: Convert result to partner response
+	resp := s.convertShipCubeResult(result, srcCC, dstCC)
+	if resp.PartnerCode == "" {
+		s.Logger.Warn("ShipCube response empty after conversion")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   "shipcube",
+		"services":  len(resp.Services),
+	}).Info("ShipCube partner response prepared successfully")
+
+	return resp
+}
+
+
+func (s *InternationalStrategy) validateUSZipCodeWithDetails(ctx context.Context, zipCode string, countryCode string) (bool, string) {
+    if zipCode == "" {
+        return false, ""
+    }
+
+    // For now, only validate US zip codes
+    if countryCode != "US" {
+        return true, ""
+    }
+
+    url := fmt.Sprintf("https://api.zippopotam.us/us/%s", zipCode)
+    
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return false, ""
+    }
+
+    client := &http.Client{Timeout: 5 * time.Second}
+    resp, err := client.Do(req)
+    if err != nil {
+        return false, ""
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode == http.StatusOK {
+        // Parse the response to get city and state
+        var zipData struct {
+            Places []struct {
+                City  string `json:"place name"`
+            } `json:"places"`
+        }
+        
+        if err := json.NewDecoder(resp.Body).Decode(&zipData); err == nil && len(zipData.Places) > 0 {
+            city := zipData.Places[0].City
+            return true, city
+        }
+
+        return true, ""
+    } else {
+        return false, ""
+    }
 }
