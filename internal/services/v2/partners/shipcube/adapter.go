@@ -81,7 +81,6 @@ func (a *Adapter) CheckServiceability(
 		a.logger.Warn("geolocationService is nil — skipping validation")
 	} else if req.DestinationPostalCode != nil {
 		countryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, *req.DestinationPostalCode)
-		a.logger.Info("countryCode", countryCode);
 		if err != nil {
 			a.logger.WithError(err).Warn("Failed to get country code for destination ZIP")
 		} else if countryCode == nil || *countryCode != "US" {
@@ -102,17 +101,29 @@ func (a *Adapter) CheckServiceability(
 		}
 	}
 
-	// --- Step 2: Mock response for now (since ShipCube API not ready) ---
 	service := models.ServiceV2{
-		ServiceCode: "STANDARD",
-		ServiceName: "Standard Delivery",
-	}
+			ServiceCode:   "STANDARD",
+			ServiceName: "Standard Deliver",
+			Pickup:    true,
+			Delivery:  true,
+			Insurance: true,
+			ProductTypes: map[string]bool{
+				"document":     true,
+				"non_document": true,
+				"commercial":   true,
+			},
+			DeliveryModes: map[string]bool{
+				"express":  true,
+				"standard": false,
+			},
+		}
+
+
 
 	a.logger.WithFields(logrus.Fields{
 		"component": "shipcube_adapter",
 		"zip":       req.DestinationPostalCode,
 	}).Info("Returning static ShipCube serviceability result")
-
 	return &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
