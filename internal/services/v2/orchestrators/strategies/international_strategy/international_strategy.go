@@ -779,30 +779,12 @@ func (s *InternationalStrategy) callShipCubeViaAdapter(
 	srcPin, dstPin, srcCC, dstCC, srcCity, dstCity string,
 ) modelsv1.PartnerV2Response {
 
-	// Step 1: Validate US ZIPs centrally
-	isValid, city := s.validateUSZipCodeWithDetails(ctx, dstPin, dstCC)
-	if !isValid {
-		s.Logger.WithFields(logrus.Fields{
-			"component":       "international_strategy",
-			"partner":         "shipcube",
-			"destination_zip": dstPin,
-			"country_code":    dstCC,
-		}).Warn("ShipCube skipped: invalid destination ZIP")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	if city != "" {
-		dstCity = city
-	}
-
-	// Step 2: Get adapter
 	adapter, found := s.PartnerFactory.GetAdapter("shipcube")
 	if !found || adapter == nil {
 		s.Logger.Warn("ShipCube adapter not available")
 		return modelsv1.PartnerV2Response{}
 	}
 
-	// Step 3: Prepare base request (no duplication)
 	serviceReq := &modelsv1.ServiceabilityV2Request{
 		SourcePostalCode:       &srcPin,
 		DestinationPostalCode:  &dstPin,
@@ -811,19 +793,16 @@ func (s *InternationalStrategy) callShipCubeViaAdapter(
 		Packages:               req.Packages,
 	}
 
-	// Step 4: Partner info
 	partnerInfo := common.PartnerInfo{
 		PartnerCode: "shipcube",
 	}
 
-	// Step 5: Delegate to adapter (all partner logic stays there)
 	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
 	if err != nil {
 		s.Logger.WithError(err).Warn("ShipCube adapter call failed")
 		return modelsv1.PartnerV2Response{}
 	}
 
-	// Step 6: Convert result to partner response
 	resp := s.convertShipCubeResult(result, srcCC, dstCC)
 	if resp.PartnerCode == "" {
 		s.Logger.Warn("ShipCube response empty after conversion")
@@ -837,48 +816,4 @@ func (s *InternationalStrategy) callShipCubeViaAdapter(
 	}).Info("ShipCube partner response prepared successfully")
 
 	return resp
-}
-
-
-func (s *InternationalStrategy) validateUSZipCodeWithDetails(ctx context.Context, zipCode string, countryCode string) (bool, string) {
-    if zipCode == "" {
-        return false, ""
-    }
-
-    // For now, only validate US zip codes
-    if countryCode != "US" {
-        return true, ""
-    }
-
-    url := fmt.Sprintf("https://api.zippopotam.us/us/%s", zipCode)
-    
-    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil {
-        return false, ""
-    }
-
-    client := &http.Client{Timeout: 5 * time.Second}
-    resp, err := client.Do(req)
-    if err != nil {
-        return false, ""
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode == http.StatusOK {
-        // Parse the response to get city and state
-        var zipData struct {
-            Places []struct {
-                City  string `json:"place name"`
-            } `json:"places"`
-        }
-        
-        if err := json.NewDecoder(resp.Body).Decode(&zipData); err == nil && len(zipData.Places) > 0 {
-            city := zipData.Places[0].City
-            return true, city
-        }
-
-        return true, ""
-    } else {
-        return false, ""
-    }
 }
