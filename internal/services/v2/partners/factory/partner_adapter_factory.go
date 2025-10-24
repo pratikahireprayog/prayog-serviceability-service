@@ -396,9 +396,10 @@ func (f *partnerAdapterFactory) initializeImplementations() {
     }
 
 	if f.config.ShipCube.Enabled {
-        f.implementations["shipcube"] = shipcube.NewAdapter(
+		f.implementations["shipcube"] = shipcube.NewAdapter(
 			f.config.ShipCube,
-		)
+			f.geolocationService,
+			f.hubLocationService)
 
         f.logger.WithFields(logrus.Fields{
             "component": "partner_adapter_factory",
