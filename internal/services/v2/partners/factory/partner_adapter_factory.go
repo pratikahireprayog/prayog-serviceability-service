@@ -13,6 +13,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
+	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipcube"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
@@ -49,9 +50,11 @@ var adapterImplementationMap = map[string]string{
 	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	"smile_hubops":      "smile_hubops",      // Direct mapping
 	"porter":            "porter",            // Direct mapping
-	"aramex":            "aramex",  
-    "fedex":             "fedex",   
-	"shipcube": 		 "shipcube",
+	"aramex":                 "aramex",  
+    "fedex":                  "fedex",   
+	"shipcube":               "shipcube",
+	"india_post_domestic":    "india_post_domestic",    // Direct mapping for domestic India shipments
+	"INDIA_POST_DOMESTIC":    "india_post_domestic",    // Uppercase variant
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -73,8 +76,9 @@ func getPartnerDisplayName(code string) string {
 		"smile_ecom":    "Smile Ecommerce",
 		"shipyaari":     "Shipyaari",
 		"smile_courier": "Smile Courier",
-		"smile_hubops":  "Smile HubOps",
-		"porter":        "Porter",
+		"smile_hubops":          "Smile HubOps",
+		"porter":                "Porter",
+		"india_post_domestic":   "India Post Domestic",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -238,6 +242,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
         return f.config.FedEx, nil
 	case "shipcube":                              
         return f.config.ShipCube, nil
+	case "india_post_domestic":
+		return f.config.IndiaPostDomestic, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -404,13 +410,27 @@ func (f *partnerAdapterFactory) initializeImplementations() {
         f.logger.WithFields(logrus.Fields{
             "component": "partner_adapter_factory",
             "adapter":   "shipcube",
-        }).Info("Initialized fedex adapter")
+        }).Info("Initialized shipcube adapter")
     } else {
         f.logger.WithFields(logrus.Fields{
             "component": "partner_adapter_factory",
             "adapter":   "shipcube",
         }).Warn("shipcube adapter not enabled in config")
     }
+
+	// Initialize India Post Domestic adapter for domestic pincode serviceability
+	if f.config.IndiaPostDomestic.Enabled {
+		f.implementations["india_post_domestic"] = india_post_domestic.NewAdapter(f.config.IndiaPostDomestic)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "india_post_domestic",
+		}).Info("Initialized india_post_domestic adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "india_post_domestic",
+		}).Warn("India Post Domestic adapter not enabled in config")
+	}
 	
 	f.logger.WithFields(logrus.Fields{
 		"component":      "partner_adapter_factory",
