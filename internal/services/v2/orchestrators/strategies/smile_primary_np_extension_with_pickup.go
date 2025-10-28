@@ -7,11 +7,12 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/sirupsen/logrus"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	"prayog-serviceability-service/internal/shared/models/v1"
-    "github.com/google/uuid"
+
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // InternationalWithPickupStrategy orchestrates the flow:
@@ -314,6 +315,10 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (
 	if res.PartnerID != nil {
 		partnerID = res.PartnerID.String()
 	}
+	var errMsg string
+	if res.ErrorMessage != nil {
+		errMsg = *res.ErrorMessage
+	}
 	return models.PartnerV2Response{
 		PartnerID:       partnerID,
 		PartnerCode:     code,
@@ -322,8 +327,9 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (
 		Services:        res.Services,
 		PartnerServices: res.PartnerServices,
 		Capabilities:    res.Capabilities,
-		Error:           res.ErrorMessage,
-		ResponseTime:    res.ResponseTime,
+		Error: &models.PartnerError{
+			Message: errMsg,
+		},
 		Metadata:        res.Metadata,
 	}, true
 }

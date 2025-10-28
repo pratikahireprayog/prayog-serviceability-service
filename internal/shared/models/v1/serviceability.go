@@ -103,12 +103,6 @@ type BulkServiceabilityResponse struct {
 	Error   *ErrorResponse           `json:"error,omitempty"`
 }
 
-// ErrorResponse represents error information
-type ErrorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Details string `json:"details,omitempty"`
-}
 
 // Helper Models for Business Logic
 

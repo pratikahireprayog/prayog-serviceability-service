@@ -60,50 +60,10 @@ type Address struct {
 type RequestedPackageLineItem struct {
 	Weight Weight `json:"weight"`
 }
-
-type RateOutput struct {
-    Alerts            []FedExAlert      `json:"alerts"`
-    RateReplyDetails  []RateReplyDetail `json:"rateReplyDetails"`
-    QuoteDate         string            `json:"quoteDate"`
-    Encoded           bool              `json:"encoded"`
-}
-type Output struct {
-	RateReplyDetails []RateReplyDetail `json:"rateReplyDetails"`
-	Alerts           []Alert           `json:"alerts,omitempty"`
-	Errors           []APIError        `json:"errors,omitempty"`
-}
-
 type FedExAlert struct {
     Code      string `json:"code"`
     Message   string `json:"message"`
     AlertType string `json:"alertType"`
-}
-
-type RateReplyDetail struct {
-    ServiceType          string               `json:"serviceType"`
-    ServiceName          string               `json:"serviceName"`
-    PackagingType        string               `json:"packagingType"`
-    RatedShipmentDetails []RatedShipmentDetail `json:"ratedShipmentDetails"`
-    OperationalDetail    OperationalDetail    `json:"operationalDetail"`
-    SignatureOptionType  string               `json:"signatureOptionType"`
-    ServiceDescription   ServiceDescription   `json:"serviceDescription"`
-}
-type RatedShipmentDetail struct {
-    RateType            string       `json:"rateType"`
-    RatedWeightMethod   string       `json:"ratedWeightMethod"`
-    TotalDiscounts      float64      `json:"totalDiscounts"`
-    TotalBaseCharge     float64      `json:"totalBaseCharge"`
-    TotalNetCharge      float64      `json:"totalNetCharge"`
-    TotalNetFedExCharge float64      `json:"totalNetFedExCharge"`
-    ShipmentRateDetail  ShipmentRate `json:"shipmentRateDetail"`
-    RatedPackages       []RatedPackage `json:"ratedPackages"`
-    Currency            string       `json:"currency"`
-}
-
-type RateResponse struct {
-    TransactionID        string         `json:"transactionId"`
-    CustomerTransactionID string        `json:"customerTransactionId"`
-    Output               RateOutput     `json:"output"`
 }
 
 type ShipmentRate struct {
@@ -216,4 +176,96 @@ type TokenResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 	Scope       string `json:"scope"`
+}
+
+// TransitTimeRequest represents a request to FedEx's transit times API
+type TransitTimeRequest struct {
+	RequestedShipment TransitTimeShipment `json:"requestedShipment"`
+	CarrierCodes      []string           `json:"carrierCodes"`
+}
+
+type TransitTimeShipment struct {
+	Shipper                   Shipper                   `json:"shipper"`
+	Recipients                []Recipient              `json:"recipients"`
+	PackagingType             string                   `json:"packagingType"`
+	CustomsClearanceDetail    *CustomsClearanceDetail  `json:"customsClearanceDetail,omitempty"`
+	RequestedPackageLineItems []RequestedPackageLineItem `json:"requestedPackageLineItems"`
+}
+
+type CustomsClearanceDetail struct {
+	Commodities []Commodity `json:"commodities"`
+}
+
+type Commodity struct {
+	Description   string      `json:"description"`
+	CustomsValue  CustomsValue `json:"customsValue"`
+	NumberOfPieces int        `json:"numberOfPieces"`
+}
+
+type CustomsValue struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+// TransitTimeResponse represents the response from FedEx's transit times API
+type TransitTimeResponse struct {
+	TransactionID string          `json:"transactionId"`
+	Output        TransitOutput   `json:"output"`
+}
+
+type TransitOutput struct {
+	TransitTimes []TransitTime `json:"transitTimes"`
+	Encoded      bool          `json:"encoded"`
+}
+
+type TransitTime struct {
+	Alerts            []TransitAlert        `json:"alerts"`
+	TransitTimeDetails []TransitTimeDetail  `json:"transitTimeDetails"`
+}
+
+type TransitAlert struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	AlertType string `json:"alertType"`
+}
+
+type TransitTimeDetail struct {
+	ServiceType        string             `json:"serviceType"`
+	ServiceName        string             `json:"serviceName"`
+	Commit             *CommitDetail      `json:"commit,omitempty"`
+	CustomerMessages   []CustomerMessage  `json:"customerMessages"`
+}
+
+type CommitDetail struct {
+	DateDetail                 DateDetail                 `json:"dateDetail"`
+	CommodityName             string                     `json:"commodityName"`
+	DerivedDestinationDetail  DerivedDestinationDetail   `json:"derivedDestinationDetail"`
+	CutOffTime                string                     `json:"cutOffTime"`
+	AccessTime                AccessTime                 `json:"accessTime"`
+}
+
+type DateDetail struct {
+	DayOfWeek string `json:"dayOfWeek"`
+	Time      string `json:"time"`
+	Day       string `json:"day"`
+}
+
+type DerivedDestinationDetail struct {
+	CountryCode       string `json:"countryCode"`
+	StateOrProvinceCode string `json:"stateOrProvinceCode"`
+	PostalCode        string `json:"postalCode"`
+	ServiceArea       string `json:"serviceArea"`
+	LocationId        string `json:"locationId"`
+	LocationNumber    int    `json:"locationNumber"`
+	AirportId         string `json:"airportId"`
+}
+
+type AccessTime struct {
+	Hours   int `json:"hours"`
+	Minutes int `json:"minutes"`
+}
+
+type CustomerMessage struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }

@@ -83,24 +83,117 @@ type ServiceabilityV2Response struct {
 	Partners           []PartnerV2Response `json:"partners"` // Remove omitempty to always include partners array
 	Error              *ErrorResponse      `json:"error,omitempty"`
 	Metadata           *V2ResponseMetadata `json:"metadata,omitempty"`
+	Message			   string			   `json:"Message,omitempty"`
 }
 
 // PartnerV2Response represents individual partner response in v2 format
 type PartnerV2Response struct {
-	PartnerID       string                 `json:"partner_id"`
-	PartnerCode     string                 `json:"partner_code"`
-	PartnerName     string                 `json:"partner_name,omitempty"`
-	Rating          float64                `json:"rating"`
-	Services        []ServiceV2            `json:"standard_services,omitempty"`
-	PartnerServices interface{}            `json:"services,omitempty"`
-	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
-	Error           *string                `json:"error,omitempty"`
-	ResponseTime    time.Duration          `json:"response_time"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
-	HubDetails      interface{}            `json:"hub_details,omitempty"`
+	PartnerID     string                 `json:"partner_id"`
+	PartnerCode   string                 `json:"partner_code"`
+	PartnerName   string                 `json:"partner_name"`
+	Rating        int                    `json:"rating"`
+	Source        string                 `json:"source"`
+	IsServiceable bool                   `json:"is_serviceable"`
+	Capabilities  map[string]interface{} `json:"capabilities,omitempty"`
+	Services      []ServiceV2            `json:"services,omitempty"`
+	Error         *PartnerError          `json:"error,omitempty"`
+	ResponseTimeMs int64                 `json:"response_time_ms"`
+	Metadata      map[string]interface{} `json:"metadata"`
+	PartnerServices interface{} 		 `json:"partner_services,omitempty"`
+	HubDetails      interface{}          `json:"hub_details,omitempty"`
 }
 
-// ServiceV2 represents service information for v2 responses
+	
+
+
+
+// Price represents the pricing details for a rate.
+type Price struct {
+	Currency string  `json:"currency"` // e.g., "INR", "USD"
+	Amount   float64 `json:"amount"`   // numerical value of the rate
+	Type     string  `json:"type"`     // e.g., "standard", "express", etc.
+}
+
+// Rate represents a single shipping rate or price quote from a partner.
+type Rate struct {
+	RateID string `json:"rate_id"` // unique identifier for this rate
+	Price  Price  `json:"price"`   // nested price details
+}
+
+// V2ResponseMetadata represents the metadata for the response
+type V2ResponseMetadata struct {
+	RequestID               string `json:"request_id"`
+	ResponseTimeMs          int64  `json:"response_time_ms"`
+	PartnersQueried         int    `json:"partners_queried"`
+	PartnersSucceeded       int    `json:"partners_succeeded"`
+	PartnersFailed          int    `json:"partners_failed"`
+	TotalServiceablePartners int   `json:"total_serviceable_partners"`
+	RatesIncluded           bool   `json:"rates_included"`
+	TotalPartners    		int    `json:"total_partners"`
+	ServiceableCount		int     `json:"serviceable_count"`
+ 	ProcessingTime   time.Duration `json:"processing_time"`
+	Filters          V2Filters     `json:"filters",`
+}
+
+// PartnerError represents error information from a partner
+type PartnerError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+}
+
+// ErrorResponse represents a standardized error response structure
+type ErrorResponse struct {
+	Code      string            `json:"code"`
+	Message   string            `json:"message"`
+	Details   string            `json:"details,omitempty"`
+	Timestamp string            `json:"timestamp"`
+	RequestID string            `json:"request_id,omitempty"`
+}
+
+// Common error codes
+const (
+	ErrorCodeServiceabilityFailed = "SERVICEABILITY_CHECK_FAILED"
+	ErrorCodeAuthenticationFailed = "AUTHENTICATION_FAILED"
+	ErrorCodeAdapterNotFound      = "ADAPTER_NOT_FOUND"
+	ErrorCodeInvalidRequest       = "INVALID_REQUEST"
+)
+
+// Helper functions for creating errors
+func NewPartnerError(code, message, details string) *PartnerError {
+	return &PartnerError{
+		Code:    code,
+		Message: message,
+		Details: details,
+	}
+}
+
+type HubOpsResponse struct {
+	NearestHub              *HubInfoData `json:"nearestHub"`
+	NearestInternationalHub *HubInfoData `json:"nearestInternationalHub"`
+	Nearest3PLHub           *HubInfoData `json:"nearest3PLHub"`
+}
+type HubInfoData struct {
+	PremiseID           *int64       `json:"premiseId"`
+	PremiseName         *string      `json:"premiseName"`
+	City                *string      `json:"city"`
+	Address             *string      `json:"address"`
+	AddressLine1        *string      `json:"addressLine1"`
+	AddressLine2        *string      `json:"addressLine2"`
+	Pincode             *int64       `json:"pincode"`
+	State               *string      `json:"state"`
+	Latitude            *string      `json:"latitude"`
+	Longitude           *string      `json:"longitude"`
+	PersonalEmailId     *string      `json:"personalEmailId"`
+	OfficialEmailId     *string      `json:"officialEmailId"`
+	PersonalNumber      interface{}  `json:"personalNumber"`
+	OfficialNumber      interface{}  `json:"officialNumber"`
+}
+
+type HubOpsRequest struct {
+	PostalCode string `json:"postalCode"`
+}
+
 type ServiceV2 struct {
 	ServiceCode   string            `json:"service_code"`
 	ServiceName   string            `json:"service_name"`
@@ -112,6 +205,7 @@ type ServiceV2 struct {
 	ProductTypes  map[string]bool   `json:"product_types"`
 	DeliveryModes map[string]bool   `json:"delivery_modes"`
 	Pricing       *ServicePricingV2 `json:"pricing,omitempty"`
+	Rate          *Rate             `json:"rate,omitempty"`
 }
 
 // ServicePricingV2 represents pricing information
@@ -123,13 +217,13 @@ type ServicePricingV2 struct {
 }
 
 // V2ResponseMetadata contains metadata about the v2 response
-type V2ResponseMetadata struct {
-	TotalPartners    int           `json:"total_partners"`
-	ServiceableCount int           `json:"serviceable_count"`
-	ProcessingTime   time.Duration `json:"processing_time"`
-	Filters          V2Filters     `json:"filters"`
-	// Remove EligiblePartners field - not needed
-}
+// type V2ResponseMetadata struct {
+// 	TotalPartners    int           `json:"total_partners"`
+// 	ServiceableCount int           `json:"serviceable_count"`
+// 	ProcessingTime   time.Duration `json:"processing_time"`
+// 	Filters          V2Filters     `json:"filters"`
+// 	// Remove EligiblePartners field - not needed
+// }
 
 // V2Filters represents the filters applied to determine eligible partners
 type V2Filters struct {
