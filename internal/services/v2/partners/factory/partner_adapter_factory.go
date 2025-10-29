@@ -450,6 +450,8 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "india_post_international",
 		}).Warn("❌ India Post International adapter not enabled in config")
+	}
+	
 	// Initialize India Post Domestic adapter for domestic pincode serviceability
 	if f.config.IndiaPostDomestic.Enabled {
 		f.implementations["india_post_domestic"] = india_post_domestic.NewAdapter(f.config.IndiaPostDomestic)

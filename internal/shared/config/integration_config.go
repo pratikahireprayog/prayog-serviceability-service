@@ -27,11 +27,11 @@ type PartnerAdaptersConfig struct {
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
-	Aramex       AramexConfig       `yaml:"aramex" json:"aramex"`
-	FedEx        FedExConfig        `yaml:"fedex" json:"fedex"`
-	ShipCube     ShipCubeConfig     `yaml:"shipcube" json:"shipcube"`
+	Aramex            AramexConfig            `yaml:"aramex" json:"aramex"`
+	FedEx             FedExConfig             `yaml:"fedex" json:"fedex"`
+	ShipCube          ShipCubeConfig          `yaml:"shipcube" json:"shipcube"`
 	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
-	iaPostIntl       IndiaPostConfig           `yaml:"india_post_intl" json:"india_post_intl"`
+	IndiaPostIntl     IndiaPostConfig         `yaml:"india_post_intl" json:"india_post_intl"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -272,6 +272,8 @@ type IndiaPostConfig struct {
 	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Enabled           bool          `yaml:"enabled" json:"enabled"`
 	Rating            float64       `yaml:"rating" json:"rating"`
+}
+
 // IndiaPostDomesticConfig configuration for India Post Domestic partner adapter (domestic pincode search)
 type IndiaPostDomesticConfig struct {
 	BaseURL          string        `yaml:"base_url" json:"base_url"`
