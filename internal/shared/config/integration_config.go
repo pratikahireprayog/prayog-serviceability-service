@@ -27,10 +27,11 @@ type PartnerAdaptersConfig struct {
 	Delcaper     DelcaperConfig     `yaml:"delcaper" json:"delcaper"`
 	SmileHubOps  SmileHubOpsConfig  `yaml:"smile_hubops" json:"smile_hubops"`
 	Porter       PorterConfig       `yaml:"porter" json:"porter"`
-	Aramex              AramexConfig              `yaml:"aramex" json:"aramex"`
-	FedEx               FedExConfig               `yaml:"fedex" json:"fedex"`
-	ShipCube            ShipCubeConfig            `yaml:"shipcube" json:"shipcube"`
-	IndiaPostIntl       IndiaPostConfig           `yaml:"india_post_intl" json:"india_post_intl"`
+	Aramex       AramexConfig       `yaml:"aramex" json:"aramex"`
+	FedEx        FedExConfig        `yaml:"fedex" json:"fedex"`
+	ShipCube     ShipCubeConfig     `yaml:"shipcube" json:"shipcube"`
+	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
+	iaPostIntl       IndiaPostConfig           `yaml:"india_post_intl" json:"india_post_intl"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -271,6 +272,24 @@ type IndiaPostConfig struct {
 	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Enabled           bool          `yaml:"enabled" json:"enabled"`
 	Rating            float64       `yaml:"rating" json:"rating"`
+// IndiaPostDomesticConfig configuration for India Post Domestic partner adapter (domestic pincode search)
+type IndiaPostDomesticConfig struct {
+	BaseURL          string        `yaml:"base_url" json:"base_url"`
+	AuthBaseURL      string        `yaml:"auth_base_url" json:"auth_base_url"`
+	LoginURL         string        `yaml:"login_url" json:"login_url"`           // Login API endpoint
+	RefreshTokenURL  string        `yaml:"refresh_token_url" json:"refresh_token_url"` // Refresh token endpoint
+	PincodeSearchURL string        `yaml:"pincode_search_url" json:"pincode_search_url"`
+	Username         string        `yaml:"username" json:"username"`
+	Password         string        `yaml:"password" json:"password"`
+	ClientID         string        `yaml:"client_id" json:"client_id"`
+	ClientSecret     string        `yaml:"client_secret" json:"client_secret"`
+	OfficeType       string        `yaml:"office_type" json:"office_type"` // "post" for postal offices
+	SearchLimit      int           `yaml:"search_limit" json:"search_limit"`
+	Timeout          time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries       int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay       time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled          bool          `yaml:"enabled" json:"enabled"`
+	Rating           float64       `yaml:"rating" json:"rating"`
 }
 
 
@@ -492,6 +511,25 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Enabled:           getEnvAsBoolOrDefault("INDIA_POST_INTL_ENABLED", true),
 			Rating:            4.0,
 		},
+		IndiaPostDomestic: IndiaPostDomesticConfig{
+			BaseURL:          getEnvOrDefault("INDIA_POST_DOMESTIC_BASE_URL", "https://test.cept.gov.in"),
+			AuthBaseURL:      getEnvOrDefault("INDIA_POST_DOMESTIC_AUTH_BASE_URL", "https://test.cept.gov.in"),
+			LoginURL:         getEnvOrDefault("INDIA_POST_DOMESTIC_LOGIN_URL", "/beextcustomer/v1/access/login"),
+			RefreshTokenURL:  getEnvOrDefault("INDIA_POST_DOMESTIC_REFRESH_TOKEN_URL", "/beextcustomer/v1/access/TokenWithRtoken"),
+			PincodeSearchURL: getEnvOrDefault("INDIA_POST_DOMESTIC_PINCODE_SEARCH_URL", "/bemasterdata/v1/offices/limited-details"),
+			Username:         getEnvOrDefault("INDIA_POST_DOMESTIC_USERNAME", ""),
+			Password:         getEnvOrDefault("INDIA_POST_DOMESTIC_PASSWORD", ""),
+			ClientID:         getEnvOrDefault("INDIA_POST_DOMESTIC_CLIENT_ID", "external_client"),
+			ClientSecret:     getEnvOrDefault("INDIA_POST_DOMESTIC_CLIENT_SECRET", ""),
+			OfficeType:       getEnvOrDefault("INDIA_POST_DOMESTIC_OFFICE_TYPE", "post"),
+			SearchLimit:      getEnvAsIntOrDefault("INDIA_POST_DOMESTIC_SEARCH_LIMIT", 50),
+			Timeout:          getEnvAsDurationOrDefault("INDIA_POST_DOMESTIC_TIMEOUT", 30*time.Second),
+			MaxRetries:       getEnvAsIntOrDefault("INDIA_POST_DOMESTIC_MAX_RETRIES", 3),
+			RetryDelay:       getEnvAsDurationOrDefault("INDIA_POST_DOMESTIC_RETRY_DELAY", 1*time.Second),
+			Enabled:          getEnvAsBoolOrDefault("INDIA_POST_DOMESTIC_ENABLED", true),
+			Rating:           4.5,
+		},
+
 	}
 
 	return IntegrationConfig{

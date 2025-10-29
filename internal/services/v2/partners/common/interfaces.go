@@ -111,10 +111,10 @@ const (
 
 // PartnerServiceabilityResult represents the result from a partner serviceability check
 type PartnerServiceabilityResult struct {
-	PartnerID       *uuid.UUID             `json:"partner_id,omitempty"`
+	PartnerID       *uuid.UUID             `standard:"partner_id,omitempty"`
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
-	Services        []models.ServiceV2     `json:"standard_services,omitempty"`
+	Services        []models.ServiceV2     `json:"services,omitempty"`
 	PartnerServices interface{}            `json:"services,omitempty"`
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           error                  `json:"-"`

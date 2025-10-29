@@ -10,6 +10,7 @@ import (
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,18 +48,24 @@ func (a *Adapter) IsEnabled() bool {
 }
 
 // CheckServiceability checks if FedEx can service the given request
-func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+func (a *Adapter) CheckServiceability(
+	ctx context.Context,
+	request *models.ServiceabilityV2Request,
+	partner common.PartnerInfo,
+) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
+	id, _ := uuid.Parse("83c5a4ac-b297-466a-9b14-9f2602103737")
 
-	partnerID := ""
-	if partnerInfo.PartnerID != nil {
-		partnerID = partnerInfo.PartnerID.String()
-	}
+	partnerInfo := common.PartnerInfo{
+        PartnerCode: "fedex",
+		PartnerID: &id,
+    }
+
 	a.logger.WithFields(logrus.Fields{
 		"component":    "fedex_adapter",
 		"action":       "check_serviceability_start",
 		"partner_code": partnerInfo.PartnerCode,
-		"partner_id":   partnerID,
+		"partner_id":   partnerInfo.PartnerID.String(),
 	}).Info("Starting FedEx adapter serviceability check")
 
 	// Validate FedEx-specific requirements
@@ -67,7 +74,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 			"component":    "fedex_adapter",
 			"event":        "validation_failed",
 			"partner_code": partnerInfo.PartnerCode,
-			"partner_id":   partnerID,
+			"partner_id":   partnerInfo.PartnerID.String(),
 			"error":        err.Error(),
 		}).Warn("FedEx validation failed")
 		return &common.PartnerServiceabilityResult{
@@ -222,7 +229,10 @@ func (a *Adapter) validateFedExRequirements(request *models.ServiceabilityV2Requ
 
 // createServiceabilityRequest creates a FedEx serviceability request
 func (a *Adapter) createServiceabilityRequest(request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) ServiceabilityRequest {
-	// Calculate weight from request
+	weight := 1.0
+	if request.Packages[0].Weight != nil {
+		weight = 1
+	}
 	return ServiceabilityRequest{
 		OriginAddress: Address{
 			PostalCode:  *request.SourcePostalCode,
@@ -232,7 +242,7 @@ func (a *Adapter) createServiceabilityRequest(request *models.ServiceabilityV2Re
 			PostalCode:  *request.DestinationPostalCode,
 			CountryCode: destinationCountryCode,
 		},
-		Weight: 1,
+		Weight: weight,
 	}
 }
 
