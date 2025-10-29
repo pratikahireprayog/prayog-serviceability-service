@@ -31,6 +31,7 @@ type PartnerAdaptersConfig struct {
 	FedEx        FedExConfig        `yaml:"fedex" json:"fedex"`
 	ShipCube     ShipCubeConfig     `yaml:"shipcube" json:"shipcube"`
 	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
+	iaPostIntl       IndiaPostConfig           `yaml:"india_post_intl" json:"india_post_intl"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -258,6 +259,19 @@ type ShipCubeConfig struct {
 	Rating          float64       `yaml:"rating" json:"rating"`
 }
 
+// IndiaPostConfig configuration for India Post International partner adapter
+type IndiaPostConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	Username          string        `yaml:"username" json:"username"`
+	Password          string        `yaml:"password" json:"password"`
+	LoginURL          string        `yaml:"login_url" json:"login_url"`
+	TariffURL         string        `yaml:"tariff_url" json:"tariff_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	TokenExpiryBuffer time.Duration `yaml:"token_expiry_buffer" json:"token_expiry_buffer"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
 // IndiaPostDomesticConfig configuration for India Post Domestic partner adapter (domestic pincode search)
 type IndiaPostDomesticConfig struct {
 	BaseURL          string        `yaml:"base_url" json:"base_url"`
@@ -483,6 +497,19 @@ func LoadIntegrationConfig() IntegrationConfig {
 			RetryDelay:      getEnvAsDurationOrDefault("SHIPCUBE_RETRY_DELAY", 1*time.Second),
 			Enabled:         getEnvAsBoolOrDefault("SHIPCUBE_ENABLED", true),
 			Rating:          4.4,
+		},
+		IndiaPostIntl: IndiaPostConfig{
+			BaseURL:           getEnvOrDefault("INDIA_POST_INTL_BASE_URL", "https://test.cept.gov.in/beextcustomer"),
+			Username:          getEnvOrDefault("INDIA_POST_INTL_USERNAME", "9999999999"),
+			Password:          getEnvOrDefault("INDIA_POST_INTL_PASSWORD", "Dop@1234"),
+			LoginURL:          getEnvOrDefault("INDIA_POST_INTL_LOGIN_URL", "/v1/access/login"),
+			TariffURL:         getEnvOrDefault("INDIA_POST_INTL_TARIFF_URL", "/v1/international-tariff/calculate"),
+			Timeout:           getEnvAsDurationOrDefault("INDIA_POST_INTL_TIMEOUT", 30*time.Second),
+			TokenExpiryBuffer: getEnvAsDurationOrDefault("INDIA_POST_INTL_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
+			MaxRetries:        getEnvAsIntOrDefault("INDIA_POST_INTL_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("INDIA_POST_INTL_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("INDIA_POST_INTL_ENABLED", true),
+			Rating:            4.0,
 		},
 		IndiaPostDomestic: IndiaPostDomesticConfig{
 			BaseURL:          getEnvOrDefault("INDIA_POST_DOMESTIC_BASE_URL", "https://test.cept.gov.in"),

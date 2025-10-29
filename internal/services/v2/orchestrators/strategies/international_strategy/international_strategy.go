@@ -203,6 +203,32 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		}
 	}
 
+	// Call FedEx
+	fedexPartner := s.callFedExViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	if fedexPartner.PartnerCode != "" {
+		partners = append(partners, fedexPartner)
+	}
+
+	// Call ShipCube
+	shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	if shipcubePartner.PartnerCode != "" {
+		partners = append(partners, shipcubePartner)
+	}
+
+	// Call India Post International
+	indiaPostPartner := s.callIndiaPostInternationalViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
+	if indiaPostPartner.PartnerCode != "" {
+		partners = append(partners, indiaPostPartner)
+	}
+
+	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
+		Success:  len(partners) > 0,
+		Partners: partners,
+	}
+	if len(addresses) > 0 {
+		serviceabilityResp.Addresses = addresses
+	}
+	return serviceabilityResp, nil
 	// Build final response
 	return s.buildSuccessResponse(partners, addresses, startTime, len(partnerCodes), len(serviceablePartners), ratesIncluded), nil
 }
@@ -1290,3 +1316,178 @@ func (s *InternationalStrategy) convertGenericResult(res *common.PartnerServicea
 	}
 }
 
+func (s *InternationalStrategy) callShipCubeViaAdapter(
+	ctx context.Context,
+	req *modelsv1.ServiceabilityV2Request,
+	srcPin, dstPin, srcCC, dstCC, srcCity, dstCity string,
+) modelsv1.PartnerV2Response {
+
+	adapter, found := s.PartnerFactory.GetAdapter("shipcube")
+	if !found || adapter == nil {
+		s.Logger.Warn("ShipCube adapter not available")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	serviceReq := &modelsv1.ServiceabilityV2Request{
+		SourcePostalCode:       &srcPin,
+		DestinationPostalCode:  &dstPin,
+		SourceCountryCode:      &srcCC,
+		DestinationCountryCode: &dstCC,
+		Packages:               req.Packages,
+	}
+
+	partnerInfo := common.PartnerInfo{
+		PartnerCode: "shipcube",
+	}
+
+	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
+	if err != nil {
+		s.Logger.WithError(err).Warn("ShipCube adapter call failed")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	resp := s.convertShipCubeResult(result, srcCC, dstCC)
+	if resp.PartnerCode == "" {
+		s.Logger.Warn("ShipCube response empty after conversion")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   "shipcube",
+		"services":  len(resp.Services),
+	}).Info("ShipCube partner response prepared successfully")
+
+	return resp
+}
+
+// callIndiaPostInternationalViaAdapter - uses India Post International adapter for serviceability check
+func (s *InternationalStrategy) callIndiaPostInternationalViaAdapter(
+	ctx context.Context,
+	req *modelsv1.ServiceabilityV2Request,
+	srcPin, dstPin, srcCC, dstCC, srcCity, dstCity string,
+) modelsv1.PartnerV2Response {
+
+	adapter, found := s.PartnerFactory.GetAdapter("india_post_international")
+	if !found || adapter == nil {
+		s.Logger.WithFields(logrus.Fields{
+			"component": "international_strategy",
+			"partner":   "india_post_international",
+		}).Warn("India Post International adapter not available")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	serviceReq := &modelsv1.ServiceabilityV2Request{
+		SourcePostalCode:       &srcPin,
+		DestinationPostalCode:  &dstPin,
+		SourceCountryCode:      &srcCC,
+		DestinationCountryCode: &dstCC,
+		Packages:               req.Packages,
+	}
+
+	partnerInfo := common.PartnerInfo{
+		PartnerCode: "india_post_international",
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component":           "international_strategy",
+		"partner":             "india_post_international",
+		"action":              "india_post_serviceability_check",
+		"source_pincode":      srcPin,
+		"destination_pincode": dstPin,
+		"source_country":      srcCC,
+		"destination_country": dstCC,
+	}).Info("Calling India Post International adapter for serviceability")
+
+	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
+	if err != nil {
+		s.Logger.WithError(err).WithFields(logrus.Fields{
+			"component": "international_strategy",
+			"partner":   "india_post_international",
+		}).Warn("India Post International adapter call failed")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"resultReceived": result != nil,
+		"hasError":       err != nil,
+	}).Info("India Post International adapter CheckServiceability completed")
+
+	resp := s.convertIndiaPostInternationalResult(result, srcCC, dstCC)
+	if resp.PartnerCode == "" {
+		s.Logger.Warn("India Post International response empty after conversion")
+		return modelsv1.PartnerV2Response{}
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   "india_post_international",
+		"services":  len(resp.Services),
+	}).Info("India Post International partner response prepared successfully")
+
+	return resp
+}
+
+// convertIndiaPostInternationalResult - converts India Post International adapter result to partner response
+func (s *InternationalStrategy) convertIndiaPostInternationalResult(
+	result *common.PartnerServiceabilityResult,
+	srcCC, dstCC string,
+) modelsv1.PartnerV2Response {
+
+	if result == nil {
+		return modelsv1.PartnerV2Response{}
+	}
+
+	isServiceable := result != nil && len(result.Services) > 0
+
+	partnerResp := modelsv1.PartnerV2Response{
+		PartnerCode: result.PartnerCode,
+		PartnerName: "India Post International",
+		Services:    []modelsv1.ServiceV2{},
+		Rating:      0,
+	}
+
+	// Use partner ID from result if available
+	if result.PartnerID != nil {
+		partnerResp.PartnerID = result.PartnerID.String()
+	}
+
+	// If serviceable, map services
+	if isServiceable {
+		for _, svc := range result.Services {
+			service := modelsv1.ServiceV2{
+				ServiceCode:  svc.ServiceCode,
+				ServiceName:  svc.ServiceName,
+				TATDays:      svc.TATDays,
+				IsCOD:        svc.IsCOD,
+				Pickup:       svc.Pickup,
+				Delivery:     svc.Delivery,
+				Insurance:    svc.Insurance,
+				ProductTypes: svc.ProductTypes,
+				DeliveryModes: svc.DeliveryModes,
+			}
+			partnerResp.Services = append(partnerResp.Services, service)
+		}
+	}
+
+	// Attach metadata for context
+	if result.Metadata != nil {
+		partnerResp.Metadata = result.Metadata
+	} else {
+		partnerResp.Metadata = map[string]interface{}{
+			"source_country_code":      srcCC,
+			"destination_country_code": dstCC,
+			"flow":                     "international",
+		}
+	}
+
+	// Add error if present
+	if result.Error != nil {
+		errMsg := result.Error.Error()
+		partnerResp.Error = &errMsg
+	} else if result.ErrorMessage != nil {
+		partnerResp.Error = result.ErrorMessage
+	}
+
+	return partnerResp
+}

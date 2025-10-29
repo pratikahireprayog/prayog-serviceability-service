@@ -13,6 +13,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
+	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipcube"
@@ -50,6 +51,8 @@ var adapterImplementationMap = map[string]string{
 	"smile_hyperlocal":  "delcaper",          // Database uses smile_hyperlocal, implementation is delcaper
 	"smile_hubops":      "smile_hubops",      // Direct mapping
 	"porter":            "porter",            // Direct mapping
+	
+	"india_post_international":   "india_post_international",
 	"aramex":                 "aramex",  
     "fedex":                  "fedex",   
 	"shipcube":               "shipcube",
@@ -75,9 +78,10 @@ func getPartnerDisplayName(code string) string {
 		"smile_ecomm":   "Smile Ecommerce",
 		"smile_ecom":    "Smile Ecommerce",
 		"shipyaari":     "Shipyaari",
-		"smile_courier": "Smile Courier",
-		"smile_hubops":          "Smile HubOps",
-		"porter":                "Porter",
+		"smile_courier":            "Smile Courier",
+		"smile_hubops":             "Smile HubOps",
+		"porter":                   "Porter",
+		"india_post_international": "India Post International",
 		"india_post_domestic":   "India Post Domestic",
 	}
 
@@ -242,6 +246,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
         return f.config.FedEx, nil
 	case "shipcube":                              
         return f.config.ShipCube, nil
+	case "india_post_international":
+		return f.config.IndiaPostIntl, nil
 	case "india_post_domestic":
 		return f.config.IndiaPostDomestic, nil
 	default:
@@ -418,6 +424,32 @@ func (f *partnerAdapterFactory) initializeImplementations() {
         }).Warn("shipcube adapter not enabled in config")
     }
 
+	// Initialize India Post International adapter
+	f.logger.WithFields(logrus.Fields{
+		"component":      "partner_adapter_factory",
+		"adapter":        "india_post_international",
+		"enabled":        f.config.IndiaPostIntl.Enabled,
+		"base_url":       f.config.IndiaPostIntl.BaseURL,
+		"username":       f.config.IndiaPostIntl.Username,
+		"login_url":      f.config.IndiaPostIntl.LoginURL,
+		"tariff_url":     f.config.IndiaPostIntl.TariffURL,
+	}).Info("India Post International configuration status")
+	
+	if f.config.IndiaPostIntl.Enabled {
+		adapter := india_post_international.NewAdapter(
+			f.config.IndiaPostIntl,
+			f.geolocationService,
+			f.hubLocationService)
+		f.implementations["india_post_international"] = adapter
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "india_post_international",
+		}).Info("✅ Initialized india_post_international adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "india_post_international",
+		}).Warn("❌ India Post International adapter not enabled in config")
 	// Initialize India Post Domestic adapter for domestic pincode serviceability
 	if f.config.IndiaPostDomestic.Enabled {
 		f.implementations["india_post_domestic"] = india_post_domestic.NewAdapter(f.config.IndiaPostDomestic)
@@ -443,11 +475,20 @@ func (f *partnerAdapterFactory) isImplementationEnabled(implCode string, adapter
 	// Check if the adapter is healthy and enabled
 	ctx := context.Background()
 	isHealthy := adapter.IsHealthy(ctx)
+	
+	logLevel := logrus.InfoLevel
+	emoji := "✅"
+	if !isHealthy {
+		logLevel = logrus.WarnLevel
+		emoji = "❌"
+	}
+	
 	f.logger.WithFields(logrus.Fields{
-		"component": "partner_adapter_factory",
-		"adapter":   implCode,
+		"component":  "partner_adapter_factory",
+		"adapter":    implCode,
 		"is_healthy": isHealthy,
-	}).Info("Checking adapter health status")
+		"status":     emoji,
+	}).Log(logLevel, "Checking adapter health status")
 	return isHealthy
 }
 
