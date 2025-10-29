@@ -203,24 +203,6 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		}
 	}
 
-	// Call FedEx
-	fedexPartner := s.callFedExViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
-	if fedexPartner.PartnerCode != "" {
-		partners = append(partners, fedexPartner)
-	}
-
-	// Call ShipCube
-	shipcubePartner := s.callShipCubeViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
-	if shipcubePartner.PartnerCode != "" {
-		partners = append(partners, shipcubePartner)
-	}
-
-	// Call India Post International
-	indiaPostPartner := s.callIndiaPostInternationalViaAdapter(ctx, req, srcPin, dstPin, sourceCountryCode, destinationCountryCode, shipperCity, receiverCity)
-	if indiaPostPartner.PartnerCode != "" {
-		partners = append(partners, indiaPostPartner)
-	}
-
 	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
 		Success:  len(partners) > 0,
 		Partners: partners,
@@ -1340,13 +1322,16 @@ func (s *InternationalStrategy) callShipCubeViaAdapter(
 		PartnerCode: "shipcube",
 	}
 
+	startTime := time.Now()
 	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
+	responseTime := time.Since(startTime).Milliseconds()
+	
 	if err != nil {
 		s.Logger.WithError(err).Warn("ShipCube adapter call failed")
 		return modelsv1.PartnerV2Response{}
 	}
 
-	resp := s.convertShipCubeResult(result, srcCC, dstCC)
+	resp := s.convertShipCubeResult(result, srcCC, dstCC, responseTime)
 	if resp.PartnerCode == "" {
 		s.Logger.Warn("ShipCube response empty after conversion")
 		return modelsv1.PartnerV2Response{}
@@ -1483,10 +1468,15 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 
 	// Add error if present
 	if result.Error != nil {
-		errMsg := result.Error.Error()
-		partnerResp.Error = &errMsg
+		partnerResp.Error = &modelsv1.PartnerError{
+			Code:    "INDIA_POST_ERROR",
+			Message: result.Error.Error(),
+		}
 	} else if result.ErrorMessage != nil {
-		partnerResp.Error = result.ErrorMessage
+		partnerResp.Error = &modelsv1.PartnerError{
+			Code:    "INDIA_POST_ERROR",
+			Message: *result.ErrorMessage,
+		}
 	}
 
 	return partnerResp
