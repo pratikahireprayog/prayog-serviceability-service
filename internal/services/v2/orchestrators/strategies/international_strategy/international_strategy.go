@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
-	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
 
@@ -28,8 +27,6 @@ type InternationalStrategy struct {
 	Logger         *logrus.Logger
 	ratesClient    *http.Client
 }
-
-var hubOpsURL = os.Getenv("SMILE_HUBOPS_BY_SOURCE_PINCODE")
 
 func NewInternationalStrategy(pf factory.PartnerAdapterFactory) *InternationalStrategy {
 	logger := logrus.New()
@@ -160,34 +157,30 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		"destination_country_code": dstCC,
 	}).Info("Resolved source and destination pincodes for international carriers")
 
-	// Extract city info from hub
-	shipperCity := getHubCity(hubResp)
-	receiverCity := "Unknown City"
-
 	// Determine partners to call
-	partnerCodes := s.getPartnerList(req.Partners)
+	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "indiapost"}
 
-	// 1) Run serviceability checks for each partner
-	partners := make([]modelsv1.PartnerV2Response, 0, len(partnerCodes))
+	// 1) Run serviceability checks for each partner (ALL via adapters now)
 	serviceablePartners := make([]modelsv1.PartnerV2Response, 0)
 
 	for _, partnerCode := range partnerCodes {
-		var partnerResp modelsv1.PartnerV2Response
-		
-		if partnerCode == "dhl" {
-			partnerResp = s.callDHL(ctx, req, srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity)
-		} else {
-			partnerResp = s.callPartnerViaAdapter(ctx, partnerCode, req, srcPin, dstPin, srcCC, dstCC)
-		}
+		// Call all partners via adapter (including DHL)
+		partnerResp := s.callPartnerViaAdapter(ctx, partnerCode, req, srcPin, dstPin, srcCC, dstCC)
 
 		// Set default values for required fields
 		partnerResp = s.ensurePartnerDefaults(partnerResp, partnerCode)
 
-		if partnerResp.PartnerCode != "" {
-			partners = append(partners, partnerResp)
-			if partnerResp.IsServiceable {
-				serviceablePartners = append(serviceablePartners, partnerResp)
-			}
+		// Only include serviceable partners in response
+		if partnerResp.PartnerCode != "" && partnerResp.IsServiceable {
+			serviceablePartners = append(serviceablePartners, partnerResp)
+		} else {
+			// Log non-serviceable partners for debugging
+			s.Logger.WithFields(logrus.Fields{
+				"component":     "international_strategy",
+				"partner":       partnerCode,
+				"is_serviceable": partnerResp.IsServiceable,
+				"error":         partnerResp.Error,
+			}).Debug("Partner not serviceable, excluding from response")
 		}
 	}
 
@@ -198,32 +191,48 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		if err != nil {
 			s.Logger.WithError(err).Warn("Failed to get rates for serviceable partners")
 		} else if rates != nil {
-			s.mergeRatesIntoPartners(partners, rates)
+			s.mergeRatesIntoPartners(serviceablePartners, rates)
 			ratesIncluded = true
 		}
 	}
 
-	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
-		Success:  len(partners) > 0,
-		Partners: partners,
+	// Calculate response metrics
+	responseTimeMs := time.Since(startTime).Milliseconds()
+	partnersQueried := len(partnerCodes)
+	partnersSucceeded := len(serviceablePartners)
+	partnersFailed := partnersQueried - partnersSucceeded
+
+	// Build metadata
+	metadata := &modelsv1.V2ResponseMetadata{
+		RequestID:                fmt.Sprintf("intl-serviceability-%d", time.Now().Unix()),
+		ResponseTimeMs:           responseTimeMs,
+		PartnersQueried:          partnersQueried,
+		PartnersSucceeded:        partnersSucceeded,
+		PartnersFailed:           partnersFailed,
+		TotalServiceablePartners: len(serviceablePartners),
+		RatesIncluded:            ratesIncluded,
 	}
+
+	// Build message
+	message := "Serviceability check completed successfully."
+	if len(serviceablePartners) == 0 {
+		message = "No serviceable partners found for this route."
+	}
+
+	// Build response
+	serviceabilityResp := &modelsv1.ServiceabilityV2Response{
+		Success:  len(serviceablePartners) > 0,
+		Message:  message,
+		Metadata: metadata,
+		Partners: serviceablePartners,
+	}
+	
+	// Add addresses if available
 	if len(addresses) > 0 {
 		serviceabilityResp.Addresses = addresses
 	}
+	
 	return serviceabilityResp, nil
-	// Build final response
-	return s.buildSuccessResponse(partners, addresses, startTime, len(partnerCodes), len(serviceablePartners), ratesIncluded), nil
-}
-
-func (s *InternationalStrategy) getPartnerList(partners []modelsv1.PartnerFilter) []string {
-	codes := make([]string, 0, len(partners))
-	for _, p := range partners {
-		// normalize code to lowercase (or uppercase if needed)
-		if p.Code != "" {
-			codes = append(codes, strings.ToLower(p.Code))
-		}
-	}
-	return codes
 }
 
 func (s *InternationalStrategy) ensurePartnerDefaults(partner modelsv1.PartnerV2Response, code string) modelsv1.PartnerV2Response {
@@ -265,6 +274,10 @@ func (s *InternationalStrategy) getRatesForPartners(
 	serviceable []modelsv1.PartnerV2Response,
 ) (*RateQuoteResponse, error) {
 	ratesURL := os.Getenv("SUPPLY_RATE_URL")
+	if ratesURL == "" {
+		ratesURL = "http://0.0.0.0:9046/supply-rate/v1/quotes" // Fallback
+	}
+	
 	payload := s.buildRatesRequestPayload(req, srcPin, srcCC, dstPin, dstCC, serviceable)
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -285,17 +298,12 @@ func (s *InternationalStrategy) getRatesForPartners(
 		"packages":    len(payload.Packages),
 	}).Info("Calling rates API")
 
-	// resp, err := s.ratesClient.Do(httpReq)
+	// Ensure client is initialized
 	if s.ratesClient == nil {
 		s.ratesClient = &http.Client{Timeout: 30 * time.Second}
 	}
 
 	resp, err := s.ratesClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("rates API call failed: %w", err)
-	}
-	defer resp.Body.Close()
-
 	if err != nil {
 		return nil, fmt.Errorf("rates API call failed: %w", err)
 	}
@@ -508,7 +516,7 @@ func (s *InternationalStrategy) mergeRatesIntoPartners(partners []modelsv1.Partn
 				services = append(services, service)
 			}
 
-			partners[i].Services = services
+			partners[i].PartnerServices = services
 			if partners[i].Metadata == nil {
 				partners[i].Metadata = make(map[string]interface{})
 			}
@@ -527,18 +535,21 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 	adapter, found := s.PartnerFactory.GetAdapter(partnerCode)
 	
 	if !found || adapter == nil {
-		s.Logger.WithFields(logrus.Fields{"component": "international_strategy", "partner": partnerCode}).Warn("Adapter missing or nil")
+		s.Logger.WithFields(logrus.Fields{
+			"component": "international_strategy", 
+			"partner":   partnerCode,
+		}).Warn("Adapter missing or nil")
 		return modelsv1.PartnerV2Response{
-			PartnerCode:   partnerCode,
-			PartnerName:   getPartnerName(partnerCode),
-			Rating:        0,
-			Source:        "real_time",
-			IsServiceable: false,
-			Services:      []modelsv1.ServiceV2{},
-			Error: &modelsv1.PartnerError{
-				Code:    modelsv1.ErrorCodeAdapterNotFound,
-				Message: "Partner adapter not available",
-			},
+		PartnerCode:   partnerCode,
+		PartnerName:   getPartnerName(partnerCode),
+		Rating:        0,
+		Source:        "real_time",
+		IsServiceable: false,
+		PartnerServices: []modelsv1.ServiceV2{},
+			// Error: &modelsv1.PartnerError{
+			// 	Code:    modelsv1.ErrorCodeAdapterNotFound,
+			// 	Message: "Partner adapter not available",
+			// },
 			Metadata: map[string]interface{}{
 				"destination_country_code": dstCC,
 				"source_country_code":      srcCC,
@@ -555,20 +566,23 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 	responseTimeMs := time.Since(startTime).Milliseconds()
 
 	if err != nil {
-		s.Logger.WithError(err).WithFields(logrus.Fields{"component": "international_strategy", "partner": partnerCode}).Warn("Adapter call failed")
+		s.Logger.WithError(err).WithFields(logrus.Fields{
+			"component": "international_strategy", 
+			"partner":   partnerCode,
+		}).Warn("Adapter call failed")
 		return modelsv1.PartnerV2Response{
 			PartnerCode:    partnerCode,
 			PartnerName:    getPartnerName(partnerCode),
 			Rating:         0,
 			Source:         "real_time",
 			IsServiceable:  false,
-			Services:       []modelsv1.ServiceV2{},
+			PartnerServices: []modelsv1.ServiceV2{},
 			ResponseTimeMs: responseTimeMs,
-			Error: &modelsv1.PartnerError{
-				Code:    modelsv1.ErrorCodeServiceabilityFailed,
-				Message: "Failed to check serviceability with partner",
-				Details: err.Error(),
-			},
+			// Error: &modelsv1.PartnerError{
+			// 	Code:    modelsv1.ErrorCodeServiceabilityFailed,
+			// 	Message: "Failed to check serviceability with partner",
+			// 	Details: err.Error(),
+			// },
 			Metadata: map[string]interface{}{
 				"destination_country_code": dstCC,
 				"source_country_code":      srcCC,
@@ -579,6 +593,8 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 
 	// Convert based on partner type
 	switch partnerCode {
+	case "dhl":
+		return s.convertDHLResult(result, srcCC, dstCC, responseTimeMs)
 	case "aramex":
 		return s.convertAramexResult(result, srcCC, dstCC, responseTimeMs)
 	case "shipcube":
@@ -761,6 +777,8 @@ func resolveCountryCodes(req *modelsv1.ServiceabilityV2Request) (string, string)
 
 
 func (s *InternationalStrategy) fetchHubByPincode(ctx context.Context, pin string) (*modelsv1.HubOpsResponse, error) {
+	// Read hubOpsURL at runtime to ensure .env is loaded
+	hubOpsURL := os.Getenv("SMILE_HUBOPS_BY_SOURCE_PINCODE")
 	if hubOpsURL == "" {
 		return nil, errors.New("hubops url not configured")
 	}
@@ -850,6 +868,7 @@ func getPartnerName(code string) string {
 		"aramex":   "Aramex",
 		"fedex":    "FedEx",
 		"shipcube": "ShipCube",
+		"indiapost": "India Post",
 	}
 	if n, ok := names[strings.ToLower(code)]; ok {
 		return n
@@ -918,167 +937,82 @@ func anyToString(v interface{}) string {
 }
 
 
-func (s *InternationalStrategy) callDHL(ctx context.Context, req *modelsv1.ServiceabilityV2Request, srcPin, dstPin, srcCC, dstCC, shipperCity, receiverCity string) modelsv1.PartnerV2Response {
-	baseURL := os.Getenv("DHL_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://express.api.dhl.com/mydhlapi"
-	}
-
-	dhlReq := dhl.RatesRequest{
-		CustomerDetails: dhl.CustomerDetails{
-			ShipperDetails:  dhl.ShipperDetails{PostalCode: srcPin, CityName: shipperCity, CountryCode: srcCC},
-			ReceiverDetails: dhl.ReceiverDetails{PostalCode: dstPin, CityName: receiverCity, CountryCode: dstCC},
-		},
-		Accounts:                    []dhl.Account{{TypeCode: "shipper", Number: "533748932"}},
-		ProductsAndServices:         []dhl.ProductAndService{{ProductCode: "P", LocalProductCode: "P"}},
-		PayerCountryCode:            "IN",
-		PlannedShippingDateAndTime:  nextBusinessDayOnePMIST(),
-		UnitOfMeasurement:           "metric",
-		IsCustomsDeclarable:        true,
-		EstimatedDeliveryDate:       dhl.EstimatedDeliveryDate{IsRequested: true, TypeCode: "QDDC"},
-		ReturnStandardProductsOnly:  true,
-		Packages: []dhl.Package{{
-			Weight: defaultWeight(req),
-			Dimensions: dhl.Dimensions{
-				Length: defaultLen(req),
-				Width:  defaultWid(req),
-				Height: defaultHei(req),
-			},
-		}},
-	}
-
-	url := fmt.Sprintf("%s/rates?strictValidation=false", baseURL)
-	body, _ := json.Marshal(dhlReq)
-	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("Message-Reference", "d0e7832e-5c98-11ea-bc55-0242ac13")
-	httpReq.Header.Set("Message-Reference-Date", "Wed, 21 Oct 2015 07:28:00 GMT")
-	httpReq.Header.Set("X-Version", "2.12.0")
-
-	if basicAuth := os.Getenv("DHL_BASIC_AUTH"); basicAuth != "" {
-		httpReq.Header.Set("Authorization", "Basic "+basicAuth)
-	}
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	startTime := time.Now()
-	dhlResp, doErr := client.Do(httpReq)
-	responseTimeMs := time.Since(startTime).Milliseconds()
-
-	if doErr != nil {
-		s.Logger.WithError(doErr).WithFields(logrus.Fields{"component": "international_strategy", "partner": "dhl"}).Warn("DHL HTTP call failed")
-		return modelsv1.PartnerV2Response{
-			PartnerID:     "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
-			PartnerCode:   "dhl",
-			PartnerName:   "DHL Express",
-			Rating:        0,
-			Source:        "real_time",
-			IsServiceable: false,
-			ResponseTimeMs: responseTimeMs,
-			Error: &modelsv1.PartnerError{
-				Code:    "SERVICEABILITY_CHECK_FAILED",
-				Message: "DHL API call failed",
-				Details: doErr.Error(),
-			},
-		}
-	}
-	defer dhlResp.Body.Close()
-
-	var rates dhl.RatesResponse
-	if dhlResp.StatusCode == http.StatusOK {
-		if decErr := json.NewDecoder(dhlResp.Body).Decode(&rates); decErr == nil && len(rates.Products) > 0 {
-			prod := rates.Products[0]
-
-			capabilities := map[string]interface{}{
-				"estimated_delivery_date_and_time": prod.DeliveryCapabilities.EstimatedDeliveryDateAndTime,
-				"total_transit_days":               prod.DeliveryCapabilities.TotalTransitDays,
-				"pickup_available":                 true,
-				"delivery_available":               true,
-			}
-
-			services := []modelsv1.ServiceV2{
-				{
-					ServiceCode: "EXPRESS",
-					ServiceName: "DHL Express",
-					TATDays:     prod.DeliveryCapabilities.TotalTransitDays,
-					IsCOD:       false,
-					Pickup:      true,
-					Delivery:    true,
-					Insurance:   true,
-					ProductTypes: map[string]bool{
-						"commercial":  true,
-						"document":    true,
-						"non_document": true,
-					},
-					DeliveryModes: map[string]bool{
-						"express":  true,
-						"standard": false,
-					},
-					// DHL rates will be populated from rates API
-				},
-			}
-
-			return modelsv1.PartnerV2Response{
-				PartnerID:      "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
-				PartnerCode:    "dhl",
-				PartnerName:    "DHL Express",
-				Rating:         0,
-				Source:         "real_time",
-				IsServiceable:  true,
-				Capabilities:   capabilities,
-				Services:       services,
-				ResponseTimeMs: responseTimeMs,
-				Metadata: map[string]interface{}{
-					"destination_country_code": dstCC,
-					"source_country_code":      srcCC,
-					"flow":                     "international",
-					"dhl_response":             "success",
-				},
-			}
-		}
-	}
-
-	// If we reach here, DHL call was not successful
-	bodyBytes, _ := io.ReadAll(dhlResp.Body)
-	s.Logger.WithFields(logrus.Fields{
-		"component": "international_strategy",
-		"partner":   "dhl",
-		"status":    dhlResp.StatusCode,
-	}).Warn("DHL API call unsuccessful")
-
-	return modelsv1.PartnerV2Response{
-		PartnerID:     "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
-		PartnerCode:   "dhl",
-		PartnerName:   "DHL Express",
-		Rating:        0,
-		Source:        "real_time",
-		IsServiceable: false,
-		ResponseTimeMs: responseTimeMs,
-		Error: &modelsv1.PartnerError{
-			Code:    "SERVICEABILITY_CHECK_FAILED",
-			Message: "DHL serviceability check failed",
-			Details: fmt.Sprintf("Status: %d, Response: %s", dhlResp.StatusCode, string(bodyBytes)),
-		},
-	}
-}
-
-func nextBusinessDayOnePMIST() string {
-	loc, err := time.LoadLocation("Asia/Kolkata")
-	if err != nil {
-		loc = time.FixedZone("GMT+05:30", 5*60*60+30*60)
-	}
-	now := time.Now().In(loc)
-	next := now.Add(24 * time.Hour)
-	for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
-		next = next.Add(24 * time.Hour)
-	}
-	t := time.Date(next.Year(), next.Month(), next.Day(), 13, 0, 0, 0, loc)
-	return t.Format("2006-01-02T15:04:05") + "GMT+05:30"
-}
+// DEPRECATED: callDHL is no longer used. DHL now uses the adapter pattern like all other partners.
+// This function is kept for reference only and will be removed in future versions.
+// Use callPartnerViaAdapter("dhl", ...) instead.
 
 // -----------------------------
 // Converters (Aramex/ShipCube/FedEx) - unchanged logic but no hardcoded amounts
 // -----------------------------
+// convertDHLResult converts DHL adapter result to partner response
+func (s *InternationalStrategy) convertDHLResult(result *common.PartnerServiceabilityResult, srcCC, dstCC string, responseTimeMs int64) modelsv1.PartnerV2Response {
+	if result == nil {
+		return modelsv1.PartnerV2Response{
+			PartnerID:      "93a2d552-dd7a-4786-aa11-cf44e7b327ab",
+			PartnerCode:    "dhl",
+			PartnerName:    "DHL Express",
+			Rating:         0,
+			Source:         "real_time",
+			IsServiceable:  false,
+			ResponseTimeMs: responseTimeMs,
+			Metadata: map[string]interface{}{
+				"destination_country_code": dstCC,
+				"source_country_code":      srcCC,
+				"flow":                     "international",
+			},
+		}
+	}
+
+	isServiceable := len(result.Services) > 0
+	partnerID := "93a2d552-dd7a-4786-aa11-cf44e7b327ab"
+	if result.PartnerID != nil {
+		partnerID = result.PartnerID.String()
+	}
+
+	var services []modelsv1.ServiceV2
+	if isServiceable {
+		for _, svc := range result.Services {
+			service := modelsv1.ServiceV2{
+				ServiceCode: svc.ServiceCode,
+				ServiceName: svc.ServiceName,
+				TATDays:     svc.TATDays,
+				IsCOD:       false,
+				Pickup:      true,
+				Delivery:    true,
+				Insurance:   true,
+				ProductTypes: map[string]bool{
+					"commercial":   true,
+					"document":     true,
+					"non_document": true,
+				},
+				DeliveryModes: map[string]bool{
+					"express":  true,
+					"standard": false,
+				},
+			}
+			services = append(services, service)
+		}
+	}
+
+	return modelsv1.PartnerV2Response{
+		PartnerID:        partnerID,
+		PartnerCode:      "dhl",
+		PartnerName:      "DHL Express",
+		Rating:           0,
+		Source:           "real_time",
+		IsServiceable:    isServiceable,
+		PartnerServices:  services,
+		Capabilities:     result.Capabilities,
+		ResponseTimeMs:   responseTimeMs,
+		Metadata: map[string]interface{}{
+			"destination_country_code": dstCC,
+			"source_country_code":      srcCC,
+			"flow":                     "international",
+			"dhl_response":             "success",
+		},
+	}
+}
+
 func (s *InternationalStrategy) convertAramexResult(res *common.PartnerServiceabilityResult, srcCC, dstCC string, responseTimeMs int64) modelsv1.PartnerV2Response {
 	if res == nil {
 		return modelsv1.PartnerV2Response{
@@ -1126,14 +1060,14 @@ func (s *InternationalStrategy) convertAramexResult(res *common.PartnerServiceab
 	}
 
 	return modelsv1.PartnerV2Response{
-		PartnerID:      partnerID,
-		PartnerCode:    "aramex",
-		PartnerName:    "Aramex",
-		Rating:         0,
-		Source:         "real_time",
-		IsServiceable:  isServiceable,
-		Services:       services,
-		ResponseTimeMs: responseTimeMs,
+		PartnerID:       partnerID,
+		PartnerCode:     "aramex",
+		PartnerName:     "Aramex",
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable,
+		PartnerServices: services,
+		ResponseTimeMs:  responseTimeMs,
 		Metadata: map[string]interface{}{
 			"destination_country_code": dstCC,
 			"source_country_code":      srcCC,
@@ -1179,15 +1113,15 @@ func (s *InternationalStrategy) convertShipCubeResult(result *common.PartnerServ
 	}
 
 	return modelsv1.PartnerV2Response{
-		PartnerID:      "044eef78-97c0-43b2-bb99-5cae2833a63d",
-		PartnerCode:    "shipcube",
-		PartnerName:    "ShipCube",
-		Rating:         0,
-		Source:         "real_time",
-		IsServiceable:  isServiceable,
-		Services:       services,
-		ResponseTimeMs: responseTimeMs,
-		Metadata:       result.Metadata,
+		PartnerID:       "044eef78-97c0-43b2-bb99-5cae2833a63d",
+		PartnerCode:     "shipcube",
+		PartnerName:     "ShipCube",
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable,
+		PartnerServices: services,
+		ResponseTimeMs:  responseTimeMs,
+		Metadata:        result.Metadata,
 	}
 }
 
@@ -1236,15 +1170,15 @@ func (s *InternationalStrategy) convertFedExResult(result *common.PartnerService
 	}
 
 	return modelsv1.PartnerV2Response{
-		PartnerID:      "83c5a4ac-b297-466a-9b14-9f2602103737",
-		PartnerCode:    "fedex",
-		PartnerName:    "FedEx",
-		Rating:         0,
-		Source:         "real_time",
-		IsServiceable:  isServiceable,
-		Services:       services,
-		ResponseTimeMs: responseTimeMs,
-		Metadata:       result.Metadata,
+		PartnerID:       "83c5a4ac-b297-466a-9b14-9f2602103737",
+		PartnerCode:     "fedex",
+		PartnerName:     "FedEx",
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable,
+		PartnerServices: services,
+		ResponseTimeMs:  responseTimeMs,
+		Metadata:        result.Metadata,
 	}
 }
 
@@ -1285,16 +1219,16 @@ func (s *InternationalStrategy) convertGenericResult(res *common.PartnerServicea
 	}
 
 	return modelsv1.PartnerV2Response{
-		PartnerID:      partnerID,
-		PartnerCode:    code,
-		PartnerName:    getPartnerName(code),
-		Rating:         0,
-		Source:         "real_time",
-		IsServiceable:  isServiceable,
-		Services:       services,
-		Capabilities:   res.Capabilities,
-		ResponseTimeMs: responseTimeMs,
-		Metadata:       res.Metadata,
+		PartnerID:       partnerID,
+		PartnerCode:     code,
+		PartnerName:     getPartnerName(code),
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable,
+		PartnerServices: services,
+		Capabilities:    res.Capabilities,
+		ResponseTimeMs:  responseTimeMs,
+		Metadata:        res.Metadata,
 	}
 }
 
@@ -1423,12 +1357,11 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 		return modelsv1.PartnerV2Response{}
 	}
 
-	isServiceable := result != nil && len(result.Services) > 0
+	isServiceable := len(result.Services) > 0
 
 	partnerResp := modelsv1.PartnerV2Response{
 		PartnerCode: result.PartnerCode,
 		PartnerName: "India Post International",
-		Services:    []modelsv1.ServiceV2{},
 		Rating:      0,
 	}
 
@@ -1438,22 +1371,24 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 	}
 
 	// If serviceable, map services
+	services := []modelsv1.ServiceV2{}
 	if isServiceable {
 		for _, svc := range result.Services {
 			service := modelsv1.ServiceV2{
-				ServiceCode:  svc.ServiceCode,
-				ServiceName:  svc.ServiceName,
-				TATDays:      svc.TATDays,
-				IsCOD:        svc.IsCOD,
-				Pickup:       svc.Pickup,
-				Delivery:     svc.Delivery,
-				Insurance:    svc.Insurance,
-				ProductTypes: svc.ProductTypes,
+				ServiceCode:   svc.ServiceCode,
+				ServiceName:   svc.ServiceName,
+				TATDays:       svc.TATDays,
+				IsCOD:         svc.IsCOD,
+				Pickup:        svc.Pickup,
+				Delivery:      svc.Delivery,
+				Insurance:     svc.Insurance,
+				ProductTypes:  svc.ProductTypes,
 				DeliveryModes: svc.DeliveryModes,
 			}
-			partnerResp.Services = append(partnerResp.Services, service)
+			services = append(services, service)
 		}
 	}
+	partnerResp.PartnerServices = services
 
 	// Attach metadata for context
 	if result.Metadata != nil {
@@ -1467,17 +1402,18 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 	}
 
 	// Add error if present
-	if result.Error != nil {
-		partnerResp.Error = &modelsv1.PartnerError{
-			Code:    "INDIA_POST_ERROR",
-			Message: result.Error.Error(),
-		}
-	} else if result.ErrorMessage != nil {
-		partnerResp.Error = &modelsv1.PartnerError{
-			Code:    "INDIA_POST_ERROR",
-			Message: *result.ErrorMessage,
-		}
-	}
+	// if result.Error != nil {
+	// 	partnerResp.Error = &modelsv1.PartnerError{
+	// 		Code:    "INDIA_POST_ERROR",
+	// 		Message: result.Error.Error(),
+	// 	}
+	// } else if result.ErrorMessage != nil {
+	// 	partnerResp.Error = &modelsv1.PartnerError{
+	// 		Code:    "INDIA_POST_ERROR",
+	// 		Message: *result.ErrorMessage,
+	// 	}
+	// }
 
 	return partnerResp
+
 }

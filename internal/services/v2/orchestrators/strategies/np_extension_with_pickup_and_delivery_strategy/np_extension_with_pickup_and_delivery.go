@@ -381,10 +381,6 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (
 	if res.PartnerID != nil {
 		partnerID = res.PartnerID.String()
 	}
-	var errMsg string
-	if res.ErrorMessage != nil {
-		errMsg = *res.ErrorMessage
-	}
 	return models.PartnerV2Response{
 		PartnerID:       partnerID,
 		PartnerCode:     code,
@@ -393,9 +389,8 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) (
 		Services:        res.Services,
 		PartnerServices: res.PartnerServices,
 		Capabilities:    res.Capabilities,
-		Error: &models.PartnerError{
-			Message: errMsg,
-		},
+		Error:           res.ErrorMessage,
+		ResponseTime:    res.ResponseTime,
 		Metadata:        res.Metadata,
 	}, true
 }

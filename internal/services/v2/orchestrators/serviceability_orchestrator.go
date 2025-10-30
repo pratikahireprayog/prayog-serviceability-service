@@ -9,14 +9,14 @@ import (
 
 	"os"
 
-	intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
-	cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
-	dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
-	newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
-	npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
-	smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
+    dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
+    intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
+    smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
+    newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
+    npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
+    cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -528,6 +528,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				Services:        result.Result.Services,
 				PartnerServices: result.Result.PartnerServices,
 				Capabilities:    result.Result.Capabilities,
+				ResponseTime:    result.Result.ResponseTime,
 				Metadata:        cleanMetadata,
 				HubDetails:      hubDetails,
 			}

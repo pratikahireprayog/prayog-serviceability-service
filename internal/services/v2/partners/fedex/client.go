@@ -124,14 +124,109 @@ func (c *FedExClient) authenticate(ctx context.Context) error {
     return nil
 }
 
-// CheckServiceability checks serviceability using transit times API
-func (c *FedExClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest) (*ServiceabilityResponse, error) {
+// GetRates calls FedEx rates API
+func (c *FedExClient) GetRates(ctx context.Context, request RateRequest) (*RateResponse, error) {
 	if err := c.authenticate(ctx); err != nil {
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
-	// Build transit times request
-	transitReq := c.buildTransitTimeRequest(request)
+	reqBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := c.config.BaseURL + "/rate/v1/rates/quotes"
+	c.logger.WithFields(logrus.Fields{
+		"partner":   "FedEx",
+		"method":    "POST",
+		"url":       url,
+		"body_size": len(reqBody),
+	}).Info("Making FedEx rates API request")
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("X-locale", "en_US")
+
+	resp, err := c.httpClient.Do(req)
+
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"status_code": resp.StatusCode,
+		"body":        string(body),
+	}).Info("FedEx API response body")
+
+	c.logger.WithFields(logrus.Fields{
+		"partner":     "FedEx",
+		"status_code": resp.StatusCode,
+		"body_size":   len(body),
+	}).Info("Received FedEx API response")
+
+	if resp.StatusCode != http.StatusOK {
+		var apiErrorOutput Output
+		json.Unmarshal(body, &apiErrorOutput)
+		
+		return nil, &FedExAPIError{
+			StatusCode: resp.StatusCode,
+			RawBody:    string(body),
+			Errors:     apiErrorOutput.Errors,
+		}
+	}
+
+	var ratesResp RateResponse
+	if err := json.Unmarshal(body, &ratesResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &ratesResp, nil
+}
+
+// CheckServiceability checks serviceability using rates API
+func (c *FedExClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest) (*ServiceabilityResponse, error) {
+	// Build minimal rates request matching the exact FedEx payload structure
+	ratesReq := RateRequest{
+		AccountNumber: AccountNumber{
+			Value: c.config.AccountNumber,
+		},
+		RequestedShipment: RequestedShipment{
+			Shipper: Shipper{
+				Address: Address{
+					PostalCode:  request.OriginAddress.PostalCode,
+					CountryCode: request.OriginAddress.CountryCode,
+				},
+			},
+			Recipient: Recipient{
+				Address: Address{
+					PostalCode:  request.DestinationAddress.PostalCode,
+					CountryCode: request.DestinationAddress.CountryCode,
+				},
+			},
+			PickupType:      "USE_SCHEDULED_PICKUP",
+			RateRequestType: []string{"LIST"},	
+			RequestedPackageLineItems: []RequestedPackageLineItem{
+				{
+					Weight: Weight{
+						Units: "KG",
+						Value: 1,
+					},
+				},
+			},
+		},
+	}
 
 	c.logger.WithFields(logrus.Fields{
 		"partner":           "FedEx",
@@ -140,159 +235,68 @@ func (c *FedExClient) CheckServiceability(ctx context.Context, request Serviceab
 		"origin_country":    request.OriginAddress.CountryCode,
 		"dest_country":      request.DestinationAddress.CountryCode,
 		"weight":            request.Weight,
-	}).Info("Checking FedEx serviceability via transit times API")
+	}).Info("Checking FedEx serviceability")
 
-	transitResp, err := c.callTransitTimesAPI(ctx, transitReq)
+	ratesResp, err := c.GetRates(ctx, ratesReq)
 	if err != nil {
 		return nil, fmt.Errorf("serviceability check failed: %w", err)
 	}
 
-	return c.convertTransitToServiceability(transitResp), nil
+	return c.ConvertRatesToServiceability(ratesResp), nil
 }
 
-// buildTransitTimeRequest builds the transit time request for serviceability check
-func (c *FedExClient) buildTransitTimeRequest(request ServiceabilityRequest) TransitTimeRequest {
-	return TransitTimeRequest{
-		RequestedShipment: TransitTimeShipment{
-			Shipper: Shipper{
-				Address: Address{
-					PostalCode:  request.OriginAddress.PostalCode,
-					CountryCode: request.OriginAddress.CountryCode,
-				},
-			},
-			Recipients: []Recipient{
-				{
-					Address: Address{
-						PostalCode:  request.DestinationAddress.PostalCode,
-						CountryCode: request.DestinationAddress.CountryCode,
-					},
-				},
-			},
-			PackagingType: "YOUR_PACKAGING",
-			CustomsClearanceDetail: &CustomsClearanceDetail{
-				Commodities: []Commodity{
-					{
-						Description: "COMMODITIES",
-						CustomsValue: CustomsValue{
-							Amount:   "100",
-							Currency: "USD",
-						},
-						NumberOfPieces: 1,
-					},
-				},
-			},
-			RequestedPackageLineItems: []RequestedPackageLineItem{
-				{
-					Weight: Weight{
-						Units: "LB",
-						Value: request.Weight,
-					},
-				},
-			},
-		},
-		CarrierCodes: []string{"FDXE"},
-	}
-}
-
-// callTransitTimesAPI calls the FedEx transit times API
-func (c *FedExClient) callTransitTimesAPI(ctx context.Context, request TransitTimeRequest) (*TransitTimeResponse, error) {
-	reqBody, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal transit time request: %w", err)
-	}
-
-	url := c.config.BaseURL + "/availability/v1/transittimes"
-	c.logger.WithFields(logrus.Fields{
-		"partner":   "FedEx",
-		"method":    "POST",
-		"url":       url,
-		"body_size": len(reqBody),
-	}).Info("Making FedEx transit times API request")
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transit time request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("X-locale", "en_US")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("transit time request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read transit time response: %w", err)
-	}
-
-	c.logger.WithFields(logrus.Fields{
-		"partner":     "FedEx",
-		"status_code": resp.StatusCode,
-		"body_size":   len(body),
-	}).Info("Received FedEx transit times API response")
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &FedExAPIError{
-			StatusCode: resp.StatusCode,
-			RawBody:    string(body),
-		}
-	}
-
-	var transitResp TransitTimeResponse
-	if err := json.Unmarshal(body, &transitResp); err != nil {
-		return nil, fmt.Errorf("failed to decode transit time response: %w", err)
-	}
-
-	return &transitResp, nil
-}
-
-// convertTransitToServiceability converts transit time response to serviceability response
-func (c *FedExClient) convertTransitToServiceability(transitResp *TransitTimeResponse) *ServiceabilityResponse {
+// ConvertRatesToServiceability converts rates response to serviceability response
+func (c *FedExClient) ConvertRatesToServiceability(ratesResp *RateResponse) *ServiceabilityResponse {
 	serviceability := &ServiceabilityResponse{}
 
-	if transitResp == nil || len(transitResp.Output.TransitTimes) == 0 {
+	if ratesResp == nil {
 		serviceability.Serviceable = false
 		serviceability.Errors = append(serviceability.Errors, Error{
 			Code:    "EMPTY_RESPONSE",
-			Message: "No transit time data received from FedEx",
+			Message: "No response received from FedEx",
 		})
 		return serviceability
 	}
 
-	transitTime := transitResp.Output.TransitTimes[0]
-	
-	// KEY SERVICEABILITY CHECK: If transitTimeDetails is empty, address is NOT serviceable
-	if len(transitTime.TransitTimeDetails) == 0 {
-		serviceability.Serviceable = false
-		serviceability.Errors = append(serviceability.Errors, Error{
-			Code:    "NO_SERVICES_AVAILABLE",
-			Message: "No FedEx services available for this route",
-		})
-	} else {
-		// If we have transit time details, address IS serviceable
+	// Check for API errors
+	// if len(ratesResp.Output.Errors) > 0 {
+	// 	for _, apiErr := range ratesResp.Output.Errors {
+	// 		serviceability.Errors = append(serviceability.Errors, Error{
+	// 			Code:    apiErr.Code,
+	// 			Message: apiErr.Message,
+	// 		})
+	// 	}
+	// }
+
+	// Check if we have any available services
+	if len(ratesResp.Output.RateReplyDetails) > 0 {
 		serviceability.Serviceable = true
 		
-		for _, detail := range transitTime.TransitTimeDetails {
+		for _, detail := range ratesResp.Output.RateReplyDetails {
 			service := Service{
-				ServiceType: detail.ServiceType,
-				ServiceName: detail.ServiceName,
+				ServiceType:  detail.ServiceType,
+				ServiceName:  detail.ServiceName,
 			}
+
+			// Extract cost if available
+			if len(detail.RatedShipmentDetails) > 0 {
+				ratedDetail := detail.RatedShipmentDetails[0]
+				if ratedDetail.TotalNetCharge != 0 {
+					service.Cost = ratedDetail.TotalNetCharge
+					service.Currency = ratedDetail.Currency
+				}
+			}
+
 			serviceability.AvailableServices = append(serviceability.AvailableServices, service)
 		}
 	}
 
-	// Add alerts for diagnostics
-	if len(transitTime.Alerts) > 0 {
-		for _, alert := range transitTime.Alerts {
-			serviceability.Errors = append(serviceability.Errors, Error{
-				Code:    alert.Code,
-				Message: alert.Message,
-			})
-		}
+	// If no services found but no specific errors, add generic message
+	if !serviceability.Serviceable && len(serviceability.Errors) == 0 {
+		serviceability.Errors = append(serviceability.Errors, Error{
+			Code:    "NO_SERVICES_AVAILABLE",
+			Message: "No FedEx services available for this route",
+		})
 	}
 
 	c.logger.WithFields(logrus.Fields{
@@ -300,7 +304,7 @@ func (c *FedExClient) convertTransitToServiceability(transitResp *TransitTimeRes
 		"serviceable":        serviceability.Serviceable,
 		"services_available": len(serviceability.AvailableServices),
 		"errors":             len(serviceability.Errors),
-	}).Info("FedEx serviceability check completed via transit times API")
+	}).Info("FedEx serviceability check completed")
 
 	return serviceability
 }
