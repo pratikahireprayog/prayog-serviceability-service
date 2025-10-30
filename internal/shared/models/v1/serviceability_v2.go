@@ -76,6 +76,7 @@ type DetailedAddress struct {
 // ServiceabilityV2Response represents the aggregated response structure for v2
 type ServiceabilityV2Response struct {
 	Success            bool                `json:"success"`
+	Message            string              `json:"message,omitempty"`
 	SourceAddress      *AddressInfo        `json:"source_address,omitempty"`
 	DestinationAddress *AddressInfo        `json:"destination_address,omitempty"`
 	Addresses          []DetailedAddress   `json:"addresses,omitempty"`
@@ -91,11 +92,14 @@ type PartnerV2Response struct {
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
 	Rating          float64                `json:"rating"`
+	Source          string                 `json:"source,omitempty"` // "real_time", "cache", etc.
+	IsServiceable   bool                   `json:"is_serviceable"`
 	Services        []ServiceV2            `json:"standard_services,omitempty"`
 	PartnerServices interface{}            `json:"services,omitempty"`
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           *string                `json:"error,omitempty"`
 	ResponseTime    time.Duration          `json:"response_time"`
+	ResponseTimeMs  int64                  `json:"response_time_ms,omitempty"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 	HubDetails      interface{}            `json:"hub_details,omitempty"`
 }
@@ -112,6 +116,7 @@ type ServiceV2 struct {
 	ProductTypes  map[string]bool   `json:"product_types"`
 	DeliveryModes map[string]bool   `json:"delivery_modes"`
 	Pricing       *ServicePricingV2 `json:"pricing,omitempty"`
+	Rate          *Rate             `json:"rate,omitempty"`
 }
 
 // ServicePricingV2 represents pricing information
@@ -124,11 +129,17 @@ type ServicePricingV2 struct {
 
 // V2ResponseMetadata contains metadata about the v2 response
 type V2ResponseMetadata struct {
-	TotalPartners    int           `json:"total_partners"`
-	ServiceableCount int           `json:"serviceable_count"`
-	ProcessingTime   time.Duration `json:"processing_time"`
-	Filters          V2Filters     `json:"filters"`
-	// Remove EligiblePartners field - not needed
+	RequestID                string        `json:"request_id,omitempty"`
+	ResponseTimeMs           int64         `json:"response_time_ms,omitempty"`
+	PartnersQueried          int           `json:"partners_queried,omitempty"`
+	PartnersSucceeded        int           `json:"partners_succeeded,omitempty"`
+	PartnersFailed           int           `json:"partners_failed,omitempty"`
+	TotalServiceablePartners int           `json:"total_serviceable_partners,omitempty"`
+	RatesIncluded            bool          `json:"rates_included,omitempty"`
+	TotalPartners            int           `json:"total_partners"`
+	ServiceableCount         int           `json:"serviceable_count"`
+	ProcessingTime           time.Duration `json:"processing_time"`
+	Filters                  V2Filters     `json:"filters"`
 }
 
 // V2Filters represents the filters applied to determine eligible partners
@@ -236,4 +247,59 @@ type ShipyaariService struct {
 	SortType            string  `json:"sort_type"`
 	PriorityRank        *int    `json:"priority_rank"`
 	CheapestRank        int     `json:"cheapest_rank"`
+}
+
+// Rate represents rate information from rate service
+type Rate struct {
+	RateID string `json:"rate_id,omitempty"`
+	Price  Price  `json:"price"`
+}
+
+// Price represents price details
+type Price struct {
+	Currency string  `json:"currency"`
+	Amount   float64 `json:"amount"`
+	Type     string  `json:"type"`
+}
+
+// PartnerError represents error information for a partner
+type PartnerError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+}
+
+// Error code constants
+const (
+	ErrorCodeAdapterNotFound         = "ADAPTER_NOT_FOUND"
+	ErrorCodeServiceabilityFailed    = "SERVICEABILITY_FAILED"
+	ErrorCodeInvalidRequest          = "INVALID_REQUEST"
+	ErrorCodePartnerUnavailable      = "PARTNER_UNAVAILABLE"
+)
+
+// HubOpsRequest represents request to HubOps API
+type HubOpsRequest struct {
+	PostalCode string `json:"postalCode"`
+}
+
+// HubOpsResponse represents response from HubOps API
+type HubOpsResponse struct {
+	NearestInternationalHub *HubInfoData `json:"nearestInternationalHub,omitempty"`
+}
+
+// HubInfoData represents hub information
+type HubInfoData struct {
+	Pincode         *int        `json:"pincode,omitempty"`
+	PremiseName     *string     `json:"premiseName,omitempty"`
+	AddressLine1    *string     `json:"addressLine1,omitempty"`
+	AddressLine2    *string     `json:"addressLine2,omitempty"`
+	Address         *string     `json:"address,omitempty"`
+	City            *string     `json:"city,omitempty"`
+	State           *string     `json:"state,omitempty"`
+	Latitude        *string     `json:"latitude,omitempty"`
+	Longitude       *string     `json:"longitude,omitempty"`
+	PersonalEmailId *string     `json:"personalEmailId,omitempty"`
+	OfficialEmailId *string     `json:"officialEmailId,omitempty"`
+	PersonalNumber  interface{} `json:"personalNumber,omitempty"`
+	OfficialNumber  interface{} `json:"officialNumber,omitempty"`
 }
