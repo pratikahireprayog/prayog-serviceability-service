@@ -13,8 +13,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
-	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
+	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipcube"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
@@ -416,7 +416,7 @@ func (f *partnerAdapterFactory) initializeImplementations() {
         f.logger.WithFields(logrus.Fields{
             "component": "partner_adapter_factory",
             "adapter":   "shipcube",
-        }).Info("Initialized shipcube adapter")
+        }).Info("Initialized fedex adapter")
     } else {
         f.logger.WithFields(logrus.Fields{
             "component": "partner_adapter_factory",

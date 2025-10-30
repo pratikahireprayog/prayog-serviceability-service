@@ -1,16 +1,15 @@
 package smileprimarynpextensionstrategy
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"sync"
+    "context"
+    "encoding/json"
+    "fmt"
+    "sync"
 
-	"prayog-serviceability-service/internal/services/v2/partners/common"
-	"prayog-serviceability-service/internal/services/v2/partners/factory"
-	"prayog-serviceability-service/internal/shared/models/v1"
-
-	"github.com/sirupsen/logrus"
+    "prayog-serviceability-service/internal/services/v2/partners/common"
+    "prayog-serviceability-service/internal/services/v2/partners/factory"
+    "prayog-serviceability-service/internal/shared/models/v1"
+    "github.com/sirupsen/logrus"
 )
 
 // SmilePrimaryNPExtensionStrategy runs a two-segment flow:
@@ -292,9 +291,9 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) m
     if res != nil && res.Metadata != nil {
         md = res.Metadata
     }
-    var errMsg string
+    var errMsg *string
     if res != nil && res.ErrorMessage != nil {
-        errMsg = *res.ErrorMessage
+        errMsg = res.ErrorMessage
     }
     services := []models.ServiceV2{}
     if res != nil && res.Services != nil {
@@ -308,7 +307,8 @@ func toPartnerV2Response(res *common.PartnerServiceabilityResult, code string) m
         Services:        services,
         PartnerServices: res.PartnerServices,
         Capabilities:    res.Capabilities,
-        Error:           &models.PartnerError{ Message: errMsg, },
+        Error:           errMsg,
+        ResponseTime:    res.ResponseTime,
         Metadata:        md,
     }
 }
