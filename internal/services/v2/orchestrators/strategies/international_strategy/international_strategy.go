@@ -275,7 +275,7 @@ func (s *InternationalStrategy) getRatesForPartners(
 ) (*RateQuoteResponse, error) {
 	ratesURL := os.Getenv("SUPPLY_RATE_URL")
 	if ratesURL == "" {
-		ratesURL = "http://0.0.0.0:9046/supply-rate/v1/quotes" // Fallback
+		return nil, fmt.Errorf("SUPPLY_RATE_URL Not Found");
 	}
 	
 	payload := s.buildRatesRequestPayload(req, srcPin, srcCC, dstPin, dstCC, serviceable)
