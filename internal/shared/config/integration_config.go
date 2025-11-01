@@ -32,6 +32,7 @@ type PartnerAdaptersConfig struct {
 	ShipCube          ShipCubeConfig          `yaml:"shipcube" json:"shipcube"`
 	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
 	IndiaPostIntl     IndiaPostConfig         `yaml:"india_post_intl" json:"india_post_intl"`
+	Naqel             NaqelConfig             `yaml:"naqel" json:"naqel"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -294,6 +295,22 @@ type IndiaPostDomesticConfig struct {
 	Rating           float64       `yaml:"rating" json:"rating"`
 }
 
+// NaqelConfig configuration for Naqel partner adapter (international shipping)
+type NaqelConfig struct {
+	BaseURL       string        `yaml:"base_url" json:"base_url"`
+	Username      string        `yaml:"username" json:"username"`
+	Password      string        `yaml:"password" json:"password"`
+	ClientID      string        `yaml:"client_id" json:"client_id"`
+	LoadTypeID    int           `yaml:"load_type_id" json:"load_type_id"`
+	TableName     string        `yaml:"table_name" json:"table_name"`
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay    time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	Rating        float64       `yaml:"rating" json:"rating"`
+	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
+}
+
 
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
@@ -530,6 +547,20 @@ func LoadIntegrationConfig() IntegrationConfig {
 			RetryDelay:       getEnvAsDurationOrDefault("INDIA_POST_DOMESTIC_RETRY_DELAY", 1*time.Second),
 			Enabled:          getEnvAsBoolOrDefault("INDIA_POST_DOMESTIC_ENABLED", true),
 			Rating:           4.5,
+		},
+		Naqel: NaqelConfig{
+			BaseURL:    getEnvOrDefault("NAQEL_BASE_URL", "https://infotrack.naqelexpress.com/NaqelAPIServices/NaqelAPIDemo/9.0/XMLShippingService.asmx"),
+			Username:   getEnvOrDefault("NAQEL_USERNAME", "test@example.com"),
+			Password:   getEnvOrDefault("NAQEL_PASSWORD", "API@Test"),
+			ClientID:   getEnvOrDefault("NAQEL_CLIENT_ID", "9020077"),
+			LoadTypeID: getEnvAsIntOrDefault("NAQEL_LOAD_TYPE_ID", 36),
+			TableName:  getEnvOrDefault("naqel_cities", "naqel_cities"),
+			Timeout:    getEnvAsDurationOrDefault("NAQEL_TIMEOUT", 30*time.Second),
+			MaxRetries: getEnvAsIntOrDefault("NAQEL_MAX_RETRIES", 3),
+			RetryDelay: getEnvAsDurationOrDefault("NAQEL_RETRY_DELAY", 1*time.Second),
+			Enabled:    getEnvAsBoolOrDefault("NAQEL_ENABLED", true),
+			Rating:     4.0,
+			SandboxMode: getEnvAsBoolOrDefault("NAQEL_SANDBOX_MODE", true),
 		},
 
 	}
