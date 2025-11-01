@@ -601,6 +601,10 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 		return s.convertShipCubeResult(result, srcCC, dstCC, responseTimeMs)
 	case "fedex":
 		return s.convertFedExResult(result, srcCC, dstCC, responseTimeMs)
+	case "indiapost": 
+		return s.convertIndiaPostInternationalResult(result, srcCC, dstCC, responseTimeMs)
+	case "naqel":
+		return s.convertNaqelResult(result, srcCC, dstCC, responseTimeMs)
 	default:
 		return s.convertGenericResult(result, partnerCode, srcCC, dstCC, responseTimeMs)
 	}
@@ -864,11 +868,12 @@ func toDetailedAddress(h *modelsv1.HubInfoData) modelsv1.DetailedAddress {
 
 func getPartnerName(code string) string {
 	names := map[string]string{
-		"dhl":      "DHL Express",
-		"aramex":   "Aramex",
-		"fedex":    "FedEx",
-		"shipcube": "ShipCube",
+		"dhl":       "DHL Express",
+		"aramex":    "Aramex",
+		"fedex":     "FedEx",
+		"shipcube":  "ShipCube",
 		"indiapost": "India Post",
+		"naqel":     "Naqel",
 	}
 	if n, ok := names[strings.ToLower(code)]; ok {
 		return n
@@ -1332,7 +1337,7 @@ func (s *InternationalStrategy) callIndiaPostInternationalViaAdapter(
 		"hasError":       err != nil,
 	}).Info("India Post International adapter CheckServiceability completed")
 
-	resp := s.convertIndiaPostInternationalResult(result, srcCC, dstCC)
+	resp := s.convertIndiaPostInternationalResult(result, srcCC, dstCC, 0)
 	if resp.PartnerCode == "" {
 		s.Logger.Warn("India Post International response empty after conversion")
 		return modelsv1.PartnerV2Response{}
@@ -1350,7 +1355,7 @@ func (s *InternationalStrategy) callIndiaPostInternationalViaAdapter(
 // convertIndiaPostInternationalResult - converts India Post International adapter result to partner response
 func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 	result *common.PartnerServiceabilityResult,
-	srcCC, dstCC string,
+	srcCC, dstCC string, responseTimeMs int64,
 ) modelsv1.PartnerV2Response {
 
 	if result == nil {
@@ -1416,4 +1421,72 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 
 	return partnerResp
 
+}
+
+func (s *InternationalStrategy) convertNaqelResult(result *common.PartnerServiceabilityResult, srcCC, dstCC string, responseTimeMs int64) modelsv1.PartnerV2Response {
+	if result == nil {
+		return modelsv1.PartnerV2Response{
+			PartnerID:      "naqel-default-id",
+			PartnerCode:    "naqel",
+			PartnerName:    "Naqel",
+			Rating:         0,
+			Source:         "real_time",
+			IsServiceable:  false,
+			ResponseTimeMs: responseTimeMs,
+			Metadata: map[string]interface{}{
+				"destination_country_code": dstCC,
+				"source_country_code":      srcCC,
+				"flow":                     "international",
+			},
+		}
+	}
+
+	isServiceable := len(result.Services) > 0
+	partnerID := "naqel-default-id"
+	if result.PartnerID != nil {
+		partnerID = result.PartnerID.String()
+	}
+
+	var services []modelsv1.ServiceV2
+	if isServiceable {
+		for _, svc := range result.Services {
+			service := modelsv1.ServiceV2{
+				ServiceCode: svc.ServiceCode,
+				ServiceName: svc.ServiceName,
+				TATDays:     svc.TATDays,
+				IsCOD:       false,
+				Pickup:      true,
+				Delivery:    true,
+				Insurance:   true,
+				ProductTypes: map[string]bool{
+					"commercial":   true,
+					"document":     true,
+					"non_document": true,
+				},
+				DeliveryModes: map[string]bool{
+					"express":  true,
+					"standard": false,
+				},
+			}
+			services = append(services, service)
+		}
+	}
+
+	return modelsv1.PartnerV2Response{
+		PartnerID:        partnerID,
+		PartnerCode:      "naqel",
+		PartnerName:      "Naqel",
+		Rating:           0,
+		Source:           "real_time",
+		IsServiceable:    isServiceable,
+		PartnerServices:  services,
+		Capabilities:     result.Capabilities,
+		ResponseTimeMs:   responseTimeMs,
+		Metadata: map[string]interface{}{
+			"destination_country_code": dstCC,
+			"source_country_code":      srcCC,
+			"flow":                     "international",
+			"naqel_response":           "success",
+		},
+	}
 }

@@ -15,6 +15,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
+	"prayog-serviceability-service/internal/services/v2/partners/naqel"
 	"prayog-serviceability-service/internal/services/v2/partners/porter"
 	"prayog-serviceability-service/internal/services/v2/partners/shipcube"
 	"prayog-serviceability-service/internal/services/v2/partners/shipyaari"
@@ -58,6 +59,7 @@ var adapterImplementationMap = map[string]string{
 	"shipcube":               "shipcube",
 	"india_post_domestic":    "india_post_domestic",    // Direct mapping for domestic India shipments
 	"INDIA_POST_DOMESTIC":    "india_post_domestic",    // Uppercase variant
+	"naqel":                  "naqel",                  // Direct mapping
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -82,7 +84,11 @@ func getPartnerDisplayName(code string) string {
 		"smile_hubops":             "Smile HubOps",
 		"porter":                   "Porter",
 		"india_post_international": "India Post International",
-		"india_post_domestic":   "India Post Domestic",
+		"india_post_domestic":      "India Post Domestic",
+		"naqel":                    "Naqel",
+		"aramex":                   "Aramex",
+		"fedex":                    "FedEx",
+		"shipcube":                 "ShipCube",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -250,6 +256,8 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.IndiaPostIntl, nil
 	case "india_post_domestic":
 		return f.config.IndiaPostDomestic, nil
+	case "naqel":
+		return f.config.Naqel, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -464,6 +472,20 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "india_post_domestic",
 		}).Warn("India Post Domestic adapter not enabled in config")
+	}
+
+	// Initialize Naqel adapter
+	if f.config.Naqel.Enabled {
+		f.implementations["naqel"] = naqel.NewAdapter(f.config.Naqel, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "naqel",
+		}).Info("Initialized naqel adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "naqel",
+		}).Warn("Naqel adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{
