@@ -186,6 +186,7 @@ func (c *NaqelClient) buildSOAPRequest(originCityCode, destinationCityCode, orig
 		Version:       "9.0",
 	}
 
+	LoadTypeID := 34
 	// Build XML manually to match SOAP format
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="utf-8"?>`)
@@ -221,7 +222,7 @@ func (c *NaqelClient) buildSOAPRequest(originCityCode, destinationCityCode, orig
 	sb.WriteString(`</ClientInfo>`)
 	sb.WriteString(fmt.Sprintf(`<Origin>%s</Origin>`, escapeXML(originStationCode)))
 	sb.WriteString(fmt.Sprintf(`<Destination>%s</Destination>`, escapeXML(destinationStationCode)))
-	sb.WriteString(fmt.Sprintf(`<loadtypeID>%d</loadtypeID>`, c.config.LoadTypeID))
+	sb.WriteString(fmt.Sprintf(`<loadtypeID>%d</loadtypeID>`, LoadTypeID))
 	sb.WriteString(`</GetTransitDays>`)
 	sb.WriteString(`</soap:Body>`)
 	sb.WriteString(`</soap:Envelope>`)
@@ -239,3 +240,34 @@ func escapeXML(s string) string {
 	return s
 }
 
+func mapServiceToLoadTypeID(serviceType, originCountry, destCountry string) int {
+	isInternational := !strings.EqualFold(originCountry, destCountry)
+	serviceTypeLower := strings.ToLower(serviceType)
+
+	if isInternational {
+		// --- International routes ---
+		switch serviceTypeLower {
+		case "express", "priority":
+			return 33 // Document Int'l – International Courier
+		case "standard", "economy":
+			return 34 // Non Document Int'l – International Courier
+		default:
+			// GCC neighbors (road courier)
+			gccCountries := map[string]bool{"AE": true, "BH": true, "KW": true, "OM": true, "QA": true}
+			if gccCountries[destCountry] {
+				return 65 // IRC – International Road Courier
+			}
+			return 34 // Default to Non Document Int'l
+		}
+	}
+
+	// --- Domestic routes ---
+	switch serviceTypeLower {
+	case "express", "priority":
+		return 39 // Express Domestic
+	case "standard", "economy":
+		return 36 // Non Document – Domestic Courier
+	default:
+		return 36 // Default fallback
+	}
+}

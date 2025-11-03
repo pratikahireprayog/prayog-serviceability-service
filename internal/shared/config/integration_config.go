@@ -553,7 +553,6 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Username:   getEnvOrDefault("NAQEL_USERNAME", "test@example.com"),
 			Password:   getEnvOrDefault("NAQEL_PASSWORD", "API@Test"),
 			ClientID:   getEnvOrDefault("NAQEL_CLIENT_ID", "9020077"),
-			LoadTypeID: getEnvAsIntOrDefault("NAQEL_LOAD_TYPE_ID", 36),
 			TableName:  getEnvOrDefault("naqel_cities", "naqel_cities"),
 			Timeout:    getEnvAsDurationOrDefault("NAQEL_TIMEOUT", 30*time.Second),
 			MaxRetries: getEnvAsIntOrDefault("NAQEL_MAX_RETRIES", 3),

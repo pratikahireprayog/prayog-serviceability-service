@@ -186,7 +186,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
     
     // PRIORITY 3: If no product_type strategy found, resolve via templates (by parcel_category)
     // Only if partners were not provided (partners take priority over parcel_category)
-    if strat == nil && len(req.Partners) == 0 && s.orchestratorFactory != nil {
+    if strat == nil && len(req.Partners) > 0 && s.orchestratorFactory != nil {
         resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
         strat = resolved
         if strat != nil {
@@ -206,7 +206,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
             "component":      "serviceability_orchestrator",
             "strategy":       "international",
             "parcel_category": *req.ParcelCategory,
-        }).Info("Selected strategy based on parcel_category")
+        }).Info("Selected international strategy based on parcel_category")
     }
     
     // PRIORITY 5: Force cargo strategy when parcel_category == "cargo"
