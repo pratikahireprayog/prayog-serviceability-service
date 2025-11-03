@@ -9,14 +9,14 @@ import (
 
 	"os"
 
+	intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
+	cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
+	dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
+	newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
+	npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
+	smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
-    dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
-    intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
-    smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
-    newintl "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/international_strategy"
-    npPickupDelivery "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/np_extension_with_pickup_and_delivery_strategy"
-    cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -126,8 +126,35 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
     timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
     defer cancel()
 
-    // Decide strategy based on product_type and parcel_category
     var strat OrchestrationStrategy
+
+    // PRIORITY 1: Check if specific partners are requested - if yes, detect if they're international
+    // Partners array takes priority over parcel_category
+    if req != nil && req.Partners != nil && len(req.Partners) > 0 {
+        hasInternationalPartners := s.hasInternationalPartners(req.Partners)
+        
+        if hasInternationalPartners {
+            // Route through InternationalStrategy when international partners are detected
+            strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+            s.logger.WithFields(logrus.Fields{
+                "component":       "serviceability_orchestrator",
+                "strategy":        "international",
+                "reason":          "international_partners_detected",
+                "requested_partners": func() []string {
+                    codes := make([]string, len(req.Partners))
+                    for i, p := range req.Partners {
+                        codes[i] = p.Code
+                    }
+                    return codes
+                }(),
+            }).Info("Selected international strategy because international partners detected in request (ignoring parcel_category)")
+            
+            // Delegate to international strategy immediately (partners priority)
+            return strat.Execute(timeoutCtx, req)
+        }
+    }
+
+    // PRIORITY 2: Decide strategy based on product_type (only if no partners or non-international partners)
     
     // Check for specific product_type strategies first
     if req != nil && req.ProductType != nil {
@@ -157,8 +184,9 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
         }
     }
     
-    // If no product_type strategy found, resolve via templates (by parcel_category)
-    if strat == nil && s.orchestratorFactory != nil {
+    // PRIORITY 3: If no product_type strategy found, resolve via templates (by parcel_category)
+    // Only if partners were not provided (partners take priority over parcel_category)
+    if strat == nil && len(req.Partners) == 0 && s.orchestratorFactory != nil {
         resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
         strat = resolved
         if strat != nil {
@@ -170,8 +198,9 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
         }
     }
     
-    // Force new international strategy when parcel_category == "international"
-    if req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
+    // PRIORITY 4: Force new international strategy when parcel_category == "international"
+    // Only if partners were not provided (partners take priority)
+    if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
         strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
         s.logger.WithFields(logrus.Fields{
             "component":      "serviceability_orchestrator",
@@ -180,8 +209,9 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
         }).Info("Selected strategy based on parcel_category")
     }
     
-    // Force cargo strategy when parcel_category == "cargo"
-    if req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "cargo" {
+    // PRIORITY 5: Force cargo strategy when parcel_category == "cargo"
+    // Only if partners were not provided (partners take priority)
+    if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "cargo" {
         strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
         s.logger.WithFields(logrus.Fields{
             "component":      "serviceability_orchestrator",
@@ -436,17 +466,15 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 		}
 	}
 
-	// Only log details if result is not nil
-	if result != nil {
-		s.logger.WithFields(logrus.Fields{
-			"component":    "serviceability_orchestrator",
-			"partner_code": info.PartnerCode,
-			"has_services": len(result.Services) > 0,
-			"has_capabilities": len(result.Capabilities) > 0,
-			"has_error":    result.Error != nil,
-			"error_message": result.ErrorMessage,
-		}).Info("Partner serviceability check completed successfully")
-	}
+	// Log partner serviceability check completion details (result is guaranteed to be non-nil here)
+	s.logger.WithFields(logrus.Fields{
+		"component":      "serviceability_orchestrator",
+		"partner_code":   info.PartnerCode,
+		"has_services":   len(result.Services) > 0,
+		"has_capabilities": len(result.Capabilities) > 0,
+		"has_error":      result.Error != nil,
+		"error_message":  result.ErrorMessage,
+	}).Info("Partner serviceability check completed successfully")
 
 	return partnerResult{
 		PartnerCode: info.PartnerCode,
@@ -497,7 +525,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
         } else if result.Result != nil {
 			// Convert partner result to V2 response using database info
 			partnerID := ""
-			if result.Result != nil && result.Result.PartnerID != nil {
+			if result.Result.PartnerID != nil {
 				partnerID = result.Result.PartnerID.String()
 			} else if result.PartnerInfo != nil && result.PartnerInfo.PartnerID != nil {
 				partnerID = result.PartnerInfo.PartnerID.String()
@@ -720,7 +748,7 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	allSupportedPartners := s.partnerFactory.GetSupportedPartners()
 
 	// PRIORITY 1: If specific partners are requested in request body, use ONLY those (strict validation)
-	if req.Partners != nil && len(req.Partners) > 0 {
+	if len(req.Partners) > 0 {
 		s.logger.WithFields(logrus.Fields{
 			"component":         "serviceability_orchestrator",
 			"requested_partners": func() []string {
@@ -749,7 +777,6 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}
 
 	// If partner attribute mapping repository is not available, return all supported partners
-	// Use a defensive approach to handle both nil interface and typed nil pointers
 	if s.partnerAttributeMapRepo == nil {
 		s.logger.WithFields(logrus.Fields{
 			"component":       "serviceability_orchestrator",
@@ -1054,4 +1081,43 @@ func (s *serviceabilityOrchestrator) buildHubDetailedAddress(hubLocationInfo *mo
 	address.Longitude = hubContact.Lng
 
 	return address
+}
+
+// hasInternationalPartners checks if any of the requested partners are international partners
+// International partners: dhl, fedex, aramex, shipcube, indiapost, naqel
+func (s *serviceabilityOrchestrator) hasInternationalPartners(partners []models.PartnerFilter) bool {
+	if len(partners) == 0 {
+		return false
+	}
+
+	// Define international partner codes (case-insensitive matching)
+	internationalPartners := map[string]bool{
+		"dhl":       true,
+		"fedex":     true,
+		"aramex":    true,
+		"shipcube":  true,
+		"indiapost": true,
+		"naqel":     true,
+	}
+
+	// Define international partner keywords for partial matching
+	internationalKeywords := []string{"dhl", "fedex", "aramex", "shipcube", "indiapost", "naqel", "india_post_international"}
+
+	for _, partner := range partners {
+		partnerCodeLower := strings.ToLower(partner.Code)
+		
+		// Direct match
+		if internationalPartners[partnerCodeLower] {
+			return true
+		}
+		
+		// Also check if it contains international partner keyword
+		for _, keyword := range internationalKeywords {
+			if strings.Contains(partnerCodeLower, keyword) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

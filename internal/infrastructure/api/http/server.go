@@ -260,6 +260,71 @@ func (s *Server) setupRoutes() error {
 		})
 	}
 
+	// Create API v3 group under serviceability
+	v3 := serviceabilityGroup.Group("/v3")
+
+	// Create V3 serviceability handler if v2Orchestrator is available (V3 uses V2 orchestrator)
+	if s.v2Orchestrator != nil {
+		v3ServiceabilityHandler, err := s.createServiceabilityV3Handler()
+		if err != nil {
+			s.logger.WithError(err).Warn("V3 serviceability features are disabled")
+			// Create placeholder routes that return service unavailable
+			v3.All("/*", func(c *fiber.Ctx) error {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+					"error": fiber.Map{
+						"code":    "SERVICE_UNAVAILABLE",
+						"message": "V3 serviceability features are temporarily unavailable",
+					},
+				})
+			})
+		} else {
+			// Register V3 serviceability routes under /serviceability/v3/
+			v1routes.RegisterServiceabilityV3Routes(v3, v3ServiceabilityHandler)
+		}
+
+		// Add a status route for the V3 serviceability service
+		v3.Get("/status", func(c *fiber.Ctx) error {
+			status := fiber.Map{
+				"service": "serviceability-v3",
+				"version": "3.0.0",
+				"status":  "available",
+				"message": "Serviceability V3 API is ready",
+			}
+
+			// Add partner adapter status information
+			if s.v2Orchestrator != nil {
+				status["partner_adapters"] = "available"
+				status["features"] = fiber.Map{
+					"addresses_object_format":     "available",
+					"services_response_format":    "available",
+					"unified_response_structure":  "available",
+					"multi_partner_orchestration": "available",
+				}
+			} else {
+				status["partner_adapters"] = "unavailable"
+				status["features"] = fiber.Map{
+					"addresses_object_format":     "unavailable",
+					"services_response_format":    "unavailable",
+					"unified_response_structure":  "unavailable",
+					"multi_partner_orchestration": "unavailable",
+				}
+			}
+
+			return c.JSON(status)
+		})
+	} else {
+		s.logger.Warn("V2 orchestrator is not available - V3 serviceability features will be disabled")
+		// Create placeholder routes that return service unavailable
+		v3.All("/*", func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": fiber.Map{
+					"code":    "SERVICE_UNAVAILABLE",
+					"message": "V3 serviceability features are not enabled",
+				},
+			})
+		})
+	}
+
 	// Add a status route for the serviceability service
 	v1.Get("/status", func(c *fiber.Ctx) error {
 		status := fiber.Map{
@@ -498,6 +563,47 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 	)
 
 	return v2ServiceabilityHandler, nil
+}
+
+// createServiceabilityV3Handler creates a V3 serviceability handler with all dependencies
+func (s *Server) createServiceabilityV3Handler() (*handlers.ServiceabilityV3Handler, error) {
+	// Check if V2 orchestrator is available (V3 uses V2 orchestrator)
+	if s.v2Orchestrator == nil {
+		return nil, fmt.Errorf("V2 orchestrator is required for V3 API")
+	}
+
+	// Create validator instance with all custom validations registered
+	validatorSetup := utils.NewValidatorSetup()
+	validator := validatorSetup.GetValidator()
+
+	// Create geolocation service for country code resolution
+	var geolocationService dataServices.GeolocationService
+	if s.dbManager != nil {
+		// Create repository factory from database connection
+		db := s.dbManager.GetDB()
+		if db != nil {
+			repoFactory := repositories.NewRepositoryFactory(db)
+			geoLocationRepo := repoFactory.GetGeoLocationRepository()
+			geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
+		}
+	}
+
+	// If geolocation service is not available, log a warning
+	if geolocationService == nil {
+		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
+		// Create a dummy geolocation service for graceful degradation
+		geolocationService = dataServices.NewGeolocationService(nil)
+	}
+
+	// Create V3 serviceability handler
+	v3ServiceabilityHandler := handlers.NewServiceabilityV3Handler(
+		s.v2Orchestrator,
+		geolocationService,
+		validator,
+		s.logger,
+	)
+
+	return v3ServiceabilityHandler, nil
 }
 
 // createLocationHandler creates a location handler with all dependencies
