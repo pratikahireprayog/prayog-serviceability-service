@@ -158,7 +158,22 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 	}).Info("Resolved source and destination pincodes for international carriers")
 
 	// Determine partners to call
-	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "indiapost"}
+	// If specific partners are requested, use only those; otherwise use default international partners
+	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "indiapost", "naqel"}
+	if len(req.Partners) > 0 {
+		partnerCodes = make([]string, 0, len(req.Partners))
+		for _, p := range req.Partners {
+			// Normalize partner codes (handle variants like "india_post_international" -> "indiapost")
+			partnerCode := normalizeInternationalPartnerCode(strings.ToLower(p.Code))
+			if partnerCode != "" {
+				partnerCodes = append(partnerCodes, partnerCode)
+			}
+		}
+		s.Logger.WithFields(logrus.Fields{
+			"component":         "international_strategy",
+			"requested_partners": partnerCodes,
+		}).Info("Using requested partners for international strategy")
+	}
 
 	// 1) Run serviceability checks for each partner (ALL via adapters now)
 	serviceablePartners := make([]modelsv1.PartnerV2Response, 0)
@@ -879,6 +894,37 @@ func getPartnerName(code string) string {
 		return n
 	}
 	return strings.Title(code)
+}
+
+// normalizeInternationalPartnerCode normalizes partner codes to standard international partner codes
+// Handles variants like "india_post_international" -> "indiapost"
+func normalizeInternationalPartnerCode(code string) string {
+	code = strings.ToLower(code)
+	
+	// Direct mapping for known codes
+	normalizedMap := map[string]string{
+		"dhl":                      "dhl",
+		"fedex":                    "fedex",
+		"aramex":                   "aramex",
+		"shipcube":                 "shipcube",
+		"indiapost":                "indiapost",
+		"india_post_international": "indiapost",
+		"naqel":                    "naqel",
+	}
+	
+	if normalized, exists := normalizedMap[code]; exists {
+		return normalized
+	}
+	
+	// Fallback: check if code contains any international partner name
+	for key, value := range normalizedMap {
+		if strings.Contains(code, key) {
+			return value
+		}
+	}
+	
+	// Return as-is if no match found (adapter factory will handle it)
+	return code
 }
 
 func generatePartnerID() string {
