@@ -9,6 +9,7 @@ import (
 
 	"os"
 
+	supplyrates "prayog-serviceability-service/internal/services/supply-rates"
 	intlstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies"
 	cargoStrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/cargo_strategy"
 	dstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/default_strategy"
@@ -17,6 +18,9 @@ import (
 	smnpstrategy "prayog-serviceability-service/internal/services/v2/orchestrators/strategies/smile_primary_np_extension_strategy"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
+
+	services "prayog-serviceability-service/internal/services/v1/data"
+
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -38,7 +42,10 @@ type serviceabilityOrchestrator struct {
 	timeout                 time.Duration
 	returnOnlyServiceable   bool
 	logger                  *logrus.Logger
-    orchestratorFactory     OrchestratorFactory
+	orchestratorFactory     OrchestratorFactory
+	rateClient              *supplyrates.RateClient
+	geolocationService 		services.GeolocationService
+
 }
 
 // NewServiceabilityOrchestrator creates a new V2 serviceability orchestrator
@@ -47,6 +54,7 @@ func NewServiceabilityOrchestrator(
 	partnerAttributeMapRepo repositories.PartnerAttributeMapRepository,
 	timeout time.Duration,
 	returnOnlyServiceable bool,
+	geolocationService services.GeolocationService, 
 ) ServiceabilityOrchestrator {
 	// Initialize logger
 	logger := logrus.New()
@@ -58,7 +66,10 @@ func NewServiceabilityOrchestrator(
 		timeout:                 timeout,
 		returnOnlyServiceable:   returnOnlyServiceable,
 		logger:                  logger,
+		geolocationService:      geolocationService,
     }
+	// Initialize rate client
+	s.rateClient = supplyrates.NewRateClient(logger)
 
     // Register strategies (pattern only). Default delegates to existing flow via executeDefault.
     registry := map[string]StrategyConstructor{
@@ -122,114 +133,174 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-    // Set timeout context
-    timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
-    defer cancel()
+	// Set timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 
-    var strat OrchestrationStrategy
+	var strat OrchestrationStrategy
+	var response *models.ServiceabilityV2Response
+	var err error
+	var strategyCode string
+	// PRIORITY 1: Check if specific partners are requested - if yes, detect if they're international
+	// Partners array takes priority over parcel_category
+	if req != nil && req.Partners != nil && len(req.Partners) > 0 {
+		hasInternationalPartners := s.hasInternationalPartners(req.Partners)
 
-    // PRIORITY 1: Check if specific partners are requested - if yes, detect if they're international
-    // Partners array takes priority over parcel_category
-    if req != nil && req.Partners != nil && len(req.Partners) > 0 {
-        hasInternationalPartners := s.hasInternationalPartners(req.Partners)
-        
-        if hasInternationalPartners {
-            // Route through InternationalStrategy when international partners are detected
-            strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-            s.logger.WithFields(logrus.Fields{
-                "component":       "serviceability_orchestrator",
-                "strategy":        "international",
-                "reason":          "international_partners_detected",
-                "requested_partners": func() []string {
-                    codes := make([]string, len(req.Partners))
-                    for i, p := range req.Partners {
-                        codes[i] = p.Code
-                    }
-                    return codes
-                }(),
-            }).Info("Selected international strategy because international partners detected in request (ignoring parcel_category)")
-            
-            // Delegate to international strategy immediately (partners priority)
-            return strat.Execute(timeoutCtx, req)
-        }
-    }
+		if hasInternationalPartners {
+			// Route through InternationalStrategy when international partners are detected
+			strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+			s.logger.WithFields(logrus.Fields{
+				"component":          "serviceability_orchestrator",
+				"strategy":           "international",
+				"reason":             "international_partners_detected",
+				"requested_partners": func() []string {
+					codes := make([]string, len(req.Partners))
+					for i, p := range req.Partners {
+						codes[i] = p.Code
+					}
+					return codes
+				}(),
+			}).Info("Selected international strategy because international partners detected in request (ignoring parcel_category)")
 
-    // PRIORITY 2: Decide strategy based on product_type (only if no partners or non-international partners)
-    
-    // Check for specific product_type strategies first
-    if req != nil && req.ProductType != nil {
-        productType := strings.ToLower(*req.ProductType)
-        switch productType {
-        case "nba":
-            strat = &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-            s.logger.WithFields(logrus.Fields{
-                "component":   "serviceability_orchestrator",
-                "strategy":    "international_with_pickup",
-                "product_type": productType,
-            }).Info("Selected strategy based on product_type")
-        case "pickup_and_delivery":
-            strat = &npPickupDelivery.NPExtensionWithPickupAndDeliveryStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-            s.logger.WithFields(logrus.Fields{
-                "component":   "serviceability_orchestrator",
-                "strategy":    "np_extension_with_pickup_and_delivery",
-                "product_type": productType,
-            }).Info("Selected strategy based on product_type")
-        case "cargo":
-            strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-            s.logger.WithFields(logrus.Fields{
-                "component":   "serviceability_orchestrator",
-                "strategy":    "cargo",
-                "product_type": productType,
-            }).Info("Selected cargo strategy based on product_type")
-        }
-    }
-    
-    // PRIORITY 3: If no product_type strategy found, resolve via templates (by parcel_category)
-    // Only if partners were not provided (partners take priority over parcel_category)
-    if strat == nil && len(req.Partners) > 0 && s.orchestratorFactory != nil {
-        resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
-        strat = resolved
-        if strat != nil {
-            s.logger.WithFields(logrus.Fields{
-                "component":      "serviceability_orchestrator",
-                "strategy":       strat.Code(),
-                "parcel_category": req.ParcelCategory,
-            }).Info("Selected strategy based on parcel_category")
-        }
-    }
-    
-    // PRIORITY 4: Force new international strategy when parcel_category == "international"
-    // Only if partners were not provided (partners take priority)
-    if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
-        strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-        s.logger.WithFields(logrus.Fields{
-            "component":      "serviceability_orchestrator",
-            "strategy":       "international",
-            "parcel_category": *req.ParcelCategory,
-        }).Info("Selected international strategy based on parcel_category")
-    }
-    
-    // PRIORITY 5: Force cargo strategy when parcel_category == "cargo"
-    // Only if partners were not provided (partners take priority)
-    if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "cargo" {
-        strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
-        s.logger.WithFields(logrus.Fields{
-            "component":      "serviceability_orchestrator",
-            "strategy":       "cargo",
-            "parcel_category": *req.ParcelCategory,
-        }).Info("Selected cargo strategy based on parcel_category")
-    }
-    
-    if strat == nil || strat.Code() == "default" {
-        s.logger.WithFields(logrus.Fields{
-            "component": "serviceability_orchestrator",
-            "strategy":  "default",
-        }).Info("Falling back to default strategy")
-        return s.executeDefault(timeoutCtx, req)
-    }
+			// Delegate to international strategy immediately (partners priority)
+			response, err = strat.Execute(timeoutCtx, req)
+		}
+	}
 
-    // Delegate to non-default strategy (logic not implemented for smile_primary_np_extension)
-    return strat.Execute(timeoutCtx, req)
+	// If no strategy selected yet, continue with other priorities
+	if response == nil {
+		// PRIORITY 2: Decide strategy based on product_type (only if no partners or non-international partners)
+		if req != nil && req.ProductType != nil {
+			productType := strings.ToLower(*req.ProductType)
+			switch productType {
+			case "nba":
+				strat = &intlstrategy.InternationalWithPickupStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+				strategyCode = "international_with_pickup"
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"strategy":     "international_with_pickup",
+					"product_type": productType,
+				}).Info("Selected strategy based on product_type")
+			case "pickup_and_delivery":
+				strategyCode = "np_extension_with_pickup_and_delivery"
+				strat = &npPickupDelivery.NPExtensionWithPickupAndDeliveryStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"strategy":     "np_extension_with_pickup_and_delivery",
+					"product_type": productType,
+				}).Info("Selected strategy based on product_type")
+			case "cargo":
+				strategyCode = "cargo"
+				strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"strategy":     "cargo",
+					"product_type": productType,
+				}).Info("Selected cargo strategy based on product_type")
+			}
+		}
+
+		// PRIORITY 3: If no product_type strategy found, resolve via templates (by parcel_category)
+		if strat == nil && len(req.Partners) > 0 && s.orchestratorFactory != nil {
+			resolved, _ := s.orchestratorFactory.Resolve(timeoutCtx, req.ParcelCategory)
+			strat = resolved
+			if strat != nil {
+				strategyCode = strat.Code()
+				s.logger.WithFields(logrus.Fields{
+					"component":       "serviceability_orchestrator",
+					"strategy":        strat.Code(),
+					"parcel_category": req.ParcelCategory,
+				}).Info("Selected strategy based on parcel_category")
+			}
+		}
+
+		// PRIORITY 4: Force new international strategy when parcel_category == "international"
+		if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
+			strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+			strategyCode = "international"
+			s.logger.WithFields(logrus.Fields{
+				"component":       "serviceability_orchestrator",
+				"strategy":        "international",
+				"parcel_category": *req.ParcelCategory,
+			}).Info("Selected international strategy based on parcel_category")
+		}
+
+		// PRIORITY 5: Force cargo strategy when parcel_category == "cargo"
+		if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "cargo" {
+			strat = &cargoStrategy.CargoStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+			strategyCode = "cargo"
+			s.logger.WithFields(logrus.Fields{
+				"component":       "serviceability_orchestrator",
+				"strategy":        "cargo",
+				"parcel_category": *req.ParcelCategory,
+			}).Info("Selected cargo strategy based on parcel_category")
+		}
+
+		if strat == nil || strat.Code() == "default" {
+			strategyCode = "default"
+			s.logger.WithFields(logrus.Fields{
+				"component": "serviceability_orchestrator",
+				"strategy":  "default",
+			}).Info("Falling back to default strategy")
+			response, err = s.executeDefault(timeoutCtx, req)
+		} else {
+			// Delegate to non-default strategy
+			response, err = strat.Execute(timeoutCtx, req)
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// CENTRALIZED RATE FETCHING: Fetch rates for ALL serviceable partners regardless of strategy
+	if response != nil && len(response.Partners) > 0 {
+		s.logger.WithFields(logrus.Fields{
+			"component":          "serviceability_orchestrator",
+			"strategy_used":      strategyCode,
+			"total_partners":     len(response.Partners),
+			"rate_client_ready":  s.rateClient != nil,
+		}).Info("Fetching rates for all serviceable partners across strategy")
+
+		// Filter serviceable partners for rate fetching
+		serviceablePartners := make([]models.PartnerV2Response, 0)
+		for _, partner := range response.Partners {
+			if partner.IsServiceable {
+				serviceablePartners = append(serviceablePartners, partner)
+			}
+		}
+		s.logger.Info("serviceablePartners", serviceablePartners);
+		if len(serviceablePartners) > 0 {
+			ratesResponse, rateErr := s.fetchRatesForPartners(context.Background(), req, serviceablePartners)
+			if rateErr != nil {
+				s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, continuing without rates")
+			} else if ratesResponse != nil && ratesResponse.Success {
+				s.logger.WithFields(logrus.Fields{
+					"component":        "serviceability_orchestrator",
+					"rates_found":      ratesResponse.Metadata.TotalRatesFound,
+					"partners_with_rates": len(ratesResponse.Data.SuccessfulResponses),
+				}).Info("Successfully fetched rates for partners")
+
+				// Attach rates to partner responses
+				// s.attachRatesToPartnerResponses(&response.Partners, ratesResponse)
+				s.mergeRatesIntoPartners(response.Partners, ratesResponse)
+				// Update metadata to indicate rates are included
+				if response.Metadata != nil {
+					totalRatesFound := 0
+					for _, partner := range response.Partners {
+						for _, service := range partner.Services {
+							if service.Rate != nil {
+								totalRatesFound++
+							}
+						}
+					}
+					response.Metadata.RatesIncluded = totalRatesFound > 0
+				}
+			}
+		}
+	}
+
+	return response, nil
 }
 
 // executeDefault runs the existing default orchestration flow
@@ -484,16 +555,18 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 
 // buildV2Response builds the V2 response from partner results
 func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerResult, req *models.ServiceabilityV2Request) *models.ServiceabilityV2Response {
-	serviceablePartners := make([]models.PartnerV2Response, 0)
+	// serviceablePartners := make([]models.PartnerV2Response, 0)
 	serviceableCount := 0
     var topLevelHubDetails interface{}
 
 	// Collect address information
 	var hubLocationInfo *models.HubLocationInfo
 	var sourceCountryCode, destinationCountryCode string
-	// TODO: Remove the other/common operations from the partner specific code (DHL) and keep it out of that so that can be used for any workflows not only for the international
-	//TODO: Remove the international code out from the partner specific code (DHL) and structure the code or files in such a way so that other workflows can be also writtern and can consume multiple partner as well
-	// Process each partner result
+
+	// First pass: build basic partner responses and collect serviceable partners
+	partnerResponses := make([]models.PartnerV2Response, 0)
+	serviceablePartnerResponses := make([]models.PartnerV2Response, 0)
+
 	for _, result := range partnerResults {
 		// Extract address information from partner metadata if available
 		if result.Result != nil && result.Result.Metadata != nil {
@@ -559,6 +632,16 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				ResponseTime:    result.Result.ResponseTime,
 				Metadata:        cleanMetadata,
 				HubDetails:      hubDetails,
+				Source:          "real_time",
+				IsServiceable:   len(result.Result.Services) > 0 || len(result.Result.Capabilities) > 0,
+			}
+
+			// Add error if partner has error message
+			if result.Result.ErrorMessage != nil {
+				// partnerResponse.Error = &models.ErrorResponse{
+				// 	Code:    "PARTNER_ERROR",
+				// 	Message: *result.Result.ErrorMessage,
+				// }
 			}
 
 			// Add to serviceable partners if they have services, capabilities, or metadata
@@ -567,31 +650,32 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			hasCapabilities := len(result.Result.Capabilities) > 0
 			hasMetadata := len(result.Result.Metadata) > 0
 			hasError := result.Result.ErrorMessage != nil
-			
-			isServiceable := hasServices || hasCapabilities || hasMetadata
-			
-            if isServiceable && !hasError {
-                // If this partner is Smile HubOps, do NOT include it in partners array.
-                // Only set top-level hub_details if present.
-                isHubOps := false
-                if result.PartnerInfo != nil {
-                    partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
-                    if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
-                        isHubOps = true
-                    }
-                }
 
-                if isHubOps {
-                    if hubDetails != nil {
-                        topLevelHubDetails = hubDetails
-                    }
-                    // Count Smile HubOps as serviceable but skip adding to partners array
-                    serviceableCount++
-                } else {
-                    serviceablePartners = append(serviceablePartners, partnerResponse)
-                    serviceableCount++
-                }
-            }
+			isServiceable := hasServices || hasCapabilities || hasMetadata
+
+			if isServiceable && !hasError {
+				// If this partner is Smile HubOps, do NOT include it in partners array.
+				// Only set top-level hub_details if present.
+				isHubOps := false
+				if result.PartnerInfo != nil {
+					partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
+					if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
+						isHubOps = true
+					}
+				}
+
+				if isHubOps {
+					if hubDetails != nil {
+						topLevelHubDetails = hubDetails
+					}
+					// Count Smile HubOps as serviceable but skip adding to partners array
+					serviceableCount++
+				} else {
+					partnerResponses = append(partnerResponses, partnerResponse)
+					serviceablePartnerResponses = append(serviceablePartnerResponses, partnerResponse)
+					serviceableCount++
+				}
+			}
 			// Non-serviceable partners (with errors or no services/capabilities/metadata) are excluded from the response
 		}
 	}
@@ -619,19 +703,38 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 
 	// Only return serviceable partners (partners with services or capabilities)
 	// Non-serviceable partners (with errors or no services) are excluded from the response
-	partnersToReturn = serviceablePartners
+	partnersToReturn = partnerResponses
+
+	// Calculate rate statistics
+	totalRatesFound := 0
+	partnersWithRates := 0
+	for _, partner := range partnersToReturn {
+		if len(partner.Services) > 0 {
+			for _, service := range partner.Services {
+				if service.Rate != nil {
+					totalRatesFound++
+				}
+			}
+			if totalRatesFound > 0 {
+				partnersWithRates++
+			}
+		}
+	}
 
 	// Build response
-    response := &models.ServiceabilityV2Response{
+	response := &models.ServiceabilityV2Response{
 		Success:  isSuccess,
 		Partners: partnersToReturn,
 		Metadata: &models.V2ResponseMetadata{
 			TotalPartners:    len(partnerResults),
 			ServiceableCount: serviceableCount,
-            Filters: models.V2Filters{
-                ParcelCategory:    req.ParcelCategory,
-                RequestedPartners: req.Partners,
-            },
+			// TotalRatesFound:  totalRatesFound,
+			// PartnersWithRates: partnersWithRates,
+			RatesIncluded:    totalRatesFound > 0,
+			Filters: models.V2Filters{
+				ParcelCategory:    req.ParcelCategory,
+				RequestedPartners: req.Partners,
+			},
 		},
 	}
 
@@ -644,30 +747,181 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 	s.populateAddressInformation(response, req, hubLocationInfo, sourceCountryCode, destinationCountryCode)
 
 	// Add error message when returnOnlyServiceable=true and there are errors or no serviceable partners
-    if s.returnOnlyServiceable && (!isSuccess || hasErrors) {
-        // If partners array is empty, force legacy-style error
-        if len(partnersToReturn) == 0 {
-            response.Success = false
-            response.Error = &models.ErrorResponse{
-                Code:    "PARTNER_ERROR",
-                Message: "not serviceable",
-            }
-        } else {
-            // Otherwise, keep normalized/classified partner error
-            msg := errorMessage
-            if msg == "" {
-                msg = "Delivery pincode is not serviceable"
-            }
-            msg = s.normalizeErrorMessage(msg)
-            errorCode := s.classifyErrorType(msg)
-            response.Error = &models.ErrorResponse{
-                Code:    errorCode,
-                Message: msg,
-            }
-        }
-    }
+	if s.returnOnlyServiceable && (!isSuccess || hasErrors) {
+		// If partners array is empty, force legacy-style error
+		if len(partnersToReturn) == 0 {
+			response.Success = false
+			response.Error = &models.ErrorResponse{
+				Code:    "PARTNER_ERROR",
+				Message: "not serviceable",
+			}
+		} else {
+			// Otherwise, keep normalized/classified partner error
+			msg := errorMessage
+			if msg == "" {
+				msg = "Delivery pincode is not serviceable"
+			}
+			msg = s.normalizeErrorMessage(msg)
+			errorCode := s.classifyErrorType(msg)
+			response.Error = &models.ErrorResponse{
+				Code:    errorCode,
+				Message: msg,
+			}
+		}
+	}
 
 	return response
+}
+
+// fetchRatesForPartners fetches rates for all serviceable partners in one batch
+func (s *serviceabilityOrchestrator) fetchRatesForPartners(
+	ctx context.Context,
+	req *models.ServiceabilityV2Request,
+	serviceablePartners []models.PartnerV2Response,
+) (*supplyrates.RateQuoteResponse, error) {
+
+	if s.rateClient == nil {
+		return nil, fmt.Errorf("rate client not initialized")
+	}
+
+	// Extract source and destination information
+	srcPin := s.getString(req.SourcePostalCode)
+	dstPin := s.getString(req.DestinationPostalCode)
+	srcCC := s.getString(req.SourceCountryCode)
+	dstCC := s.getString(req.DestinationCountryCode)
+	
+	if s.geolocationService != nil {
+		srcCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, srcPin)
+		if err != nil {
+			s.logger.WithFields(logrus.Fields{
+				"error":          err.Error(),
+				"source_pin":     srcPin,
+			}).Error("Failed to get source country code by postal code")
+		} else if srcCCPtr != nil {
+			srcCC = *srcCCPtr
+		}
+
+		// Lookup destination country code by postal code
+		dstCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, dstPin)
+		if err != nil {
+			s.logger.WithFields(logrus.Fields{
+				"error":      err.Error(),
+				"dest_pin":   dstPin,
+			}).Error("Failed to get destination country code by postal code")
+		} else if dstCCPtr != nil {
+			dstCC = *dstCCPtr
+	}
+	}
+	
+	
+
+	// // Default to India if country codes not provided
+	// if srcCC == "" {
+	// 	srcCC = "IN"
+	// }
+	// if dstCC == "" { /// fix fix fix 
+	// 	dstCC = "US"
+	// }
+
+	s.logger.WithFields(logrus.Fields{
+		"component":        "serviceability_orchestrator",
+		"source_pin":       srcPin,
+		"source_country":   srcCC,
+		"dest_pin":         dstPin,
+		"dest_country":     dstCC,
+		"partners_count":   len(serviceablePartners),
+	}).Info("Calling rate client for partners")
+
+	return s.rateClient.GetRatesForPartners(ctx, req, srcPin, srcCC, dstPin, dstCC, serviceablePartners)
+}
+
+func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
+    partners []models.PartnerV2Response,
+    rates *supplyrates.RateQuoteResponse,
+) {
+	// Create a map for quick lookup: partnerCode -> available rates
+	ratesMap := make(map[string][]newintl.RateQuote)
+
+	// Populate the map from API response
+	for _, successResp := range rates.Data.SuccessfulResponses {
+		partnerCode := strings.ToLower(successResp.Partner.Code)
+
+		// Convert anonymous struct to our named struct type
+		partnerRates := make([]newintl.RateQuote, 0, len(successResp.AvailableRates))
+		for _, r := range successResp.AvailableRates {
+			partnerRates = append(partnerRates, newintl.RateQuote{
+				RateID:       r.RateID,
+				Service:      r.Service,
+				DeliveryDays: r.DeliveryDays,
+				Price: struct {
+					Currency    string
+					Amount      float64
+					Type        string
+					ServiceType string
+				}{
+					Currency:    r.Price.Currency,
+					Amount:      r.Price.Amount,
+					Type:        r.Price.Type,
+					ServiceType: r.Price.ServiceType,
+				},
+			})
+		}
+
+		ratesMap[partnerCode] = partnerRates
+	}
+
+	// Merge rates into partners
+	for i := range partners {
+		partnerCode := strings.ToLower(partners[i].PartnerCode)
+		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
+			services := make([]models.ServiceV2, 0, len(availableRates))
+
+			for _, rate := range availableRates {
+				service := models.ServiceV2{
+					ServiceCode: rate.Price.ServiceType,
+					ServiceName: rate.Service,
+					TATDays:     rate.DeliveryDays,
+					IsCOD:       false,
+					Pickup:      true,
+					Delivery:    true,
+					Insurance:   true,
+					ProductTypes: map[string]bool{
+						"commercial":   true,
+						"document":     true,
+						"non_document": true,
+					},
+					DeliveryModes: map[string]bool{
+						"express":  strings.Contains(strings.ToLower(rate.Service), "express"),
+						"standard": !strings.Contains(strings.ToLower(rate.Service), "express"),
+					},
+					Rate: &models.Rate{
+						RateID: rate.RateID,
+						Price: models.Price{
+							Currency: rate.Price.Currency,
+							Amount:   rate.Price.Amount,
+							Type:     rate.Price.Type,
+						},
+					},
+				}
+				services = append(services, service)
+			}
+
+			partners[i].PartnerServices = services
+			if partners[i].Metadata == nil {
+				partners[i].Metadata = make(map[string]interface{})
+			}
+			partners[i].Metadata["rates_available"] = true
+			partners[i].Metadata["rates_count"] = len(availableRates)
+		}
+	}
+}
+
+// getString safely gets string value from pointer
+func (s *serviceabilityOrchestrator) getString(str *string) string {
+	if str != nil {
+		return *str
+	}
+	return ""
 }
 
 // classifyErrorType determines the appropriate error code based on the error message
