@@ -288,6 +288,7 @@ func initV2Orchestrator(
 		partnerAttributeRepo,
 		60*time.Second, // timeout for partner requests - increased for database queries
 		configManager.App.Serviceability.ReturnOnlyServiceablePartners,
+		geolocationService,
 	)
 
 	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")
