@@ -117,8 +117,8 @@ func (rc *RateClient) GetRatesForPartners(
 	ratesURL := os.Getenv("SUPPLY_RATE_URL")
 	fmt.Println("ratesURL", ratesURL);
 	if rc.BaseURL == "" {
-		rc.BaseURL = "https://sandbox-apis.prayog.io/supply-rate/v1/quotes"
-		// return nil, fmt.Errorf("SUPPLY_RATE_URL not configured")
+		// rc.BaseURL = "https://sandbox-apis.prayog.io/supply-rate/v1/quotes"
+		return nil, fmt.Errorf("SUPPLY_RATE_URL not configured")
 	}
 
 	// 1️⃣ Build request payload
