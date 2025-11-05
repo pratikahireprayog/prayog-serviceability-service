@@ -98,7 +98,7 @@ type PartnerV2Response struct {
 	PartnerServices interface{}            `json:"services,omitempty"`
 	Capabilities    map[string]interface{} `json:"capabilities,omitempty"`
 	Error           *string                `json:"error,omitempty"`
-	ResponseTime    time.Duration          `json:"response_time,omitempty"`
+	ResponseTime    time.Duration          `json:"response_time"`
 	ResponseTimeMs  int64                  `json:"response_time_ms,omitempty"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 	HubDetails      interface{}            `json:"hub_details,omitempty"`

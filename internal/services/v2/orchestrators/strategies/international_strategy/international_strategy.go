@@ -201,16 +201,15 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 
 	// 2) Get rates for serviceable partners
 	ratesIncluded := false
-	// if len(serviceablePartners) > 0 {
-	// 	// rateClient := supplyrates.NewRateClient(s.Logger)
-	// 	// rates, err := rateClient.GetRatesForPartners(ctx, req, srcPin, srcCC, dstPin, dstCC, serviceablePartners)
-	// 	if err != nil {
-	// 		s.Logger.WithError(err).Warn("Failed to get rates for serviceable partners")
-	// 	} else if rates != nil {
-	// 		s.mergeRatesIntoPartners(serviceablePartners, rates)
-	// 		ratesIncluded = true
-	// 	}
-	// }
+	if len(serviceablePartners) > 0 {
+		rates, err := s.getRatesForPartners(ctx, req, srcPin, srcCC, dstPin, dstCC, serviceablePartners)
+		if err != nil {
+			s.Logger.WithError(err).Warn("Failed to get rates for serviceable partners")
+		} else if rates != nil {
+			s.mergeRatesIntoPartners(serviceablePartners, rates)
+			ratesIncluded = true
+		}
+	}
 
 	// Calculate response metrics
 	responseTimeMs := time.Since(startTime).Milliseconds()
@@ -464,86 +463,83 @@ type RateQuote struct {
 	}
 }
 
-// func (s *InternationalStrategy) mergeRatesIntoPartners(
-//     partners []modelsv1.PartnerV2Response,
-//     rates *supplyrates.RateQuoteResponse,
-// ) {
-// 	// Create a map for quick lookup: partnerCode -> available rates
-// 	ratesMap := make(map[string][]RateQuote)
+func (s *InternationalStrategy) mergeRatesIntoPartners(partners []modelsv1.PartnerV2Response, rates *RateQuoteResponse) {
+	// Create a map for quick lookup: partnerCode -> available rates
+	ratesMap := make(map[string][]RateQuote)
 
-// 	// Populate the map from API response
-// 	for _, successResp := range rates.Data.SuccessfulResponses {
-// 		partnerCode := strings.ToLower(successResp.Partner.Code)
+	// Populate the map from API response
+	for _, successResp := range rates.Data.SuccessfulResponses {
+		partnerCode := strings.ToLower(successResp.Partner.Code)
 
-// 		// Convert anonymous struct to our named struct type
-// 		partnerRates := make([]RateQuote, 0, len(successResp.AvailableRates))
-// 		for _, r := range successResp.AvailableRates {
-// 			partnerRates = append(partnerRates, RateQuote{
-// 				RateID:       r.RateID,
-// 				Service:      r.Service,
-// 				DeliveryDays: r.DeliveryDays,
-// 				Price: struct {
-// 					Currency    string
-// 					Amount      float64
-// 					Type        string
-// 					ServiceType string
-// 				}{
-// 					Currency:    r.Price.Currency,
-// 					Amount:      r.Price.Amount,
-// 					Type:        r.Price.Type,
-// 					ServiceType: r.Price.ServiceType,
-// 				},
-// 			})
-// 		}
+		// Convert anonymous struct to our named struct type
+		partnerRates := make([]RateQuote, 0, len(successResp.AvailableRates))
+		for _, r := range successResp.AvailableRates {
+			partnerRates = append(partnerRates, RateQuote{
+				RateID:       r.RateID,
+				Service:      r.Service,
+				DeliveryDays: r.DeliveryDays,
+				Price: struct {
+					Currency    string
+					Amount      float64
+					Type        string
+					ServiceType string
+				}{
+					Currency:    r.Price.Currency,
+					Amount:      r.Price.Amount,
+					Type:        r.Price.Type,
+					ServiceType: r.Price.ServiceType,
+				},
+			})
+		}
 
-// 		ratesMap[partnerCode] = partnerRates
-// 	}
+		ratesMap[partnerCode] = partnerRates
+	}
 
-// 	// Merge rates into partners
-// 	for i := range partners {
-// 		partnerCode := strings.ToLower(partners[i].PartnerCode)
-// 		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
-// 			services := make([]modelsv1.ServiceV2, 0, len(availableRates))
+	// Merge rates into partners
+	for i := range partners {
+		partnerCode := strings.ToLower(partners[i].PartnerCode)
+		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
+			services := make([]modelsv1.ServiceV2, 0, len(availableRates))
 
-// 			for _, rate := range availableRates {
-// 				service := modelsv1.ServiceV2{
-// 					ServiceCode: rate.Price.ServiceType,
-// 					ServiceName: rate.Service,
-// 					TATDays:     rate.DeliveryDays,
-// 					IsCOD:       false,
-// 					Pickup:      true,
-// 					Delivery:    true,
-// 					Insurance:   true,
-// 					ProductTypes: map[string]bool{
-// 						"commercial":   true,
-// 						"document":     true,
-// 						"non_document": true,
-// 					},
-// 					DeliveryModes: map[string]bool{
-// 						"express":  strings.Contains(strings.ToLower(rate.Service), "express"),
-// 						"standard": !strings.Contains(strings.ToLower(rate.Service), "express"),
-// 					},
-// 					Rate: &modelsv1.Rate{
-// 						RateID: rate.RateID,
-// 						Price: modelsv1.Price{
-// 							Currency: rate.Price.Currency,
-// 							Amount:   rate.Price.Amount,
-// 							Type:     rate.Price.Type,
-// 						},
-// 					},
-// 				}
-// 				services = append(services, service)
-// 			}
+			for _, rate := range availableRates {
+				service := modelsv1.ServiceV2{
+					ServiceCode: rate.Price.ServiceType,
+					ServiceName: rate.Service,
+					TATDays:     rate.DeliveryDays,
+					IsCOD:       false,
+					Pickup:      true,
+					Delivery:    true,
+					Insurance:   true,
+					ProductTypes: map[string]bool{
+						"commercial":   true,
+						"document":     true,
+						"non_document": true,
+					},
+					DeliveryModes: map[string]bool{
+						"express":  strings.Contains(strings.ToLower(rate.Service), "express"),
+						"standard": !strings.Contains(strings.ToLower(rate.Service), "express"),
+					},
+					Rate: &modelsv1.Rate{
+						RateID: rate.RateID,
+						Price: modelsv1.Price{
+							Currency: rate.Price.Currency,
+							Amount:   rate.Price.Amount,
+							Type:     rate.Price.Type,
+						},
+					},
+				}
+				services = append(services, service)
+			}
 
-// 			partners[i].PartnerServices = services
-// 			if partners[i].Metadata == nil {
-// 				partners[i].Metadata = make(map[string]interface{})
-// 			}
-// 			partners[i].Metadata["rates_available"] = true
-// 			partners[i].Metadata["rates_count"] = len(availableRates)
-// 		}
-// 	}
-// }
+			partners[i].PartnerServices = services
+			if partners[i].Metadata == nil {
+				partners[i].Metadata = make(map[string]interface{})
+			}
+			partners[i].Metadata["rates_available"] = true
+			partners[i].Metadata["rates_count"] = len(availableRates)
+		}
+	}
+}
 
 func (s *InternationalStrategy) callPartnerViaAdapter(
 	ctx context.Context,

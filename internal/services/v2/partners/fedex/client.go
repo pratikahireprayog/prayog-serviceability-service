@@ -166,6 +166,11 @@ func (c *FedExClient) GetRates(ctx context.Context, request RateRequest) (*RateR
 	}
 
 	c.logger.WithFields(logrus.Fields{
+		"status_code": resp.StatusCode,
+		"body":        string(body),
+	}).Info("FedEx API response body")
+
+	c.logger.WithFields(logrus.Fields{
 		"partner":     "FedEx",
 		"status_code": resp.StatusCode,
 		"body_size":   len(body),
