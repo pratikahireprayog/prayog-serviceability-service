@@ -66,6 +66,7 @@ type RateQuoteResponse struct {
 				RateID       string `json:"rate_id"`
 				Service      string `json:"service"`
 				DeliveryDays int    `json:"delivery_days"`
+				Description  string `json:"description,omitempty"`
 				Price        struct {
 					Currency    string  `json:"currency"`
 					Amount      float64 `json:"amount"`
@@ -456,6 +457,7 @@ type RateQuote struct {
 	RateID       string
 	Service      string
 	DeliveryDays int
+	Description  string
 	Price        struct {
 		Currency    string
 		Amount      float64

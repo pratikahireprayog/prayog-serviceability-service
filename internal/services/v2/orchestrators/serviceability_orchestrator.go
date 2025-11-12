@@ -853,6 +853,7 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 				RateID:       r.RateID,
 				Service:      r.Service,
 				DeliveryDays: r.DeliveryDays,
+				Description:  r.Description,
 				Price: struct {
 					Currency    string
 					Amount      float64
@@ -895,7 +896,8 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 						"standard": !strings.Contains(strings.ToLower(rate.Service), "express"),
 					},
 					Rate: &models.Rate{
-						RateID: rate.RateID,
+						RateID:      rate.RateID,
+						Description: rate.Description,
 						Price: models.Price{
 							Currency: rate.Price.Currency,
 							Amount:   rate.Price.Amount,
