@@ -53,6 +53,7 @@ type RateQuoteResponse struct {
 					Type        string  `json:"type"`
 					ServiceType string  `json:"ServiceType"`
 				} `json:"price"`
+				Description  string `json:"description,omitempty"`
 			} `json:"available_rates"`
 			ResponseTimeMs int64 `json:"response_time_ms"`
 		} `json:"successful_responses"`
@@ -99,7 +100,6 @@ func NewRateClient(logger *logrus.Logger) *RateClient {
 		logger = logrus.New()
 		logger.SetLevel(logrus.InfoLevel)
 	}
-	logger.Info("aaaaaaa", os.Getenv("SUPPLY_RATE_URL"));
 	return &RateClient{
 		Logger:  logger,
 		Client:  &http.Client{Timeout: 30 * time.Second},
@@ -114,8 +114,6 @@ func (rc *RateClient) GetRatesForPartners(
 	srcPin, srcCC, dstPin, dstCC string,
 	serviceable []modelsv1.PartnerV2Response,
 ) (*RateQuoteResponse, error) {
-	ratesURL := os.Getenv("SUPPLY_RATE_URL")
-	fmt.Println("ratesURL", ratesURL);
 	if rc.BaseURL == "" {
 		// rc.BaseURL = "https://sandbox-apis.prayog.io/supply-rate/v1/quotes"
 		return nil, fmt.Errorf("SUPPLY_RATE_URL not configured")
@@ -163,7 +161,6 @@ func (rc *RateClient) GetRatesForPartners(
 		}).Warn("Supply Rate API returned non-200 status")
 		return nil, fmt.Errorf("rate API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
-
 	// 4️⃣ Parse response
 	var rateResp RateQuoteResponse
 	if err := json.Unmarshal(bodyBytes, &rateResp); err != nil {

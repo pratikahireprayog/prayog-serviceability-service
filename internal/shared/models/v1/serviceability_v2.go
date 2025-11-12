@@ -251,8 +251,9 @@ type ShipyaariService struct {
 
 // Rate represents rate information from rate service
 type Rate struct {
-	RateID string `json:"rate_id,omitempty"`
-	Price  Price  `json:"price"`
+	RateID      string `json:"rate_id,omitempty"`
+	Price       Price  `json:"price"`
+	Description string `json:"description,omitempty"`
 }
 
 // Price represents price details
