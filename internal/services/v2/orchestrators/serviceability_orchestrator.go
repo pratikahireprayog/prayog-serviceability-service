@@ -1000,8 +1000,20 @@ func (s *serviceabilityOrchestrator) validateV2Request(req *models.Serviceabilit
 
 // getEligiblePartners filters partners based on request attributes (e.g., parcel category)
 func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, req *models.ServiceabilityV2Request) ([]DatabasePartnerInfo, error) {
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"parcel_category": req.ParcelCategory,
+		"has_partners":    len(req.Partners) > 0,
+		"partners_count":  len(req.Partners),
+	}).Info("🔍 [FLOW TRACE] getEligiblePartners called - starting partner filtering")
+	
 	// Get all supported partners from factory
 	allSupportedPartners := s.partnerFactory.GetSupportedPartners()
+	s.logger.WithFields(logrus.Fields{
+		"component":          "serviceability_orchestrator",
+		"total_supported":    len(allSupportedPartners),
+		"supported_partners": allSupportedPartners,
+	}).Info("📋 [FLOW TRACE] Retrieved all supported partners from factory")
 
 	// PRIORITY 1: If specific partners are requested in request body, use ONLY those (strict validation)
 	if len(req.Partners) > 0 {
@@ -1128,6 +1140,13 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 	}).Info("Factory supported partners")
 
 	// Only include partners that are both supported and have the attribute mapping
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"parcel_category": *req.ParcelCategory,
+		"db_partners":     len(eligiblePartnersByCategory),
+		"factory_partners": len(allSupportedPartners),
+	}).Info("🔄 [FLOW TRACE] Filtering partners - checking which DB partners have factory adapters")
+	
 	for _, mapping := range eligiblePartnersByCategory {
 		// Check if the database partner code is supported by the factory
 		// We need to map database codes to implementation codes
@@ -1224,13 +1243,22 @@ func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context
 func getImplementationCode(dbPartnerCode string) string {
 	// This mapping should match the one in the factory
 	adapterImplementationMap := map[string]string{
-		"smile_ecomm":       "smile_ecom",
-		"smile_ecom":        "smile_ecom",
-		"shipyaari":         "shipyaari",
-		"smile_courier":     "smile_courier",
-		"dhl":               "dhl",
-		"smile_cargo":       "smile_cargo",
-		"smile_hyperlocal":  "delcaper",
+		"smile_ecomm":             "smile_ecom",
+		"smile_ecom":              "smile_ecom",
+		"shipyaari":               "shipyaari",
+		"smile_courier":           "smile_courier",
+		"dhl":                     "dhl",
+		"smile_cargo":             "smile_cargo",
+		"smile_hyperlocal":        "delcaper",
+		"smile_hubops":            "smile_hubops",
+		"porter":                  "porter",
+		"india_post_international": "india_post_international",
+		"aramex":                  "aramex",
+		"fedex":                   "fedex",
+		"shipcube":                "shipcube",
+		"india_post_domestic":     "india_post_domestic",
+		"INDIA_POST_DOMESTIC":     "india_post_domestic", // Uppercase variant
+		"naqel":                   "naqel",
 	}
 
 	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {
