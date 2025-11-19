@@ -1259,6 +1259,8 @@ func getImplementationCode(dbPartnerCode string) string {
 		"india_post_domestic":     "india_post_domestic",
 		"INDIA_POST_DOMESTIC":     "india_post_domestic", // Uppercase variant
 		"naqel":                   "naqel",
+		"dharmendra":             "dharmendra",
+		"sunil_baral":             "sunil_baral",
 	}
 
 	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {

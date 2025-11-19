@@ -12,6 +12,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
+	"prayog-serviceability-service/internal/services/v2/partners/dharmendra"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
@@ -23,6 +24,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
+	"prayog-serviceability-service/internal/services/v2/partners/sunil_baral"
 	"prayog-serviceability-service/internal/shared/config"
 
 	"github.com/sirupsen/logrus"
@@ -60,6 +62,8 @@ var adapterImplementationMap = map[string]string{
 	"india_post_domestic":    "india_post_domestic",    // Direct mapping for domestic India shipments
 	"INDIA_POST_DOMESTIC":    "india_post_domestic",    // Uppercase variant
 	"naqel":                  "naqel",                  // Direct mapping
+	"dharmendra":            "dharmendra",            // Direct mapping for Dharmendra ecomm
+	"sunil_baral":            "sunil_baral",            // Direct mapping for Sunil Baral ecomm
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -89,6 +93,8 @@ func getPartnerDisplayName(code string) string {
 		"aramex":                   "Aramex",
 		"fedex":                    "FedEx",
 		"shipcube":                 "ShipCube",
+		"dharmendra":              "Dharmendra",
+		"sunil_baral":              "Sunil Baral",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -258,6 +264,10 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.IndiaPostDomestic, nil
 	case "naqel":
 		return f.config.Naqel, nil
+	case "dharmendra":
+		return f.config.Dharmendra, nil
+	case "sunil_baral":
+		return f.config.SunilBaral, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -486,6 +496,36 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "naqel",
 		}).Warn("Naqel adapter not enabled in config")
+	}
+
+	// Initialize Dharmendra adapter for ecomm serviceability (database-based)
+	if f.config.Dharmendra.Enabled {
+		f.implementations["dharmendra"] = dharmendra.NewAdapter(f.config.Dharmendra, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "dharmendra",
+			"table_name": f.config.Dharmendra.TableName,
+		}).Info("Initialized dharmendra adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "dharmendra",
+		}).Warn("Dharmendra adapter not enabled in config")
+	}
+
+	// Initialize Sunil Baral adapter for ecomm serviceability (database-based)
+	if f.config.SunilBaral.Enabled {
+		f.implementations["sunil_baral"] = sunil_baral.NewAdapter(f.config.SunilBaral, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "sunil_baral",
+			"table_name": f.config.SunilBaral.TableName,
+		}).Info("Initialized sunil_baral adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "sunil_baral",
+		}).Warn("Sunil Baral adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{
