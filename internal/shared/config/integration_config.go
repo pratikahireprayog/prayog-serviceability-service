@@ -33,6 +33,8 @@ type PartnerAdaptersConfig struct {
 	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
 	IndiaPostIntl     IndiaPostConfig         `yaml:"india_post_intl" json:"india_post_intl"`
 	Naqel             NaqelConfig             `yaml:"naqel" json:"naqel"`
+	Dharmendra        DharmendraConfig        `yaml:"dharmendra" json:"dharmendra"`
+	SunilBaral        SunilBaralConfig        `yaml:"sunil_baral" json:"sunil_baral"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -311,6 +313,22 @@ type NaqelConfig struct {
 	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
 }
 
+// DharmendraConfig configuration for Dharmendra partner adapter (ecomm, database-based)
+type DharmendraConfig struct {
+	TableName string        `yaml:"table_name" json:"table_name"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Rating    float64       `yaml:"rating" json:"rating"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+}
+
+// SunilBaralConfig configuration for Sunil Baral partner adapter (ecomm, database-based)
+type SunilBaralConfig struct {
+	TableName string        `yaml:"table_name" json:"table_name"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Rating    float64       `yaml:"rating" json:"rating"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+}
+
 
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
@@ -560,6 +578,18 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Enabled:    getEnvAsBoolOrDefault("NAQEL_ENABLED", true),
 			Rating:     4.0,
 			SandboxMode: getEnvAsBoolOrDefault("NAQEL_SANDBOX_MODE", true),
+		},
+		Dharmendra: DharmendraConfig{
+			TableName: getEnvOrDefault("DHARMENDRA_TABLE_NAME", "dharmendra_pincodes"),
+			Timeout:   getEnvAsDurationOrDefault("DHARMENDRA_TIMEOUT", 30*time.Second),
+			Enabled:   getEnvAsBoolOrDefault("DHARMENDRA_ENABLED", true),
+			Rating:    4.0,
+		},
+		SunilBaral: SunilBaralConfig{
+			TableName: getEnvOrDefault("SUNIL_BARAL_TABLE_NAME", "sunil_baral_pincodes"),
+			Timeout:   getEnvAsDurationOrDefault("SUNIL_BARAL_TIMEOUT", 30*time.Second),
+			Enabled:   getEnvAsBoolOrDefault("SUNIL_BARAL_ENABLED", true),
+			Rating:    4.0,
 		},
 
 	}
