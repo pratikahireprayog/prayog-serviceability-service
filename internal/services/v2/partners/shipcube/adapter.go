@@ -77,46 +77,78 @@ func (a *Adapter) CheckServiceability(
 	}).Info("Starting ShipCube adapter serviceability check")
 
 	// --- Step 1: Validate destination ZIP using geolocationService ---
+	// ShipCube requires a destination postal code to validate serviceability
+	if req.DestinationPostalCode == nil || *req.DestinationPostalCode == "" {
+		errMsg := "Destination postal code is required for ShipCube serviceability check"
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			ResponseTime: time.Since(start),
+			Services:     []models.ServiceV2{},
+			ErrorMessage: &errMsg,
+			Metadata: map[string]interface{}{
+				"reason": "Destination postal code is required",
+			},
+		}, nil
+	}
+
 	if a.geolocationService == nil {
 		a.logger.Warn("geolocationService is nil — skipping validation")
-	} else if req.DestinationPostalCode != nil {
+	} else {
 		countryCode, err := a.geolocationService.GetCountryCodeByPostalCode(ctx, *req.DestinationPostalCode)
 		if err != nil {
+			// Geolocation lookup failed - cannot validate postal code, so ShipCube is not serviceable
 			a.logger.WithError(err).Warn("Failed to get country code for destination ZIP")
-		} else if countryCode == nil || *countryCode != "US" {
-			a.logger.WithFields(logrus.Fields{
-				"postal_code": *req.DestinationPostalCode,
-				"country":     countryCode,
-			}).Warn("Destination postal code is not US — skipping ShipCube")
+			errMsg := "Failed to validate postal code: " + err.Error()
 			return &common.PartnerServiceabilityResult{
 				PartnerID:    partnerInfo.PartnerID,
 				PartnerCode:  partnerInfo.PartnerCode,
 				ResponseTime: time.Since(start),
 				Services:     []models.ServiceV2{},
+				ErrorMessage: &errMsg,
 				Metadata: map[string]interface{}{
 					"validated_zip": *req.DestinationPostalCode,
-					"note":          "Non-US postal code, skipped ShipCube",
+					"reason":        "Geolocation lookup failed, cannot validate postal code",
+					"error":         err.Error(),
+				},
+			}, nil
+		} else if countryCode == nil || *countryCode != "US" {
+			a.logger.WithFields(logrus.Fields{
+				"postal_code": *req.DestinationPostalCode,
+				"country":     countryCode,
+			}).Warn("Destination postal code is not US — skipping ShipCube")
+			errMsg := "ShipCube only services US destinations"
+			return &common.PartnerServiceabilityResult{
+				PartnerID:    partnerInfo.PartnerID,
+				PartnerCode:  partnerInfo.PartnerCode,
+				ResponseTime: time.Since(start),
+				Services:     []models.ServiceV2{},
+				ErrorMessage: &errMsg,
+				Metadata: map[string]interface{}{
+					"validated_zip": *req.DestinationPostalCode,
+					"country_code":  countryCode,
+					"reason":        "Non-US postal code, ShipCube only services US destinations",
 				},
 			}, nil
 		}
 	}
 
 	service := models.ServiceV2{
-			ServiceCode:   "STANDARD",
-			ServiceName: "Standard Deliver",
-			Pickup:    true,
-			Delivery:  true,
-			Insurance: true,
-			ProductTypes: map[string]bool{
-				"document":     true,
-				"non_document": true,
-				"commercial":   true,
-			},
-			DeliveryModes: map[string]bool{
-				"express":  true,
-				"standard": false,
-			},
-		}
+		ServiceCode: "STANDARD",
+		ServiceName: "Standard Deliver",
+		Pickup:      true,
+		Delivery:    true,
+		Insurance:   true,
+		ProductTypes: map[string]bool{
+			"document":     true,
+			"non_document": true,
+			"commercial":   true,
+		},
+		DeliveryModes: map[string]bool{
+			"express":  true,
+			"standard": false,
+		},
+	}
 
 
 
