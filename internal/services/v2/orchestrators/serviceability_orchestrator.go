@@ -90,7 +90,7 @@ func NewServiceabilityOrchestrator(
         },
         // New international flow using HubOps by-pincode then DHL
         "international": func() OrchestrationStrategy {
-            return &newintl.InternationalStrategy{PartnerFactory: partnerFactory, Logger: logger}
+            return newintl.NewInternationalStrategy(partnerFactory, geolocationService)
         },
         // Cargo strategy for cargo/freight requests
         "cargo": func() OrchestrationStrategy {
@@ -148,7 +148,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 
 		if hasInternationalPartners {
 			// Route through InternationalStrategy when international partners are detected
-			strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+			strat = newintl.NewInternationalStrategy(s.partnerFactory, s.geolocationService)
 			s.logger.WithFields(logrus.Fields{
 				"component":          "serviceability_orchestrator",
 				"strategy":           "international",
@@ -216,7 +216,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 
 		// PRIORITY 4: Force new international strategy when parcel_category == "international"
 		if strat == nil && len(req.Partners) == 0 && req != nil && req.ParcelCategory != nil && strings.ToLower(*req.ParcelCategory) == "international" {
-			strat = &newintl.InternationalStrategy{PartnerFactory: s.partnerFactory, Logger: s.logger}
+			strat = newintl.NewInternationalStrategy(s.partnerFactory, s.geolocationService)
 			strategyCode = "international"
 			s.logger.WithFields(logrus.Fields{
 				"component":       "serviceability_orchestrator",
@@ -273,7 +273,17 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 		if len(serviceablePartners) > 0 {
 			ratesResponse, rateErr := s.fetchRatesForPartners(context.Background(), req, serviceablePartners)
 			if rateErr != nil {
-				s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, continuing without rates")
+				// Rate API call failed - clear services for all partners
+				s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, clearing services for all partners")
+				for i := range response.Partners {
+					response.Partners[i].Services = []models.ServiceV2{}
+					response.Partners[i].PartnerServices = []models.ServiceV2{}
+					if response.Partners[i].Metadata == nil {
+						response.Partners[i].Metadata = make(map[string]interface{})
+					}
+					response.Partners[i].Metadata["rate_api_error"] = rateErr.Error()
+					response.Partners[i].Metadata["rates_available"] = false
+				}
 			} else if ratesResponse != nil && ratesResponse.Success {
 				s.logger.WithFields(logrus.Fields{
 					"component":        "serviceability_orchestrator",
@@ -295,6 +305,18 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 						}
 					}
 					response.Metadata.RatesIncluded = totalRatesFound > 0
+				}
+			} else if ratesResponse != nil && !ratesResponse.Success {
+				// Rate API returned unsuccessful response - clear services for all partners
+				s.logger.WithField("message", ratesResponse.Message).Warn("Rate API returned unsuccessful response, clearing services for all partners")
+				for i := range response.Partners {
+					response.Partners[i].Services = []models.ServiceV2{}
+					response.Partners[i].PartnerServices = []models.ServiceV2{}
+					if response.Partners[i].Metadata == nil {
+						response.Partners[i].Metadata = make(map[string]interface{})
+					}
+					response.Partners[i].Metadata["rate_api_error"] = ratesResponse.Message
+					response.Partners[i].Metadata["rates_available"] = false
 				}
 			}
 		}
@@ -621,6 +643,17 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				}
 			}
 
+			// Determine if partner is serviceable BEFORE building response
+			// A partner is serviceable ONLY if it has services or meaningful capabilities
+			// AND no error message (partners with errors are not serviceable)
+			hasServices := len(result.Result.Services) > 0
+			hasCapabilities := len(result.Result.Capabilities) > 0
+			hasError := result.Result.ErrorMessage != nil
+
+			// A partner is serviceable ONLY if it has services or meaningful capabilities
+			// Metadata alone does not make a partner serviceable (it may just contain error info)
+			isServiceable := hasServices || (hasCapabilities && !hasError)
+
 			partnerResponse := models.PartnerV2Response{
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
@@ -633,26 +666,15 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				Metadata:        cleanMetadata,
 				HubDetails:      hubDetails,
 				Source:          "real_time",
-				IsServiceable:   len(result.Result.Services) > 0 || len(result.Result.Capabilities) > 0,
+				IsServiceable:   isServiceable && !hasError,
 			}
 
 			// Add error if partner has error message
 			if result.Result.ErrorMessage != nil {
-				// partnerResponse.Error = &models.ErrorResponse{
-				// 	Code:    "PARTNER_ERROR",
-				// 	Message: *result.Result.ErrorMessage,
-				// }
+				partnerResponse.Error = result.Result.ErrorMessage
 			}
 
-			// Add to serviceable partners if they have services, capabilities, or metadata
-			// AND no error message (partners with errors are not serviceable)
-			hasServices := len(result.Result.Services) > 0
-			hasCapabilities := len(result.Result.Capabilities) > 0
-			hasMetadata := len(result.Result.Metadata) > 0
-			hasError := result.Result.ErrorMessage != nil
-
-			isServiceable := hasServices || hasCapabilities || hasMetadata
-
+			// Only add to response if serviceable and no errors
 			if isServiceable && !hasError {
 				// If this partner is Smile HubOps, do NOT include it in partners array.
 				// Only set top-level hub_details if present.
@@ -790,27 +812,79 @@ func (s *serviceabilityOrchestrator) fetchRatesForPartners(
 	srcCC := s.getString(req.SourceCountryCode)
 	dstCC := s.getString(req.DestinationCountryCode)
 	
+	// First, try to get country codes from partner metadata (e.g., Naqel provides them from database)
+	// This takes priority over geolocation service for partners that have country codes in their metadata
+	for _, partner := range serviceablePartners {
+		if partner.Metadata != nil {
+			// Check for source country code
+			if srcCC == "" {
+				if sourceCC, exists := partner.Metadata["source_country_code"]; exists {
+					if ccStr, ok := sourceCC.(string); ok && ccStr != "" {
+						srcCC = ccStr
+						s.logger.WithFields(logrus.Fields{
+							"component":        "serviceability_orchestrator",
+							"partner":          partner.PartnerCode,
+							"source_country":   srcCC,
+						}).Debug("Using source country code from partner metadata")
+					}
+				}
+			}
+			// Check for destination country code
+			if dstCC == "" {
+				if destCC, exists := partner.Metadata["destination_country_code"]; exists {
+					if ccStr, ok := destCC.(string); ok && ccStr != "" {
+						dstCC = ccStr
+						s.logger.WithFields(logrus.Fields{
+							"component":          "serviceability_orchestrator",
+							"partner":            partner.PartnerCode,
+							"destination_country": dstCC,
+						}).Debug("Using destination country code from partner metadata")
+					}
+				}
+			}
+			// If we found both, no need to check other partners
+			if srcCC != "" && dstCC != "" {
+				break
+			}
+		}
+	}
+	
+	// Fall back to geolocation service if country codes still not found
 	if s.geolocationService != nil {
-		srcCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, srcPin)
-		if err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"error":          err.Error(),
-				"source_pin":     srcPin,
-			}).Error("Failed to get source country code by postal code")
-		} else if srcCCPtr != nil {
-			srcCC = *srcCCPtr
+		if srcCC == "" {
+			srcCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, srcPin)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"error":          err.Error(),
+					"source_pin":     srcPin,
+				}).Warn("Failed to get source country code by postal code from geolocation service")
+			} else if srcCCPtr != nil {
+				srcCC = *srcCCPtr
+				s.logger.WithFields(logrus.Fields{
+					"component":      "serviceability_orchestrator",
+					"source_pin":     srcPin,
+					"source_country": srcCC,
+				}).Debug("Using source country code from geolocation service")
+			}
 		}
 
-		// Lookup destination country code by postal code
-		dstCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, dstPin)
-		if err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"error":      err.Error(),
-				"dest_pin":   dstPin,
-			}).Error("Failed to get destination country code by postal code")
-		} else if dstCCPtr != nil {
-			dstCC = *dstCCPtr
-	}
+		if dstCC == "" {
+			// Lookup destination country code by postal code
+			dstCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, dstPin)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"error":      err.Error(),
+					"dest_pin":   dstPin,
+				}).Warn("Failed to get destination country code by postal code from geolocation service")
+			} else if dstCCPtr != nil {
+				dstCC = *dstCCPtr
+				s.logger.WithFields(logrus.Fields{
+					"component":          "serviceability_orchestrator",
+					"dest_pin":           dstPin,
+					"destination_country": dstCC,
+				}).Debug("Using destination country code from geolocation service")
+			}
+		}
 	}
 	
 	
@@ -871,9 +945,30 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 		ratesMap[partnerCode] = partnerRates
 	}
 
+	// Create a set of successful partner codes for quick lookup
+	successfulPartnerCodes := make(map[string]bool)
+	for _, successResp := range rates.Data.SuccessfulResponses {
+		partnerCode := strings.ToLower(successResp.Partner.Code)
+		successfulPartnerCodes[partnerCode] = true
+	}
+
 	// Merge rates into partners
 	for i := range partners {
 		partnerCode := strings.ToLower(partners[i].PartnerCode)
+		
+		// If partner is not in successful responses, clear their services
+		if !successfulPartnerCodes[partnerCode] {
+			partners[i].Services = []models.ServiceV2{}
+			partners[i].PartnerServices = []models.ServiceV2{}
+			if partners[i].Metadata == nil {
+				partners[i].Metadata = make(map[string]interface{})
+			}
+			partners[i].Metadata["rates_available"] = false
+			partners[i].Metadata["rate_api_error"] = "Partner not in successful rate responses"
+			continue
+		}
+
+		// Partner is in successful responses, check if they have rates
 		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
 			services := make([]models.ServiceV2, 0, len(availableRates))
 
@@ -914,6 +1009,15 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 			}
 			partners[i].Metadata["rates_available"] = true
 			partners[i].Metadata["rates_count"] = len(availableRates)
+		} else {
+			// Partner is in successful responses but has no rates - clear services
+			partners[i].Services = []models.ServiceV2{}
+			partners[i].PartnerServices = []models.ServiceV2{}
+			if partners[i].Metadata == nil {
+				partners[i].Metadata = make(map[string]interface{})
+			}
+			partners[i].Metadata["rates_available"] = false
+			partners[i].Metadata["rate_api_error"] = "No rates available for partner"
 		}
 	}
 }

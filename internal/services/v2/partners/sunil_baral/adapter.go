@@ -229,6 +229,8 @@ func (a *Adapter) convertToServiceabilityResult(pincodeData *repositories.SunilB
 	}
 
 	// Build capabilities from database data
+	// FM (First Mile) = Pickup capability
+	// LM (Last Mile) = Delivery capability
 	capabilities := map[string]interface{}{
 		"pincode":        pincode,
 		"is_serviceable": true,
@@ -239,8 +241,10 @@ func (a *Adapter) convertToServiceabilityResult(pincodeData *repositories.SunilB
 		"hub_name":       pincodeData.HubName,
 		"zone":           pincodeData.Zone,
 		"cod_available":  pincodeData.COD,
-		"fm":             pincodeData.FM,
-		"lm":             pincodeData.LM,
+		"pickup_available": pincodeData.FM,  // First Mile = Pickup
+		"delivery_available": pincodeData.LM, // Last Mile = Delivery
+		"fm":             pincodeData.FM,     // First Mile (for backward compatibility)
+		"lm":             pincodeData.LM,     // Last Mile (for backward compatibility)
 	}
 
 	// Build delivery modes based on available options
@@ -259,13 +263,16 @@ func (a *Adapter) convertToServiceabilityResult(pincodeData *repositories.SunilB
 	}
 
 	// Create service entry
+	// FM (First Mile) maps to Pickup capability
+	// LM (Last Mile) maps to Delivery capability
 	service := models.ServiceV2{
 		ServiceCode: "SUNIL_BARAL_STANDARD",
 		ServiceName: "Sunil Baral Standard",
 		TATDays:     3, // Default TAT, can be enhanced based on zone/distance
 		IsCOD:       pincodeData.COD,
-		Pickup:      pincodeData.FM,
-		Delivery:    pincodeData.LM,
+		Pickup:      pincodeData.FM, // First Mile = Pickup available
+		Delivery:    pincodeData.LM, // Last Mile = Delivery available
+		Insurance:   true,            // Insurance available by default
 		ProductTypes: map[string]bool{
 			"ecommerce": true,
 		},

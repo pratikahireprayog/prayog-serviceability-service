@@ -27,7 +27,8 @@ type NaqelCity struct {
 // NaqelRepository defines methods for querying Naqel serviceability data
 type NaqelRepository interface {
 	// CheckServiceabilityByCityCodes checks if both source and destination city codes are serviceable
-	CheckServiceabilityByCityCodes(ctx context.Context, sourceCityCode, destCityCode, sourceCountryCode, destCountryCode string) (*models.NaqelLocation, *models.NaqelLocation, error)
+	// Returns locations with country codes from the database
+	CheckServiceabilityByCityCodes(ctx context.Context, sourceCityCode, destCityCode string) (*models.NaqelLocation, *models.NaqelLocation, error)
 	// GetCityCodeByPostalCode retrieves city code for a given postal code and country code
 	GetCityCodeByPostalCode(ctx context.Context, postalCode, countryCode string) (string, error)
 
@@ -51,7 +52,8 @@ func NewNaqelRepository(db *gorm.DB, tableName string) NaqelRepository {
 }
 
 // CheckServiceabilityByCityCodes checks if both source and destination city codes exist and are serviceable
-func (r *naqelRepository) CheckServiceabilityByCityCodes(ctx context.Context, sourceCityCode, destCityCode, sourceCountryCode, destCountryCode string) (*models.NaqelLocation, *models.NaqelLocation, error) {
+// Uses country codes directly from the request parameters (no geolocation lookup needed)
+func (r *naqelRepository) CheckServiceabilityByCityCodes(ctx context.Context, sourceCityCode, destCityCode string) (*models.NaqelLocation, *models.NaqelLocation, error) {
 	
 	var sourceLocation models.NaqelLocation
 	sourceQuery := r.db.WithContext(ctx).Table(r.tableName).
@@ -60,7 +62,7 @@ func (r *naqelRepository) CheckServiceabilityByCityCodes(ctx context.Context, so
 
 	if sourceQuery.Error != nil {
 		if sourceQuery.Error == gorm.ErrRecordNotFound {
-			return nil, nil, fmt.Errorf("source city code %s in country %s not found or not serviceable", sourceCityCode, sourceCountryCode)
+			return nil, nil, fmt.Errorf("source city code %s in country %s not found or not serviceable", sourceCityCode, "sourceCountryCode")
 		}
 		return nil, nil, fmt.Errorf("failed to query source location: %w", sourceQuery.Error)
 	}
@@ -73,7 +75,7 @@ func (r *naqelRepository) CheckServiceabilityByCityCodes(ctx context.Context, so
 
 	if destQuery.Error != nil {
 		if destQuery.Error == gorm.ErrRecordNotFound {
-			return nil, nil, fmt.Errorf("destination city code %s in country %s not found or not serviceable", destCityCode, destCountryCode)
+			return nil, nil, fmt.Errorf("destination city code %s in country %s not found or not serviceable", destCityCode, "destCountryCode")
 		}
 		return nil, nil, fmt.Errorf("failed to query destination location: %w", destQuery.Error)
 	}
