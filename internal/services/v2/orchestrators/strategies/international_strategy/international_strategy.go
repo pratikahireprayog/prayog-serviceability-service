@@ -1147,15 +1147,9 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 
 	isServiceable := len(result.Services) > 0
 
-	partnerResp := modelsv1.PartnerV2Response{
-		PartnerCode: result.PartnerCode,
-		PartnerName: "India Post International",
-		Rating:      0,
-	}
-
-	// Use partner ID from result if available
+	partnerID := ""
 	if result.PartnerID != nil {
-		partnerResp.PartnerID = result.PartnerID.String()
+		partnerID = result.PartnerID.String()
 	}
 
 	// If serviceable, map services
@@ -1172,21 +1166,34 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 				Insurance:     svc.Insurance,
 				ProductTypes:  svc.ProductTypes,
 				DeliveryModes: svc.DeliveryModes,
+				Rate:          svc.Rate,
 			}
 			services = append(services, service)
 		}
 	}
-	partnerResp.PartnerServices = services
-
-	// Attach metadata for context
+	// Build metadata
+	metadata := map[string]interface{}{
+		"source_country_code":      srcCC,
+		"destination_country_code": dstCC,
+		"flow":                     "international",
+	}
 	if result.Metadata != nil {
-		partnerResp.Metadata = result.Metadata
-	} else {
-		partnerResp.Metadata = map[string]interface{}{
-			"source_country_code":      srcCC,
-			"destination_country_code": dstCC,
-			"flow":                     "international",
+		// Merge result metadata
+		for k, v := range result.Metadata {
+			metadata[k] = v
 		}
+	}
+
+	partnerResp := modelsv1.PartnerV2Response{
+		PartnerID:       partnerID,
+		PartnerCode:     result.PartnerCode,
+		PartnerName:     "India Post International",
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable, // CRITICAL: This was missing!
+		PartnerServices: services,
+		ResponseTimeMs:  responseTimeMs,
+		Metadata:        metadata,
 	}
 
 	// Add error if present
