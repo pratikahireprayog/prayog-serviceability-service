@@ -366,11 +366,24 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 		}
 	}
 
+	// Log raw response for debugging (especially important since API only works on production)
+	c.logger.WithFields(logrus.Fields{
+		"partner":      "IndiaPostInternational",
+		"action":       "calculate_tariff",
+		"status_code":  resp.StatusCode,
+		"response_body": string(respBody),
+	}).Info("Received India Post tariff API response")
+
 	// Parse tariff response - handle both direct format and wrapped format
 	var tariffResp TariffResponse
 	
 	// First try to parse as direct format (from API docs example)
 	if err := json.Unmarshal(respBody, &tariffResp); err != nil {
+		c.logger.WithError(err).WithFields(logrus.Fields{
+			"partner":      "IndiaPostInternational",
+			"action":       "calculate_tariff",
+			"response_body": string(respBody),
+		}).Error("Failed to parse tariff response JSON")
 		return nil, fmt.Errorf("failed to parse tariff response: %w", err)
 	}
 
@@ -401,7 +414,7 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 		"status":        tariffResp.Status,
 		"success":       tariffResp.Success,
 		"message":       tariffResp.Message,
-	}).Info("Received India Post tariff response")
+	}).Info("Parsed India Post tariff response")
 
 	return &tariffResp, nil
 }
