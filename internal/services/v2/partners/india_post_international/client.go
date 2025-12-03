@@ -374,11 +374,14 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 		"response_body": string(respBody),
 	}).Info("Received India Post tariff API response")
 
-	// Parse tariff response - handle both direct format and wrapped format
-	var tariffResp TariffResponse
+	// Parse tariff response - handle wrapped format with statusCode and data
+	// Actual API response format: { "statusCode": 200, "data": { "success": true, "totalAmount": 1256.7, ... } }
+	var wrappedResp struct {
+		StatusCode int                    `json:"statusCode"`
+		Data       map[string]interface{} `json:"data"`
+	}
 	
-	// First try to parse as direct format (from API docs example)
-	if err := json.Unmarshal(respBody, &tariffResp); err != nil {
+	if err := json.Unmarshal(respBody, &wrappedResp); err != nil {
 		c.logger.WithError(err).WithFields(logrus.Fields{
 			"partner":      "IndiaPostInternational",
 			"action":       "calculate_tariff",
@@ -387,22 +390,43 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 		return nil, fmt.Errorf("failed to parse tariff response: %w", err)
 	}
 
-	// If response is wrapped in a success/data structure, extract it
-	if tariffResp.Status == "" && tariffResp.TariffAmount == 0 && tariffResp.Data != nil {
-		// Response might be wrapped, try to extract from data (Data is already map[string]interface{})
-		dataMap := tariffResp.Data
-		if tariffAmount, ok := dataMap["tariffAmount"].(float64); ok {
-			tariffResp.TariffAmount = tariffAmount
+	// Extract data from wrapped response
+	tariffResp := TariffResponse{}
+	dataMap := wrappedResp.Data
+	
+	// Extract totalAmount (this is the tariff amount)
+	if totalAmount, ok := dataMap["totalAmount"].(float64); ok {
+		tariffResp.TariffAmount = totalAmount
+	}
+	
+	// Extract success and convert to status string
+	if success, ok := dataMap["success"].(bool); ok {
+		tariffResp.Success = success
+		if success {
+			tariffResp.Status = "success"
+		} else {
+			tariffResp.Status = "failed"
 		}
-		if currency, ok := dataMap["currency"].(string); ok {
-			tariffResp.Currency = currency
-		}
-		if deliveryTime, ok := dataMap["deliveryTime"].(string); ok {
-			tariffResp.DeliveryTime = deliveryTime
-		}
-		if status, ok := dataMap["status"].(string); ok {
-			tariffResp.Status = status
-		}
+	}
+	
+	// Currency is typically INR for India Post, but check if provided
+	if currency, ok := dataMap["currency"].(string); ok && currency != "" {
+		tariffResp.Currency = currency
+	} else {
+		// Default to INR for India Post International
+		tariffResp.Currency = "INR"
+	}
+	
+	// Extract delivery time if available (might be in different fields)
+	if deliveryTime, ok := dataMap["deliveryTime"].(string); ok && deliveryTime != "" {
+		tariffResp.DeliveryTime = deliveryTime
+	} else if estimatedDays, ok := dataMap["estimatedDays"].(string); ok && estimatedDays != "" {
+		tariffResp.DeliveryTime = estimatedDays
+	}
+	
+	// Extract message if available
+	if message, ok := dataMap["message"].(string); ok {
+		tariffResp.Message = message
 	}
 
 	c.logger.WithFields(logrus.Fields{
