@@ -152,7 +152,7 @@ func (a *Adapter) checkInternationalServiceability(
 
 	// Calculate weight from packages (default to 50g if not provided)
 	weight := 50 // in grams
-	if request.Packages != nil && len(request.Packages) > 0 {
+	if len(request.Packages) > 0 {
 		totalWeight := 0.0
 		for _, pkg := range request.Packages {
 			if pkg.Weight != nil {
@@ -169,17 +169,12 @@ func (a *Adapter) checkInternationalServiceability(
 		}
 	}
 
-	// Build India Post tariff request
+	// Build India Post tariff request - simplified format per API documentation
+	// Request: { "weight": 800, "countryCode": "DE", "sourcePincode": "110001" }
 	tariffReq := TariffRequest{
-		ProductType:        "FGN_LETTER", // Default product type
-		Weight:             weight,
-		CountryCode:        destinationCountryCode,
-		Registration:       true,
-		Insurance:          true,
-		InsAmount:          1000,
-		AdviceOfDelivery:   true,
-		ModeOfTransmission: "AMS",
-		SourcePincode:      sourcePincode,
+		Weight:        weight,
+		CountryCode:   destinationCountryCode,
+		SourcePincode: sourcePincode,
 	}
 
 	a.logger.WithFields(logrus.Fields{
@@ -212,13 +207,11 @@ func (a *Adapter) checkInternationalServiceability(
 		}, nil
 	}
 
-	// Check if serviceable based on success flag inside data
-	// India Post returns success in the data object, not at the root level
+	// Determine serviceability: If rates are returned (tariffAmount > 0 or status == "success"), 
+	// then the pincodes are serviceable (as per requirement: no separate serviceability API)
 	isServiceable := false
-	if tariffResp.Data != nil {
-		if successVal, ok := tariffResp.Data["success"].(bool); ok {
-			isServiceable = successVal
-		}
+	if tariffResp.Status == "success" || tariffResp.TariffAmount > 0 {
+		isServiceable = true
 	}
 
 	a.logger.WithFields(logrus.Fields{
@@ -227,9 +220,12 @@ func (a *Adapter) checkInternationalServiceability(
 		"partner_code":        partnerInfo.PartnerCode,
 		"partner_id":          pid,
 		"is_serviceable":      isServiceable,
+		"tariff_amount":       tariffResp.TariffAmount,
+		"currency":            tariffResp.Currency,
+		"delivery_time":       tariffResp.DeliveryTime,
+		"status":              tariffResp.Status,
 		"message":             tariffResp.Message,
-		"outer_success":       tariffResp.Success,
-		"has_tariff_data":     tariffResp.Data != nil,
+		"success":             tariffResp.Success,
 	}).Info("India Post serviceability result")
 
 	// Build result
@@ -238,28 +234,39 @@ func (a *Adapter) checkInternationalServiceability(
 		PartnerCode:  partnerInfo.PartnerCode,
 		ResponseTime: time.Since(startTime),
 		Services:     make([]models.ServiceV2, 0),
+		Capabilities: make(map[string]interface{}),
 		Metadata: map[string]interface{}{
 			"flow":                     "international",
 			"destination_country_code": destinationCountryCode,
+			"source_pincode":           sourcePincode,
 			"is_serviceable":           isServiceable,
+			"tariff_amount":            tariffResp.TariffAmount,
+			"currency":                 tariffResp.Currency,
+			"delivery_time":            tariffResp.DeliveryTime,
+			"status":                   tariffResp.Status,
 			"message":                  tariffResp.Message,
-			"tariff_data":              tariffResp.Data,
 		},
 	}
 
-	// If serviceable, add service details
+	// If serviceable, add service details with rate information
 	if isServiceable {
 		serviceName := "India Post International"
-		// Try to extract product name from tariff data
-		if tariffResp.Data != nil {
-			if productName, ok := tariffResp.Data["productName"].(string); ok && productName != "" {
-				serviceName = productName
-			}
+		
+		// Build capabilities with rate information
+		capabilities := map[string]interface{}{
+			"tariff_amount":  tariffResp.TariffAmount,
+			"currency":      tariffResp.Currency,
+			"delivery_time": tariffResp.DeliveryTime,
+			"weight":        weight,
+			"source_pincode": sourcePincode,
+			"destination_country_code": destinationCountryCode,
 		}
+		result.Capabilities = capabilities
 
+		// Create service with rate information
 		service := models.ServiceV2{
 			ServiceName: serviceName,
-			TATDays:     7, // Default TAT for international
+			TATDays:     7, // Default TAT for international (can be parsed from deliveryTime if needed)
 			Pickup:      false,
 			Delivery:    true,
 			Insurance:   true,
@@ -270,15 +277,31 @@ func (a *Adapter) checkInternationalServiceability(
 			DeliveryModes: map[string]bool{
 				"standard": true,
 			},
+			// Add rate information if available
+			Rate: &models.Rate{
+				Price: models.Price{
+					Amount:   tariffResp.TariffAmount,
+					Currency: tariffResp.Currency,
+					Type:     "tariff",
+				},
+			},
 		}
 		result.Services = append(result.Services, service)
 
 		a.logger.WithFields(logrus.Fields{
-			"component":    "india_post_international_adapter",
-			"partner_code": partnerInfo.PartnerCode,
-			"partner_id":   pid,
-			"service_name": serviceName,
-		}).Info("Created service for India Post International")
+			"component":     "india_post_international_adapter",
+			"partner_code":  partnerInfo.PartnerCode,
+			"partner_id":    pid,
+			"service_name":  serviceName,
+			"tariff_amount": tariffResp.TariffAmount,
+			"currency":      tariffResp.Currency,
+		}).Info("Created service for India Post International with rate information")
+	} else {
+		// Not serviceable - add reason to metadata
+		result.Metadata["reason"] = "No rates returned for the provided pincodes"
+		if tariffResp.Status != "" && tariffResp.Status != "success" {
+			result.Metadata["reason"] = fmt.Sprintf("Tariff API returned status: %s", tariffResp.Status)
+		}
 	}
 
 	return result, nil

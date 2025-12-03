@@ -540,7 +540,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Username:          getEnvOrDefault("INDIA_POST_INTL_USERNAME", "9999999999"),
 			Password:          getEnvOrDefault("INDIA_POST_INTL_PASSWORD", "Dop@1234"),
 			LoginURL:          getEnvOrDefault("INDIA_POST_INTL_LOGIN_URL", "/v1/access/login"),
-			TariffURL:         getEnvOrDefault("INDIA_POST_INTL_TARIFF_URL", "/v1/international-tariff/calculate"),
+			TariffURL:         getEnvOrDefault("INDIA_POST_INTL_TARIFF_URL", "/v1/international-tariff/itps"), // Actual endpoint from API docs
 			Timeout:           getEnvAsDurationOrDefault("INDIA_POST_INTL_TIMEOUT", 30*time.Second),
 			TokenExpiryBuffer: getEnvAsDurationOrDefault("INDIA_POST_INTL_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
 			MaxRetries:        getEnvAsIntOrDefault("INDIA_POST_INTL_MAX_RETRIES", 3),

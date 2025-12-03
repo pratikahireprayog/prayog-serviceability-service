@@ -11,8 +11,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/aramex"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
-	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/dharmendra"
+	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_international"
@@ -68,8 +68,11 @@ var adapterImplementationMap = map[string]string{
 }
 
 // getImplementationCode returns the implementation code for a given database partner code
+// Case-insensitive lookup - converts to lowercase before checking the map
 func getImplementationCode(dbPartnerCode string) string {
-	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {
+	// Convert to lowercase for case-insensitive lookup
+	normalizedCode := strings.ToLower(dbPartnerCode)
+	if implCode, exists := adapterImplementationMap[normalizedCode]; exists {
 		return implCode
 	}
 	return dbPartnerCode // Return original code if no mapping exists

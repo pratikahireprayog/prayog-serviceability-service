@@ -17,12 +17,14 @@ import (
 
 // IndiaPostClient handles HTTP communication with India Post API
 type IndiaPostClient struct {
-	httpClient  *http.Client
-	config      config.IndiaPostConfig
-	logger      *logrus.Logger
-	accessToken string
-	tokenExpiry time.Time
-	tokenMutex  sync.RWMutex
+	httpClient   *http.Client
+	config       config.IndiaPostConfig
+	logger       *logrus.Logger
+	accessToken  string
+	refreshToken string
+	tokenExpiry  time.Time
+	refreshExpiry time.Time
+	tokenMutex   sync.RWMutex
 }
 
 // NewIndiaPostClient creates a new India Post HTTP client
@@ -147,12 +149,17 @@ func (c *IndiaPostClient) Authenticate(ctx context.Context) error {
 
 	// Store token and expiry
 	c.accessToken = loginResp.Data.AccessToken
+	c.refreshToken = loginResp.Data.RefreshToken
 	c.tokenExpiry = time.Now().Add(time.Duration(loginResp.Data.ExpiresIn) * time.Second)
+	if loginResp.Data.RefreshExpiresIn > 0 {
+		c.refreshExpiry = time.Now().Add(time.Duration(loginResp.Data.RefreshExpiresIn) * time.Second)
+	}
 
 	c.logger.WithFields(logrus.Fields{
-		"partner":      "IndiaPostInternational",
-		"action":       "authenticate",
-		"token_expiry": c.tokenExpiry,
+		"partner":        "IndiaPostInternational",
+		"action":         "authenticate",
+		"token_expiry":   c.tokenExpiry,
+		"refresh_expiry": c.refreshExpiry,
 	}).Info("Successfully authenticated with India Post")
 
 	return nil
@@ -167,6 +174,24 @@ func (c *IndiaPostClient) GetAccessToken(ctx context.Context) (string, error) {
 
 	// Check if token needs refresh
 	if token == "" || time.Now().After(expiry.Add(-c.config.TokenExpiryBuffer)) {
+		// Try to refresh first if we have a refresh token
+		c.tokenMutex.RUnlock()
+		c.tokenMutex.Lock()
+		if c.refreshToken != "" && (c.refreshExpiry.IsZero() || time.Now().Before(c.refreshExpiry)) {
+			refreshErr := c.RefreshToken(ctx)
+			c.tokenMutex.Unlock()
+			if refreshErr == nil {
+				c.tokenMutex.RLock()
+				token = c.accessToken
+				c.tokenMutex.RUnlock()
+				return token, nil
+			}
+			// If refresh failed, fall through to full authentication
+		} else {
+			c.tokenMutex.Unlock()
+		}
+		
+		// Fall back to full authentication
 		if err := c.Authenticate(ctx); err != nil {
 			return "", err
 		}
@@ -176,6 +201,92 @@ func (c *IndiaPostClient) GetAccessToken(ctx context.Context) (string, error) {
 	}
 
 	return token, nil
+}
+
+// RefreshToken refreshes the access token using the refresh token
+func (c *IndiaPostClient) RefreshToken(ctx context.Context) error {
+	c.tokenMutex.Lock()
+	defer c.tokenMutex.Unlock()
+
+	if c.refreshToken == "" {
+		return fmt.Errorf("no refresh token available, need to re-authenticate")
+	}
+
+	// Check if refresh token is still valid
+	if !c.refreshExpiry.IsZero() && time.Now().After(c.refreshExpiry) {
+		c.logger.WithFields(logrus.Fields{
+			"partner": "IndiaPostInternational",
+			"action":  "refresh_token",
+			"status":  "refresh_token_expired",
+		}).Warn("Refresh token expired, need to re-authenticate")
+		// Clear tokens to force re-authentication
+		c.accessToken = ""
+		c.refreshToken = ""
+		return fmt.Errorf("refresh token expired, need to re-authenticate")
+	}
+
+	// Build refresh token URL - according to docs: /beextcustomer/v1/access/TokenWithRtoken
+	refreshURL := c.config.BaseURL + "/beextcustomer/v1/access/TokenWithRtoken"
+	
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create refresh token request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.refreshToken))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	c.logger.WithFields(logrus.Fields{
+		"partner": "IndiaPostInternational",
+		"action":  "refresh_token",
+		"url":      refreshURL,
+	}).Info("Refreshing India Post access token")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("refresh token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read refresh token response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// If refresh fails, clear tokens to force re-authentication
+		c.accessToken = ""
+		c.refreshToken = ""
+		return &IndiaPostAPIError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("India Post token refresh failed with status %d", resp.StatusCode),
+			RawBody:    string(respBody),
+		}
+	}
+
+	// Parse refresh response
+	var refreshResp struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+		TokenType   string `json:"token_type"`
+	}
+	if err := json.Unmarshal(respBody, &refreshResp); err != nil {
+		return fmt.Errorf("failed to parse refresh token response: %w", err)
+	}
+
+	// Update access token
+	c.accessToken = refreshResp.AccessToken
+	if refreshResp.ExpiresIn > 0 {
+		c.tokenExpiry = time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"partner":      "IndiaPostInternational",
+		"action":       "refresh_token",
+		"token_expiry": c.tokenExpiry,
+	}).Info("Successfully refreshed India Post access token")
+
+	return nil
 }
 
 // CalculateTariff calculates the tariff for international shipping
@@ -226,18 +337,41 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 		}
 	}
 
-	// Parse tariff response
+	// Parse tariff response - handle both direct format and wrapped format
 	var tariffResp TariffResponse
+	
+	// First try to parse as direct format (from API docs example)
 	if err := json.Unmarshal(respBody, &tariffResp); err != nil {
 		return nil, fmt.Errorf("failed to parse tariff response: %w", err)
 	}
 
+	// If response is wrapped in a success/data structure, extract it
+	if tariffResp.Status == "" && tariffResp.TariffAmount == 0 && tariffResp.Data != nil {
+		// Response might be wrapped, try to extract from data (Data is already map[string]interface{})
+		dataMap := tariffResp.Data
+		if tariffAmount, ok := dataMap["tariffAmount"].(float64); ok {
+			tariffResp.TariffAmount = tariffAmount
+		}
+		if currency, ok := dataMap["currency"].(string); ok {
+			tariffResp.Currency = currency
+		}
+		if deliveryTime, ok := dataMap["deliveryTime"].(string); ok {
+			tariffResp.DeliveryTime = deliveryTime
+		}
+		if status, ok := dataMap["status"].(string); ok {
+			tariffResp.Status = status
+		}
+	}
+
 	c.logger.WithFields(logrus.Fields{
-		"partner":  "IndiaPostInternational",
-		"action":   "calculate_tariff",
-		"success":  tariffResp.Success,
-		"message":  tariffResp.Message,
-		"response": tariffResp,
+		"partner":       "IndiaPostInternational",
+		"action":        "calculate_tariff",
+		"tariff_amount": tariffResp.TariffAmount,
+		"currency":      tariffResp.Currency,
+		"delivery_time": tariffResp.DeliveryTime,
+		"status":        tariffResp.Status,
+		"success":       tariffResp.Success,
+		"message":       tariffResp.Message,
 	}).Info("Received India Post tariff response")
 
 	return &tariffResp, nil
