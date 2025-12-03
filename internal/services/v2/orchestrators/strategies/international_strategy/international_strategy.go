@@ -168,7 +168,7 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 
 	// Determine partners to call
 	// If specific partners are requested, use only those; otherwise use default international partners
-	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "indiapost", "naqel"}
+	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "india_post_international", "naqel"}
 	if len(req.Partners) > 0 {
 		partnerCodes = make([]string, 0, len(req.Partners))
 		for _, p := range req.Partners {
@@ -311,12 +311,24 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 	req *modelsv1.ServiceabilityV2Request,
 	srcPin, dstPin, srcCC, dstCC string,
 ) modelsv1.PartnerV2Response {
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   partnerCode,
+		"src_cc":    srcCC,
+		"dst_cc":    dstCC,
+		"src_pin":   srcPin,
+		"dst_pin":   dstPin,
+		"action":    "getting_adapter",
+	}).Info("Getting adapter for partner")
+	
 	adapter, found := s.PartnerFactory.GetAdapter(partnerCode)
 	
 	if !found || adapter == nil {
 		s.Logger.WithFields(logrus.Fields{
 			"component": "international_strategy", 
 			"partner":   partnerCode,
+			"found":     found,
+			"adapter_nil": adapter == nil,
 		}).Warn("Adapter missing or nil")
 		return modelsv1.PartnerV2Response{
 		PartnerCode:   partnerCode,
@@ -340,9 +352,34 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 	serviceReq := s.buildAdapterRequest(req, srcPin, dstPin, srcCC, dstCC)
 	partnerInfo := common.PartnerInfo{PartnerCode: partnerCode}
 
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   partnerCode,
+		"action":    "calling_adapter",
+		"src_cc":    srcCC,
+		"dst_cc":    dstCC,
+		"src_pin":   srcPin,
+		"dst_pin":   dstPin,
+	}).Info("Calling adapter CheckServiceability")
+
 	startTime := time.Now()
 	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
 	responseTimeMs := time.Since(startTime).Milliseconds()
+	
+	s.Logger.WithFields(logrus.Fields{
+		"component":      "international_strategy",
+		"partner":       partnerCode,
+		"action":        "adapter_call_completed",
+		"has_error":     err != nil,
+		"has_result":    result != nil,
+		"services_count": func() int {
+			if result != nil {
+				return len(result.Services)
+			}
+			return 0
+		}(),
+		"response_time_ms": responseTimeMs,
+	}).Info("Adapter CheckServiceability completed")
 
 	if err != nil {
 		s.Logger.WithError(err).WithFields(logrus.Fields{
@@ -380,7 +417,7 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 		return s.convertShipCubeResult(result, srcCC, dstCC, responseTimeMs)
 	case "fedex":
 		return s.convertFedExResult(result, srcCC, dstCC, responseTimeMs)
-	case "indiapost": 
+	case "india_post_international": 
 		return s.convertIndiaPostInternationalResult(result, srcCC, dstCC, responseTimeMs)
 	case "naqel":
 		return s.convertNaqelResult(result, srcCC, dstCC, responseTimeMs)
@@ -681,7 +718,7 @@ func getPartnerName(code string) string {
 		"aramex":    "Aramex",
 		"fedex":     "FedEx",
 		"shipcube":  "ShipCube",
-		"indiapost": "India Post",
+		"india_post_international": "India Post International",
 		"naqel":     "Naqel",
 	}
 	if n, ok := names[strings.ToLower(code)]; ok {
@@ -691,7 +728,6 @@ func getPartnerName(code string) string {
 }
 
 // normalizeInternationalPartnerCode normalizes partner codes to standard international partner codes
-// Handles variants like "india_post_international" -> "indiapost"
 func normalizeInternationalPartnerCode(code string) string {
 	code = strings.ToLower(code)
 	
@@ -701,8 +737,7 @@ func normalizeInternationalPartnerCode(code string) string {
 		"fedex":                    "fedex",
 		"aramex":                   "aramex",
 		"shipcube":                 "shipcube",
-		"indiapost":                "indiapost",
-		"india_post_international": "indiapost",
+		"india_post_international": "india_post_international",
 		"naqel":                    "naqel",
 	}
 	

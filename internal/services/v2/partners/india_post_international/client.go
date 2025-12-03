@@ -174,40 +174,53 @@ func (c *IndiaPostClient) GetAccessToken(ctx context.Context) (string, error) {
 
 	// Check if token needs refresh
 	if token == "" || time.Now().After(expiry.Add(-c.config.TokenExpiryBuffer)) {
-		// Try to refresh first if we have a refresh token
-		c.tokenMutex.RUnlock()
+		// Need to acquire write lock to update token
 		c.tokenMutex.Lock()
-		if c.refreshToken != "" && (c.refreshExpiry.IsZero() || time.Now().Before(c.refreshExpiry)) {
-			refreshErr := c.RefreshToken(ctx)
-			c.tokenMutex.Unlock()
-			if refreshErr == nil {
-				c.tokenMutex.RLock()
-				token = c.accessToken
-				c.tokenMutex.RUnlock()
-				return token, nil
+		// Double-check token is still invalid (another goroutine might have refreshed it)
+		if c.accessToken == "" || time.Now().After(c.tokenExpiry.Add(-c.config.TokenExpiryBuffer)) {
+			// Try to refresh first if we have a refresh token
+			if c.refreshToken != "" && (c.refreshExpiry.IsZero() || time.Now().Before(c.refreshExpiry)) {
+				// Call internal refresh method (without locking, since we already have the lock)
+				refreshErr := c.refreshTokenUnsafe(ctx)
+				if refreshErr == nil {
+					token = c.accessToken
+					c.tokenMutex.Unlock()
+					return token, nil
+				}
+				// If refresh failed, fall through to full authentication
 			}
-			// If refresh failed, fall through to full authentication
-		} else {
+			
+			// Fall back to full authentication (unlock first since Authenticate will lock)
 			c.tokenMutex.Unlock()
+			if err := c.Authenticate(ctx); err != nil {
+				return "", err
+			}
+			c.tokenMutex.RLock()
+			token = c.accessToken
+			c.tokenMutex.RUnlock()
+			return token, nil
+		} else {
+			// Token was refreshed by another goroutine
+			token = c.accessToken
+			c.tokenMutex.Unlock()
+			return token, nil
 		}
-		
-		// Fall back to full authentication
-		if err := c.Authenticate(ctx); err != nil {
-			return "", err
-		}
-		c.tokenMutex.RLock()
-		token = c.accessToken
-		c.tokenMutex.RUnlock()
 	}
 
 	return token, nil
 }
 
 // RefreshToken refreshes the access token using the refresh token
+// This method handles its own locking and should be called when the mutex is not already held
 func (c *IndiaPostClient) RefreshToken(ctx context.Context) error {
 	c.tokenMutex.Lock()
 	defer c.tokenMutex.Unlock()
+	return c.refreshTokenUnsafe(ctx)
+}
 
+// refreshTokenUnsafe refreshes the access token without locking
+// Caller must hold the write lock (tokenMutex.Lock())
+func (c *IndiaPostClient) refreshTokenUnsafe(ctx context.Context) error {
 	if c.refreshToken == "" {
 		return fmt.Errorf("no refresh token available, need to re-authenticate")
 	}
@@ -320,16 +333,32 @@ func (c *IndiaPostClient) CalculateTariff(ctx context.Context, request TariffReq
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.WithError(err).WithFields(logrus.Fields{
+			"partner": "IndiaPostInternational",
+			"action":  "calculate_tariff",
+			"url":     url,
+		}).Error("HTTP request failed")
 		return nil, fmt.Errorf("tariff request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		c.logger.WithError(err).WithFields(logrus.Fields{
+			"partner":     "IndiaPostInternational",
+			"action":      "calculate_tariff",
+			"status_code": resp.StatusCode,
+		}).Error("Failed to read response body")
 		return nil, fmt.Errorf("failed to read tariff response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		c.logger.WithFields(logrus.Fields{
+			"partner":     "IndiaPostInternational",
+			"action":      "calculate_tariff",
+			"status_code": resp.StatusCode,
+			"response_body": string(respBody),
+		}).Error("India Post tariff API returned non-OK status")
 		return nil, &IndiaPostAPIError{
 			StatusCode: resp.StatusCode,
 			Message:    fmt.Sprintf("India Post tariff API failed with status %d", resp.StatusCode),
