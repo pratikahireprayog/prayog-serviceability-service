@@ -85,12 +85,17 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 
 	// Validate requirements
 	if err := a.validateRequirements(request); err != nil {
+		errMsg := fmt.Sprintf("India Post International validation failed: %v", err)
 		a.logger.WithFields(logrus.Fields{
 			"component":    "india_post_international_adapter",
 			"event":        "validation_failed",
 			"partner_code": partnerInfo.PartnerCode,
 			"partner_id":   partnerID,
 			"error":        err.Error(),
+			"source_postal_code": getStringValue(request.SourcePostalCode),
+			"destination_postal_code": getStringValue(request.DestinationPostalCode),
+			"destination_country_code": getStringValue(request.DestinationCountryCode),
+			"country_code": getStringValue(request.CountryCode),
 		}).Warn("India Post International validation failed")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -98,9 +103,10 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("India Post International validation failed: %v", err)}[0],
+			ErrorMessage: &errMsg,
 			Metadata: map[string]interface{}{
 				"reason": "validation_failed",
+				"error_details": err.Error(),
 			},
 		}, nil
 	}
@@ -307,6 +313,14 @@ func (a *Adapter) checkInternationalServiceability(
 	return result, nil
 }
 
+// getStringValue safely extracts string value from pointer
+func getStringValue(ptr *string) string {
+	if ptr == nil {
+		return ""
+	}
+	return *ptr
+}
+
 // validateRequirements validates India Post International-specific requirements
 func (a *Adapter) validateRequirements(request *models.ServiceabilityV2Request) error {
 	// India Post requires source and destination postal codes
@@ -318,13 +332,9 @@ func (a *Adapter) validateRequirements(request *models.ServiceabilityV2Request) 
 		return fmt.Errorf("destination postal code is required for India Post International shipments")
 	}
 
-	// Validate destination country code
-	if request.DestinationCountryCode == nil || *request.DestinationCountryCode == "" {
-		if request.CountryCode == nil || *request.CountryCode == "" {
-			return fmt.Errorf("destination country code is required for India Post International shipments")
-		}
-	}
-
+	// Note: Destination country code validation is done at API call time
+	// If country code is missing, the API will return an error
+	// This allows the call to proceed and get proper error handling from the API
 	return nil
 }
 
