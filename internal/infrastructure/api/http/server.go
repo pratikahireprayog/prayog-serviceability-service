@@ -17,6 +17,7 @@ import (
 	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
 	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
+	"prayog-serviceability-service/internal/infrastructure/external/partner_service"
 	dataServices "prayog-serviceability-service/internal/services/v1/data"
 	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
@@ -28,6 +29,9 @@ import (
 	// Add imports for geo location routes and handlers
 	v1handlers "prayog-serviceability-service/api/handlers/v1"
 	v1routes "prayog-serviceability-service/api/routes/v1"
+	v3handlers "prayog-serviceability-service/internal/infrastructure/api/http/v3/handlers"
+	v3routes "prayog-serviceability-service/internal/infrastructure/api/http/v3/routes"
+	v3 "prayog-serviceability-service/internal/services/v3"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -272,14 +276,13 @@ func (s *Server) setupRoutes() error {
 			v3.All("/*", func(c *fiber.Ctx) error {
 				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 					"error": fiber.Map{
-						"code":    "SERVICE_UNAVAILABLE",
-						"message": "V3 serviceability features are temporarily unavailable",
+						"code": "SERVICE_UNAVAILABLE",
 					},
 				})
 			})
 		} else {
 			// Register V3 serviceability routes under /serviceability/v3/
-			v1routes.RegisterServiceabilityV3Routes(v3, v3ServiceabilityHandler)
+			v3routes.RegisterServiceabilityV3Routes(v3, v3ServiceabilityHandler)
 		}
 
 		// Add a status route for the V3 serviceability service
@@ -462,6 +465,7 @@ func (s *Server) setupRoutes() error {
 	}
 
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
+
 	return nil
 }
 
@@ -547,13 +551,6 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 		}
 	}
 
-	// If geolocation service is not available, log a warning
-	if geolocationService == nil {
-		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
-		// Create a dummy geolocation service for graceful degradation
-		geolocationService = dataServices.NewGeolocationService(nil)
-	}
-
 	// Create V2 serviceability handler
 	v2ServiceabilityHandler := handlers.NewServiceabilityV2Handler(
 		s.v2Orchestrator,
@@ -566,7 +563,7 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 }
 
 // createServiceabilityV3Handler creates a V3 serviceability handler with all dependencies
-func (s *Server) createServiceabilityV3Handler() (*handlers.ServiceabilityV3Handler, error) {
+func (s *Server) createServiceabilityV3Handler() (*v3handlers.ServiceabilityHandler, error) {
 	// Check if V2 orchestrator is available (V3 uses V2 orchestrator)
 	if s.v2Orchestrator == nil {
 		return nil, fmt.Errorf("V2 orchestrator is required for V3 API")
@@ -576,29 +573,20 @@ func (s *Server) createServiceabilityV3Handler() (*handlers.ServiceabilityV3Hand
 	validatorSetup := utils.NewValidatorSetup()
 	validator := validatorSetup.GetValidator()
 
-	// Create geolocation service for country code resolution
-	var geolocationService dataServices.GeolocationService
-	if s.dbManager != nil {
-		// Create repository factory from database connection
-		db := s.dbManager.GetDB()
-		if db != nil {
-			repoFactory := repositories.NewRepositoryFactory(db)
-			geoLocationRepo := repoFactory.GetGeoLocationRepository()
-			geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
-		}
-	}
+	// Create Partner Service Client
+	// Assuming the partner service URL is provided via env or config, for now hardcoding based on user context or config
+	// Ideally this should come from config.Service.PartnerServiceURL
+	// Using default from user prompt context: http://127.0.0.1:9024
+	partnerServiceURL := "http://127.0.0.1:9024"
+	// Make sure to import "prayog-serviceability-service/internal/infrastructure/external/partner_service"
+	partnerClient := partner_service.NewPartnerServiceClient(partnerServiceURL, s.logger)
 
-	// If geolocation service is not available, log a warning
-	if geolocationService == nil {
-		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
-		// Create a dummy geolocation service for graceful degradation
-		geolocationService = dataServices.NewGeolocationService(nil)
-	}
+	// Create V3 Service
+	v3Service := v3.NewServiceabilityService(s.v2Orchestrator, partnerClient, s.logger)
 
 	// Create V3 serviceability handler
-	v3ServiceabilityHandler := handlers.NewServiceabilityV3Handler(
-		s.v2Orchestrator,
-		geolocationService,
+	v3ServiceabilityHandler := v3handlers.NewServiceabilityHandler(
+		v3Service,
 		validator,
 		s.logger,
 	)

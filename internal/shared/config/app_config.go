@@ -87,6 +87,8 @@ func LoadAppConfig() (*AppConfig, error) {
 	if envMap, err := godotenv.Read(); err == nil {
 		for key, value := range envMap {
 			envVars[key] = value
+			// CRITICAL: Set process environment variable so os.Getenv works elsewhere
+			os.Setenv(key, value)
 		}
 	}
 
