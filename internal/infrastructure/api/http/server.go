@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -574,10 +575,11 @@ func (s *Server) createServiceabilityV3Handler() (*v3handlers.ServiceabilityHand
 	validator := validatorSetup.GetValidator()
 
 	// Create Partner Service Client
-	// Assuming the partner service URL is provided via env or config, for now hardcoding based on user context or config
-	// Ideally this should come from config.Service.PartnerServiceURL
-	// Using default from user prompt context: http://127.0.0.1:9024
-	partnerServiceURL := "http://127.0.0.1:9024"
+	// Read partner service URL from environment variable (required)
+	partnerServiceURL := os.Getenv("PARTNER_SERVICE_URL")
+	if partnerServiceURL == "" {
+		return nil, fmt.Errorf("PARTNER_SERVICE_URL environment variable is required for V3 API")
+	}
 	// Make sure to import "prayog-serviceability-service/internal/infrastructure/external/partner_service"
 	partnerClient := partner_service.NewPartnerServiceClient(partnerServiceURL, s.logger)
 
