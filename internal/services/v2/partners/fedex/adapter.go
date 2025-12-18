@@ -7,6 +7,7 @@ import (
 
 	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
+	tenantcontext "prayog-serviceability-service/internal/shared/context"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
 
@@ -144,6 +145,22 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"destination_country_code": destinationCountryCode,
 	}).Info("Built FedEx serviceability request")
 
+	// Extract tenant-specific credentials from context if available
+	credentials, hasCredentials := tenantcontext.GetPartnerCredentials(ctx, partnerInfo.PartnerCode)
+	if hasCredentials && credentials != nil {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "fedex_adapter",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+		}).Info("Using tenant-specific credentials for FedEx API call")
+	} else {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "fedex_adapter",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+		}).Debug("Using default credentials from env for FedEx API call")
+	}
+
 	// Call FedEx API
 	a.logger.WithFields(logrus.Fields{
 		"component":    "fedex_adapter",
@@ -151,7 +168,7 @@ func (a *Adapter) checkInternationalServiceability(ctx context.Context, request 
 		"partner_id":   pid,
 	}).Info("Calling FedEx serviceability API")
 
-	serviceabilityResp, err := a.client.CheckServiceability(ctx, fedexRequest)
+	serviceabilityResp, err := a.client.CheckServiceability(ctx, fedexRequest, credentials)
 	if err != nil {
 		a.logger.WithError(err).WithFields(logrus.Fields{
 			"component":    "fedex_adapter",
@@ -300,7 +317,7 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 		Weight: 0.5,
 	}
 
-	_, err := a.client.CheckServiceability(ctx, testRequest)
+	_, err := a.client.CheckServiceability(ctx, testRequest, nil)
 	if err != nil {
 		a.logger.WithError(err).Warn("FedEx adapter initialization test failed")
 	}
@@ -331,7 +348,7 @@ func (a *Adapter) IsHealthy(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	_, err := a.client.CheckServiceability(ctx, testRequest)
+	_, err := a.client.CheckServiceability(ctx, testRequest, nil)
 	return err == nil
 }
 

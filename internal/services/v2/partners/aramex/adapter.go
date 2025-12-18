@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
+	tenantcontext "prayog-serviceability-service/internal/shared/context"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
 
@@ -175,8 +177,24 @@ func (a *Adapter) checkInternationalServiceability(
 		"destination_country_code": destinationCountryCode,
 	}).Info("Using request-provided country codes")
 
+	// Extract tenant-specific credentials from context if available
+	credentials, hasCredentials := tenantcontext.GetPartnerCredentials(ctx, partnerInfo.PartnerCode)
+	if hasCredentials && credentials != nil {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "aramex_adapter",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+		}).Info("Using tenant-specific credentials for Aramex API call")
+	} else {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "aramex_adapter",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   pid,
+		}).Debug("Using default credentials from env for Aramex API call")
+	}
+
 	// Build Aramex request
-	aramexRequest := a.createServiceabilityRequest(ctx, request, sourceCountryCode, destinationCountryCode)
+	aramexRequest := a.createServiceabilityRequest(ctx, request, sourceCountryCode, destinationCountryCode, credentials)
 
 	url := a.config.BaseURL + "/ShippingAPI.V2/Location/Service_1_0.svc/json/IsAddressServiced"
 	bodyBytes, err := json.Marshal(aramexRequest)
@@ -295,19 +313,55 @@ func (a *Adapter) validateAramexRequirements(request *models.ServiceabilityV2Req
 }
 
 // createServiceabilityRequest creates an Aramex serviceability request
-func (a *Adapter) createServiceabilityRequest(ctx context.Context, request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string) ServiceabilityRequest {
+// credentials is optional - if provided, uses tenant-specific credentials, otherwise uses default config
+func (a *Adapter) createServiceabilityRequest(ctx context.Context, request *models.ServiceabilityV2Request, sourceCountryCode, destinationCountryCode string, credentials map[string]string) ServiceabilityRequest {
+	// Use tenant credentials if provided, otherwise fallback to default config
+	username := a.config.Username
+	password := a.config.Password
+	accountNumber := a.config.AccountNumber
+	accountPin := a.config.AccountPin
+	accountEntity := a.config.AccountEntity
+	accountCountryCode := a.config.AccountCountryCode
+	source := a.config.Source
+
+	if credentials != nil {
+		if u, ok := credentials["username"]; ok && u != "" {
+			username = u
+		}
+		if p, ok := credentials["password"]; ok && p != "" {
+			password = p
+		}
+		if an, ok := credentials["account_number"]; ok && an != "" {
+			accountNumber = an
+		}
+		if ap, ok := credentials["account_pin"]; ok && ap != "" {
+			accountPin = ap
+		}
+		if ae, ok := credentials["account_entity"]; ok && ae != "" {
+			accountEntity = ae
+		}
+		if acc, ok := credentials["account_country_code"]; ok && acc != "" {
+			accountCountryCode = acc
+		}
+		if s, ok := credentials["source"]; ok && s != "" {
+			if sourceInt, err := strconv.Atoi(s); err == nil {
+				source = sourceInt
+			}
+		}
+	}
+
 	// Get city name for destination
 	destinationCity := ""
 	return ServiceabilityRequest{
 		ClientInfo: ClientInfo{
-			UserName:           a.config.Username,
-			Password:           a.config.Password,
+			UserName:           username,
+			Password:           password,
 			Version:            "v1.0",
-			AccountNumber:      a.config.AccountNumber,
-			AccountPin:         a.config.AccountPin,
-			AccountEntity:      a.config.AccountEntity,
-			AccountCountryCode: a.config.AccountCountryCode,
-			Source:             a.config.Source,
+			AccountNumber:      accountNumber,
+			AccountPin:         accountPin,
+			AccountEntity:      accountEntity,
+			AccountCountryCode: accountCountryCode,
+			Source:             source,
 		},
 		Address: Address{
 			Line1:               "", 

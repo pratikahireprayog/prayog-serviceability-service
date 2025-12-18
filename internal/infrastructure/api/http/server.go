@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
+	v1middleware "prayog-serviceability-service/internal/infrastructure/api/http/v1/middleware"
 	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
 	"prayog-serviceability-service/internal/infrastructure/external/partner_service"
@@ -170,6 +171,9 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 		c.Set("X-API-Version", "v1")
 		return c.Next()
 	})
+
+	// Tenant middleware to extract tenant_id and user_id from headers
+	app.Use(v1middleware.TenantMiddleware())
 }
 
 // setupRoutes configures all application routes

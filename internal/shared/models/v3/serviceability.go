@@ -52,7 +52,7 @@ type PartnerV3Response struct {
 	Source         string                 `json:"source,omitempty"`
 	IsServiceable  bool                   `json:"is_serviceable"`
 	Services       interface{}            `json:"services,omitempty"`
-	Capabilities   map[string]interface{} `json:"capabilities,omitempty"`
+	Capabilities   interface{}            `json:"capabilities,omitempty"`
 	Error          *string                `json:"error,omitempty"`
 	ResponseTime   time.Duration          `json:"-"` // Internal use
 	ResponseTimeMs int64                  `json:"response_time_ms,omitempty"`
