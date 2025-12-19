@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -35,38 +34,53 @@ func NewServiceabilityService(
 
 // CheckServiceability orchestrates the V3 serviceability check
 func (s *ServiceabilityService) CheckServiceability(ctx context.Context, request *modelsv3.ServiceabilityV3Request, tenantID, userID string) (*modelsv3.ServiceabilityV3Response, error) {
-	// Fetch user partners
-	partners, err := s.partnerClient.GetUserPartners(ctx, tenantID, userID)
-	if err != nil {
-		s.logger.WithError(err).Error("Failed to fetch user partners")
-		return nil, fmt.Errorf("failed to fetch user partners: %w", err)
-	}
-
-	if len(partners) == 0 {
-		return &modelsv3.ServiceabilityV3Response{
-			Success:  true,
-			Message:  "No partners found for user",
-			Partners: []modelsv3.PartnerV3Response{},
-		}, nil
-	}
-
 	// Convert V3 request to V2 request format
 	v2Request := request.ToV2Request()
 
-	// Map fetched partners to V2 request partners
-	v2Partners := make([]modelsv1.PartnerFilter, len(partners))
-	for i, p := range partners {
-		var id string
-		if p.ID != "" {
-			id = p.ID
-		}
-
-		v2Partners[i] = modelsv1.PartnerFilter{
-			ID:   &id,
-			Code: p.Code,
-		}
+	// Try to fetch user-specific partners from partner service
+	// If this fails or returns empty, fall back to using all available partners (like V2 does)
+	partners, err := s.partnerClient.GetUserPartners(ctx, tenantID, userID)
+	if err != nil {
+		// Log warning but continue - will fall back to all available partners
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id": tenantID,
+			"user_id":   userID,
+			"error":     err.Error(),
+		}).Warn("Failed to fetch user partners from partner service, will use all available partners")
+		partners = []partner_service.PartnerInfo{} // Empty slice to trigger fallback
 	}
-	v2Request.Partners = v2Partners
+
+	// If user-specific partners are found, use them; otherwise let V2 orchestrator use all available partners
+	if len(partners) > 0 {
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id":     tenantID,
+			"user_id":       userID,
+			"partners_count": len(partners),
+		}).Info("Using user-specific partners from partner service")
+
+		// Map fetched partners to V2 request partners
+		v2Partners := make([]modelsv1.PartnerFilter, len(partners))
+		for i, p := range partners {
+			var id string
+			if p.ID != "" {
+				id = p.ID
+			}
+
+			v2Partners[i] = modelsv1.PartnerFilter{
+				ID:   &id,
+				Code: p.Code,
+			}
+		}
+		v2Request.Partners = v2Partners
+	} else {
+		// No user-specific partners found - let V2 orchestrator use all available partners
+		// This matches V2 API behavior when no partners are specified
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id": tenantID,
+			"user_id":   userID,
+		}).Info("No user-specific partners found, will use all available partners (V2 fallback behavior)")
+		// Don't set v2Request.Partners - leave it empty so V2 orchestrator uses getEligiblePartners()
+	}
 
 	s.logger.WithFields(logrus.Fields{
 		"source":         v2Request.SourcePostalCode,
