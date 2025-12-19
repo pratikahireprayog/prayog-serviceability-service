@@ -15,6 +15,7 @@ import (
 
 	httpServer "prayog-serviceability-service/internal/infrastructure/api/http"
 	"prayog-serviceability-service/internal/infrastructure/db"
+	"prayog-serviceability-service/internal/infrastructure/external/partner_service"
 	businessServices "prayog-serviceability-service/internal/services/v1/business"
 	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
@@ -282,6 +283,16 @@ func initV2Orchestrator(
 		partnerAttributeRepo = nil
 	}
 
+	// Create partner service client for fetching tenant-specific credentials
+	var partnerServiceClient *partner_service.PartnerServiceClient
+	partnerServiceURL := configManager.Integration.Partner.BaseURL
+	if partnerServiceURL != "" {
+		partnerServiceClient = partner_service.NewPartnerServiceClient(partnerServiceURL, logger)
+		logger.WithField("base_url", partnerServiceURL).Info("Created partner service client for tenant credentials")
+	} else {
+		logger.Debug("Partner service URL not configured, tenant-specific credentials will not be available")
+	}
+
 	// Create V2 orchestrator using v2 orchestrator
 	v2Orchestrator := orchestrators.NewServiceabilityOrchestrator(
 		partnerAdapterFactory,
@@ -289,6 +300,7 @@ func initV2Orchestrator(
 		60*time.Second, // timeout for partner requests - increased for database queries
 		configManager.App.Serviceability.ReturnOnlyServiceablePartners,
 		geolocationService,
+		partnerServiceClient,
 	)
 
 	logger.Info("✅ Successfully initialized V2 serviceability orchestrator")

@@ -21,6 +21,8 @@ import (
 
 	services "prayog-serviceability-service/internal/services/v1/data"
 
+	"prayog-serviceability-service/internal/infrastructure/external/partner_service"
+	tenantcontext "prayog-serviceability-service/internal/shared/context"
 	"prayog-serviceability-service/internal/shared/errors"
 	"prayog-serviceability-service/internal/shared/models/v1"
 	"prayog-serviceability-service/internal/shared/repositories/v1"
@@ -45,6 +47,7 @@ type serviceabilityOrchestrator struct {
 	orchestratorFactory     OrchestratorFactory
 	rateClient              *supplyrates.RateClient
 	geolocationService 		services.GeolocationService
+	partnerServiceClient    *partner_service.PartnerServiceClient
 
 }
 
@@ -54,7 +57,8 @@ func NewServiceabilityOrchestrator(
 	partnerAttributeMapRepo repositories.PartnerAttributeMapRepository,
 	timeout time.Duration,
 	returnOnlyServiceable bool,
-	geolocationService services.GeolocationService, 
+	geolocationService services.GeolocationService,
+	partnerServiceClient *partner_service.PartnerServiceClient,
 ) ServiceabilityOrchestrator {
 	// Initialize logger
 	logger := logrus.New()
@@ -67,6 +71,7 @@ func NewServiceabilityOrchestrator(
 		returnOnlyServiceable:   returnOnlyServiceable,
 		logger:                  logger,
 		geolocationService:      geolocationService,
+		partnerServiceClient:    partnerServiceClient,
     }
 	// Initialize rate client
 	s.rateClient = supplyrates.NewRateClient(logger)
@@ -532,6 +537,36 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 		"component":    "serviceability_orchestrator",
 		"partner_code": info.PartnerCode,
 	}).Info("Partner adapter is healthy, calling CheckServiceability")
+
+	// Fetch tenant-specific credentials if tenant_id is present in context
+	tenantID, hasTenantID := tenantcontext.GetTenantID(ctx)
+	if hasTenantID && s.partnerServiceClient != nil {
+		credentials, err := s.partnerServiceClient.GetTenantPartnerCredentials(ctx, tenantID, info.PartnerCode)
+		if err != nil {
+			// Log warning but continue - will fallback to default credentials
+			s.logger.WithFields(logrus.Fields{
+				"component":    "serviceability_orchestrator",
+				"partner_code": info.PartnerCode,
+				"tenant_id":    tenantID,
+				"error":        err.Error(),
+			}).Debug("Failed to fetch tenant partner credentials, will use default credentials")
+		} else if credentials != nil && len(credentials) > 0 {
+			// Store credentials in context for adapter to use
+			ctx = tenantcontext.WithPartnerCredentials(ctx, info.PartnerCode, credentials)
+			s.logger.WithFields(logrus.Fields{
+				"component":         "serviceability_orchestrator",
+				"partner_code":      info.PartnerCode,
+				"tenant_id":         tenantID,
+				"credentials_count": len(credentials),
+			}).Info("Using tenant-specific credentials for partner")
+		} else {
+			s.logger.WithFields(logrus.Fields{
+				"component":    "serviceability_orchestrator",
+				"partner_code": info.PartnerCode,
+				"tenant_id":    tenantID,
+			}).Debug("No tenant-specific credentials found, will use default credentials from env")
+		}
+	}
 
 	// Call the adapter
 	result, err := adapter.CheckServiceability(ctx, req, common.PartnerInfo{PartnerID: info.PartnerID, PartnerCode: info.PartnerCode})

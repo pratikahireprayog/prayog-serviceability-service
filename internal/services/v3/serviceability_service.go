@@ -87,5 +87,51 @@ func (s *ServiceabilityService) CheckServiceability(ctx context.Context, request
 	// Convert V2 response to V3 format
 	v3Response := modelsv3.ServiceabilityV3ResponseFromV2(v2Response)
 
+	// Enrich V3 response with capabilities from partner service
+	s.enrichWithCapabilities(v3Response, partners)
+
 	return v3Response, nil
+}
+
+// enrichWithCapabilities enriches V3 response partners with capabilities from partner service
+func (s *ServiceabilityService) enrichWithCapabilities(v3Response *modelsv3.ServiceabilityV3Response, partners []partner_service.PartnerInfo) {
+	if v3Response == nil || len(partners) == 0 {
+		return
+	}
+
+	// Create a map of partner code to capabilities for quick lookup
+	partnerCapabilitiesMap := make(map[string][]partner_service.Capability)
+	for _, p := range partners {
+		if p.Code != "" && len(p.Capabilities) > 0 {
+			partnerCapabilitiesMap[p.Code] = p.Capabilities
+		}
+	}
+
+	// Enrich each partner in the response with capabilities
+	for i := range v3Response.Partners {
+		partnerCode := v3Response.Partners[i].PartnerCode
+		if capabilities, exists := partnerCapabilitiesMap[partnerCode]; exists {
+			// Convert capabilities to array format (without id, capability_id, and code fields)
+			capabilitiesList := make([]map[string]interface{}, 0, len(capabilities))
+			for _, cap := range capabilities {
+				capMap := map[string]interface{}{
+					"name":         cap.Name,
+					"category":     cap.Category,
+					"is_supported": cap.IsSupported,
+				}
+				if len(cap.Metadata) > 0 {
+					capMap["metadata"] = cap.Metadata
+				}
+				capabilitiesList = append(capabilitiesList, capMap)
+			}
+			
+			// Set capabilities as a direct array
+			v3Response.Partners[i].Capabilities = capabilitiesList
+			
+			s.logger.WithFields(logrus.Fields{
+				"partner_code":      partnerCode,
+				"capabilities_count": len(capabilities),
+			}).Debug("Enriched partner with capabilities from partner service")
+		}
+	}
 }
