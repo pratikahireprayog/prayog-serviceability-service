@@ -8,22 +8,30 @@ import (
 
 // TenantMiddleware extracts tenant_id and user_id from request headers
 // and stores them in the request context for use throughout the request lifecycle.
-// Supports both standard headers (X-Tenant-ID, X-User-ID) and lowercase variants (tenantid, userid).
+// Supports case-insensitive header extraction (X-Tenant-ID, x-tenant-id, tenantid, etc.)
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		ctx := c.UserContext()
 
-		// Extract tenant_id from headers (try both standard and lowercase variants)
-		tenantID := c.Get("X-Tenant-ID")
-		if tenantID == "" {
-			tenantID = c.Get("tenantid")
-		}
+		// Extract tenant_id from headers (case-insensitive - try multiple variations)
+		tenantID := getHeaderCaseInsensitive(c, []string{
+			"X-Tenant-ID",
+			"x-tenant-id",
+			"X-TENANT-ID",
+			"tenantid",
+			"TenantID",
+			"TENANTID",
+		})
 
-		// Extract user_id from headers (try both standard and lowercase variants)
-		userID := c.Get("X-User-ID")
-		if userID == "" {
-			userID = c.Get("userid")
-		}
+		// Extract user_id from headers (case-insensitive - try multiple variations)
+		userID := getHeaderCaseInsensitive(c, []string{
+			"X-User-ID",
+			"x-user-id",
+			"X-USER-ID",
+			"userid",
+			"UserID",
+			"USERID",
+		})
 
 		// Store in context if present (optional - not required)
 		if tenantID != "" {
@@ -40,6 +48,16 @@ func TenantMiddleware() fiber.Handler {
 		// Continue to next handler
 		return c.Next()
 	}
+}
+
+// getHeaderCaseInsensitive tries multiple header name variations and returns the first non-empty value
+func getHeaderCaseInsensitive(c *fiber.Ctx, headerNames []string) string {
+	for _, name := range headerNames {
+		if value := c.Get(name); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 
