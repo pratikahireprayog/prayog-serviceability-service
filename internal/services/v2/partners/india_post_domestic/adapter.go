@@ -152,6 +152,33 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	if request.SourcePostalCode != nil && *request.SourcePostalCode != "" {
 		hubOpsResp, err := a.client.GetRouteByPincode(ctx, *request.SourcePostalCode, pincodeToCheck)
 		if err != nil {
+			// Check if this is a 400 error with "3PL is not available" message
+			errStr := err.Error()
+			if strings.Contains(errStr, "status 400") && strings.Contains(errStr, "3PL is not available") {
+				a.logger.WithFields(logrus.Fields{
+					"component":              "india_post_domestic_adapter",
+					"partner_code":           partnerInfo.PartnerCode,
+					"partner_id":             partnerID,
+					"source_postal_code":     *request.SourcePostalCode,
+					"destination_postal_code": pincodeToCheck,
+					"error":                  err.Error(),
+				}).Warn("3PL not available for destination pincode - marking as not serviceable")
+				
+				// Return not serviceable result
+				return &common.PartnerServiceabilityResult{
+					PartnerID:    partnerInfo.PartnerID,
+					PartnerCode:  partnerInfo.PartnerCode,
+					Services:     make([]models.ServiceV2, 0),
+					ResponseTime: time.Since(startTime),
+					Error:        err,
+					ErrorMessage: &[]string{"3PL is not available for destination pincode"}[0],
+					Metadata: map[string]interface{}{
+						"reason": "3PL is not available for destination pincode",
+						"pincode": pincodeToCheck,
+					},
+				}, nil
+			}
+			
 			a.logger.WithFields(logrus.Fields{
 				"component":              "india_post_domestic_adapter",
 				"partner_code":           partnerInfo.PartnerCode,
