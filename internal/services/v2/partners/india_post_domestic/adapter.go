@@ -514,9 +514,7 @@ func convertKeysToSnakeCase(input interface{}) interface{} {
 
 var snakeCaseRegex1 = regexp.MustCompile("([a-z])([A-Z])")
 var snakeCaseRegex2 = regexp.MustCompile("([A-Z]+)([A-Z][a-z])")
-var snakeCaseRegex3 = regexp.MustCompile("([a-z])([0-9])")
-var snakeCaseRegex4 = regexp.MustCompile("([0-9])([A-Z][a-z])") // Digit before camelCase (e.g., "3Hub" -> "3_Hub")
-var snakeCaseRegex5 = regexp.MustCompile("([0-9])([A-Z]+)([A-Z][a-z])") // Digit before all-uppercase then camelCase (e.g., "3PLHub" -> "3PL_Hub")
+var snakeCaseRegex3 = regexp.MustCompile("([0-9])([A-Z])") // Digit before any uppercase (e.g., "3PL" -> "3_PL", "3Hub" -> "3_Hub")
 
 func toSnakeCase(s string) string {
 	if s == "" {
@@ -525,15 +523,11 @@ func toSnakeCase(s string) string {
 	// Replace spaces and hyphens with underscores first
 	s = strings.ReplaceAll(s, "-", "_")
 	s = strings.ReplaceAll(s, " ", "_")
-	// Handle lowercase before digit (e.g., "destination3" -> "destination_3")
+	// Handle digit before uppercase (e.g., "3PL" -> "3_PL", "3Hub" -> "3_Hub")
 	s = snakeCaseRegex3.ReplaceAllString(s, "${1}_${2}")
-	// Handle digit before all-uppercase sequence followed by camelCase (e.g., "3PLHub" -> "3PL_Hub")
-	s = snakeCaseRegex5.ReplaceAllString(s, "${1}${2}_${3}")
-	// Handle digit before camelCase (e.g., "3Hub" -> "3_Hub"), but NOT "3PL" (all uppercase)
-	s = snakeCaseRegex4.ReplaceAllString(s, "${1}_${2}")
 	// Handle cases like JSONURL -> json_url (uppercase sequences before camelCase)
 	s = snakeCaseRegex2.ReplaceAllString(s, "${1}_${2}")
-	// Handle lowercase before uppercase (camelCase -> camel_case), but NOT digit before uppercase
+	// Handle lowercase before uppercase (camelCase -> camel_case)
 	s = snakeCaseRegex1.ReplaceAllString(s, "${1}_${2}")
 	s = strings.ToLower(s)
 	return s
