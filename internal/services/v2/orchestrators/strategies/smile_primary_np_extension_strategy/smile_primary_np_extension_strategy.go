@@ -13,9 +13,6 @@ import (
     "github.com/sirupsen/logrus"
 )
 
-// SmilePrimaryNPExtensionStrategy runs a two-segment flow:
-// 1) segment_1: call smile_hubops and smile_courier concurrently
-// 2) segment_2: call shipyaari using pickup pincode from hubops hub_details
 type SmilePrimaryNPExtensionStrategy struct {
     PartnerFactory factory.PartnerAdapterFactory
     Logger         *logrus.Logger
@@ -57,7 +54,8 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
         err    error
     }
 
-    seg1Codes := []string{"smile_hubops", "smile_courier"}
+    // Removed "smile_courier" from segment 1
+    seg1Codes := []string{"smile_hubops"}
     seg1Results := make([]seg1Result, len(seg1Codes))
 
     var wg sync.WaitGroup
@@ -102,7 +100,7 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
             continue
         }
 
-        /* ---------- HUBOPS ---------- */
+        // HubOps logic remains unchanged
         if r.code == "smile_hubops" {
 
             if r.result.Metadata != nil {
@@ -140,33 +138,6 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
                 }
             }
             continue // HubOps never added to partners
-        }
-
-        /* ---------- SMILE COURIER (STRICT RULE) ---------- */
-        if r.code == "smile_courier" {
-
-            if isSmileCourierActuallyServiceable(r.result) {
-                partners = append(partners, toPartnerV2Response(r.result, r.code))
-            } else {
-                s.Logger.WithFields(logrus.Fields{
-                    "component":    "smile_primary_np_extension_strategy",
-                    "partner_code": "smile_courier",
-                    "reason":       "raw API marks serviceable=false",
-                }).Info("Smile Courier skipped due to non-serviceable pincode")
-            }
-            continue
-        }
-
-        /* ---------- GENERIC PARTNERS ---------- */
-        hasServices := len(r.result.Services) > 0
-        hasCapabilities := len(r.result.Capabilities) > 0
-        hasMetadata := len(r.result.Metadata) > 0
-        hasError := r.result.ErrorMessage != nil
-
-        isServiceable := (hasServices || hasCapabilities || hasMetadata) && !hasError
-
-        if isServiceable {
-            partners = append(partners, toPartnerV2Response(r.result, r.code))
         }
     }
 
@@ -207,21 +178,6 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
 
 /* ================= HELPERS ================= */
 
-func isSmileCourierActuallyServiceable(res *common.PartnerServiceabilityResult) bool {
-    if res == nil || res.Metadata == nil {
-        return false
-    }
-
-    // Use raw API response if available
-    raw, ok := res.Metadata["data"].(map[string]interface{})
-    if !ok {
-        return false
-    }
-
-    svc, ok := raw["serviceable"].(bool)
-    return ok && svc
-}
-
 func toPartnerV2Response(
     res *common.PartnerServiceabilityResult,
     code string,
@@ -234,8 +190,6 @@ func toPartnerV2Response(
 
     if partnerID == "unknown" {
         switch code {
-        case "smile_courier":
-            partnerID = "ed8d5144-cc53-453e-b9d6-a69d59e1620c"
         case "shipyaari":
             partnerID = "be9fdb7c-3767-4a3f-854a-037fb745916a"
         }
