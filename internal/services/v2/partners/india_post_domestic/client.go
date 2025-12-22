@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
@@ -156,6 +157,102 @@ func (c *Client) SearchPincode(ctx context.Context, pincode string) (*PincodeSea
 	}).Info("Successfully retrieved India Post Domestic data")
 
 	return &pincodeResp, nil
+}
+
+// GetRouteByPincode calls the HubOps serviceability by route API
+func (c *Client) GetRouteByPincode(ctx context.Context, sourcePostalCode, destinationPostalCode string) (map[string]interface{}, error) {
+	// Build API URL
+	apiURL := "https://apis-hubops.innofulfill.com/smcs-webapp/hubops-serviceability/by-route"
+
+	// Create request body - postal codes should be integers
+	sourcePincode, err := strconv.Atoi(sourcePostalCode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source postal code: %w", err)
+	}
+	
+	destPincode, err := strconv.Atoi(destinationPostalCode)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination postal code: %w", err)
+	}
+
+	reqBody := map[string]interface{}{
+		"sourcePostalCode":      sourcePincode,
+		"destinationPostalCode": destPincode,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"partner":                "IndiaPostDomestic",
+		"action":                 "get_route_by_pincode",
+		"source_postal_code":     sourcePostalCode,
+		"destination_postal_code": destinationPostalCode,
+		"url":                    apiURL,
+	}).Info("Calling HubOps serviceability by route API")
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Make the request
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"partner":     "IndiaPostDomestic",
+		"status_code": resp.StatusCode,
+		"body_size":   len(body),
+	}).Debug("Received HubOps API response")
+
+	// Check for HTTP errors
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.logger.WithFields(logrus.Fields{
+			"partner":     "IndiaPostDomestic",
+			"status_code": resp.StatusCode,
+			"body":        string(body),
+		}).Warn("HubOps API returned error status")
+		// Don't fail the entire request if hubops API fails, just log and return nil
+		return nil, fmt.Errorf("HubOps API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response as map to preserve structure
+	var routeResp map[string]interface{}
+	if err := json.Unmarshal(body, &routeResp); err != nil {
+		c.logger.WithFields(logrus.Fields{
+			"partner":     "IndiaPostDomestic",
+			"error":       err.Error(),
+			"body":        string(body),
+			"status_code": resp.StatusCode,
+		}).Error("Failed to parse HubOps response")
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"partner":                "IndiaPostDomestic",
+		"source_postal_code":     sourcePostalCode,
+		"destination_postal_code": destinationPostalCode,
+		"has_destination_3pl_hub": routeResp["destination3PLHub"] != nil,
+	}).Info("Successfully retrieved HubOps route data")
+
+	return routeResp, nil
 }
 
 // executeWithRetry executes HTTP request with retry logic
