@@ -145,14 +145,14 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
         /* ---------- SMILE COURIER (STRICT RULE) ---------- */
         if r.code == "smile_courier" {
 
-            if isSmileCourierServiceable(r.result) {
+            if isSmileCourierActuallyServiceable(r.result) {
                 partners = append(partners, toPartnerV2Response(r.result, r.code))
             } else {
                 s.Logger.WithFields(logrus.Fields{
                     "component":    "smile_primary_np_extension_strategy",
                     "partner_code": "smile_courier",
-                    "reason":       "data.serviceable=false",
-                }).Info("Smile Courier marked non-serviceable")
+                    "reason":       "raw API marks serviceable=false",
+                }).Info("Smile Courier skipped due to non-serviceable pincode")
             }
             continue
         }
@@ -207,17 +207,18 @@ func (s *SmilePrimaryNPExtensionStrategy) Execute(
 
 /* ================= HELPERS ================= */
 
-func isSmileCourierServiceable(res *common.PartnerServiceabilityResult) bool {
+func isSmileCourierActuallyServiceable(res *common.PartnerServiceabilityResult) bool {
     if res == nil || res.Metadata == nil {
         return false
     }
 
-    data, ok := res.Metadata["data"].(map[string]interface{})
+    // Use raw API response if available
+    raw, ok := res.Metadata["data"].(map[string]interface{})
     if !ok {
         return false
     }
 
-    svc, ok := data["serviceable"].(bool)
+    svc, ok := raw["serviceable"].(bool)
     return ok && svc
 }
 
