@@ -39,47 +39,66 @@ func (s *ServiceabilityService) CheckServiceability(ctx context.Context, request
 
 	// Try to fetch user-specific partners from partner service
 	// If this fails or returns empty, fall back to using all available partners (like V2 does)
-	partners, err := s.partnerClient.GetUserPartners(ctx, tenantID, userID)
-	if err != nil {
-		// Log warning but continue - will fall back to all available partners
-		s.logger.WithFields(logrus.Fields{
-			"tenant_id": tenantID,
-			"user_id":   userID,
-			"error":     err.Error(),
-		}).Warn("Failed to fetch user partners from partner service, will use all available partners")
-		partners = []partner_service.PartnerInfo{} // Empty slice to trigger fallback
-	}
-
-	// If user-specific partners are found, use them; otherwise let V2 orchestrator use all available partners
-	if len(partners) > 0 {
-		s.logger.WithFields(logrus.Fields{
-			"tenant_id":     tenantID,
-			"user_id":       userID,
-			"partners_count": len(partners),
-		}).Info("Using user-specific partners from partner service")
-
-		// Map fetched partners to V2 request partners
-		v2Partners := make([]modelsv1.PartnerFilter, len(partners))
-		for i, p := range partners {
-			var id string
-			if p.ID != "" {
-				id = p.ID
-			}
-
-			v2Partners[i] = modelsv1.PartnerFilter{
-				ID:   &id,
-				Code: p.Code,
-			}
-		}
-		v2Request.Partners = v2Partners
+	var partners []partner_service.PartnerInfo
+	
+	if len(v2Request.Partners) > 0 {
+		// Partners specified in request - use them directly
+		// v2Request.Partners is already set from ToV2Request(), so we can proceed
 	} else {
+		// No partners in request - try to fetch user-specific partners from partner service
+		// ONLY use them if we actually receive data (non-empty response)
+		// If API fails or returns empty, skip this and let normal flow continue
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id":      tenantID,
+			"user_id":        userID,
+			"partner_client": s.partnerClient != nil,
+		}).Info("No partners in request, calling partner service API to fetch user partners")
+		
+		if s.partnerClient == nil {
+			s.logger.Warn("Partner client is nil, skipping partner service API call")
+			// Don't set v2Request.Partners - leave it empty so normal flow continues
+		} else {
+			partners, err := s.partnerClient.GetUserPartners(ctx, tenantID, userID)
+		if err != nil {
+			// API call failed - skip this functionality, let normal flow continue
+			s.logger.WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"user_id":   userID,
+				"error":     err.Error(),
+			}).Info("Failed to fetch user partners from partner service, skipping partner filtering - will use normal serviceability flow")
+			// Don't set v2Request.Partners - leave it empty so normal flow continues
+		} else if len(partners) > 0 {
+			// API returned data - use only these partners
+			s.logger.WithFields(logrus.Fields{
+				"tenant_id":     tenantID,
+				"user_id":       userID,
+				"partners_count": len(partners),
+			}).Info("Received partners from partner service API, using only these partners for serviceability")
+
+			// Map fetched partners to V2 request partners
+			v2Partners := make([]modelsv1.PartnerFilter, len(partners))
+			for i, p := range partners {
+				var id string
+				if p.ID != "" {
+					id = p.ID
+				}
+
+				v2Partners[i] = modelsv1.PartnerFilter{
+					ID:   &id,
+					Code: p.Code,
+				}
+			}
+			v2Request.Partners = v2Partners
+		} else {
 		// No user-specific partners found - let V2 orchestrator use all available partners
 		// This matches V2 API behavior when no partners are specified
 		s.logger.WithFields(logrus.Fields{
-			"tenant_id": tenantID,
-			"user_id":   userID,
-		}).Info("No user-specific partners found, will use all available partners (V2 fallback behavior)")
-		// Don't set v2Request.Partners - leave it empty so V2 orchestrator uses getEligiblePartners()
+				"tenant_id": tenantID,
+				"user_id":   userID,
+			}).Info("Partner service API returned empty data, skipping partner filtering - will use normal serviceability flow")
+			// Don't set v2Request.Partners - leave it empty so normal flow continues
+			}
+		}
 	}
 
 	s.logger.WithFields(logrus.Fields{
