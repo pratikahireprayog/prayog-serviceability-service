@@ -25,6 +25,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
 	"prayog-serviceability-service/internal/services/v2/partners/sunil_baral"
+	"prayog-serviceability-service/internal/services/v2/partners/urbanbolt"
+	"prayog-serviceability-service/internal/services/v2/partners/delhivery"
 	"prayog-serviceability-service/internal/shared/config"
 
 	"github.com/sirupsen/logrus"
@@ -64,6 +66,8 @@ var adapterImplementationMap = map[string]string{
 	"naqel":                  "naqel",                  // Direct mapping
 	"dharmendra":            "dharmendra",            // Direct mapping for Dharmendra ecomm
 	"sunil_baral":            "sunil_baral",            // Direct mapping for Sunil Baral ecomm
+	"urbanbolt":              "urbanbolt",              // Direct mapping for UrbanBolt
+	"delhivery":              "delhivery",              // Direct mapping for Delhivery
 	// Any partner code not in this map will get a generic adapter
 }
 
@@ -98,6 +102,8 @@ func getPartnerDisplayName(code string) string {
 		"shipcube":                 "ShipCube",
 		"dharmendra":              "Dharmendra",
 		"sunil_baral":              "Sunil Baral",
+		"urbanbolt":                "UrbanBolt",
+		"delhivery":                "Delhivery",
 	}
 
 	if name, exists := nameMap[code]; exists {
@@ -271,6 +277,10 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.Dharmendra, nil
 	case "sunil_baral":
 		return f.config.SunilBaral, nil
+	case "urbanbolt":
+		return f.config.UrbanBolt, nil
+	case "delhivery":
+		return f.config.Delhivery, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -529,6 +539,34 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "sunil_baral",
 		}).Warn("Sunil Baral adapter not enabled in config")
+	}
+
+	// Initialize UrbanBolt adapter
+	if f.config.UrbanBolt.Enabled {
+		f.implementations["urbanbolt"] = urbanbolt.NewUrbanBoltAdapter(f.config.UrbanBolt)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "urbanbolt",
+		}).Info("Initialized urbanbolt adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "urbanbolt",
+		}).Warn("UrbanBolt adapter not enabled in config")
+	}
+
+	// Initialize Delhivery adapter
+	if f.config.Delhivery.Enabled {
+		f.implementations["delhivery"] = delhivery.NewDelhiveryAdapter(f.config.Delhivery)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delhivery",
+		}).Info("Initialized delhivery adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delhivery",
+		}).Warn("Delhivery adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{

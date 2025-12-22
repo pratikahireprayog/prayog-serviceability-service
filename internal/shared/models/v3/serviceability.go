@@ -8,14 +8,12 @@ import (
 
 // ServiceabilityV3Request represents the V3 request structure with source_location and destination_location
 type ServiceabilityV3Request struct {
-	SourceLocation      *LocationInput     `json:"source_location" validate:"required"`
-	DestinationLocation *LocationInput     `json:"destination_location" validate:"required"`
-	ParcelCategory      *string            `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
-	ProductType         *string            `json:"product_type,omitempty"`
-	Packages            []modelsv1.Package `json:"packages,omitempty" validate:"omitempty,dive"`
-	// Partners field is not in the request payload as it comes from the API
-	// However, we might need it internally or if the user optionally passes it (though requirements key is fetching from API)
-	// Keeping it out of the public JSON request based on requirements, but might need internal mapping.
+	SourceLocation      *LocationInput            `json:"source_location" validate:"required"`
+	DestinationLocation *LocationInput            `json:"destination_location" validate:"required"`
+	ParcelCategory      *string                   `json:"parcel_category,omitempty" validate:"omitempty,oneof=ecomm courier cargo international hyperlocal"`
+	ProductType         *string                   `json:"product_type,omitempty"`
+	Packages            []modelsv1.Package         `json:"packages,omitempty" validate:"omitempty,dive"`
+	Partners            []modelsv1.PartnerFilter   `json:"partners,omitempty" validate:"omitempty,dive"`
 }
 
 // LocationInput represents the structured location input in V3 request
@@ -85,7 +83,7 @@ func (req *ServiceabilityV3Request) ToV2Request() *modelsv1.ServiceabilityV2Requ
 		ParcelCategory: req.ParcelCategory,
 		ProductType:    req.ProductType,
 		Packages:       req.Packages,
-		// Partners will be populated by the handler after fetching from partner service
+		Partners:       req.Partners, // Preserve partners from request
 	}
 
 	if req.SourceLocation != nil {

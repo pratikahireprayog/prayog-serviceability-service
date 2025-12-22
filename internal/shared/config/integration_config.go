@@ -35,6 +35,8 @@ type PartnerAdaptersConfig struct {
 	Naqel             NaqelConfig             `yaml:"naqel" json:"naqel"`
 	Dharmendra        DharmendraConfig        `yaml:"dharmendra" json:"dharmendra"`
 	SunilBaral        SunilBaralConfig        `yaml:"sunil_baral" json:"sunil_baral"`
+	UrbanBolt         UrbanBoltConfig         `yaml:"urbanbolt" json:"urbanbolt"`
+	Delhivery         DelhiveryConfig         `yaml:"delhivery" json:"delhivery"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -329,6 +331,33 @@ type SunilBaralConfig struct {
 	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
 }
 
+// UrbanBoltConfig configuration for UrbanBolt partner adapter
+type UrbanBoltConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	Username          string        `yaml:"username" json:"username"`
+	Password          string        `yaml:"password" json:"password"`
+	AuthTokenPath     string        `yaml:"auth_token_path" json:"auth_token_path"`
+	ServiceabilityURL string        `yaml:"serviceability_url" json:"serviceability_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	TokenExpiryBuffer time.Duration `yaml:"token_expiry_buffer" json:"token_expiry_buffer"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
+}
+
+// DelhiveryConfig configuration for Delhivery partner adapter
+type DelhiveryConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	AccessToken       string        `yaml:"access_token" json:"access_token"`
+	ServiceabilityURL string        `yaml:"serviceability_url" json:"serviceability_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
+}
+
 
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
@@ -590,6 +619,29 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Timeout:   getEnvAsDurationOrDefault("SUNIL_BARAL_TIMEOUT", 30*time.Second),
 			Enabled:   getEnvAsBoolOrDefault("SUNIL_BARAL_ENABLED", true),
 			Rating:    4.0,
+		},
+		UrbanBolt: UrbanBoltConfig{
+			BaseURL:           getEnvOrDefault("URBANBOLT_BASE_URL", "https://uat.urbanebolt.in"),
+			Username:          getEnvOrDefault("URBANBOLT_USERNAME", "info@urbanebolt.com"),
+			Password:          getEnvOrDefault("URBANBOLT_PASSWORD", "EKIcygsLVV5RCtPZ"),
+			AuthTokenPath:     getEnvOrDefault("URBANBOLT_AUTH_TOKEN_PATH", "/api/v1/auth/getToken/"),
+			ServiceabilityURL:  getEnvOrDefault("URBANBOLT_SERVICEABILITY_URL", "/api/v1/location/pincodes/"),
+			Timeout:           getEnvAsDurationOrDefault("URBANBOLT_TIMEOUT", 30*time.Second),
+			TokenExpiryBuffer: getEnvAsDurationOrDefault("URBANBOLT_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
+			MaxRetries:        getEnvAsIntOrDefault("URBANBOLT_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("URBANBOLT_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("URBANBOLT_ENABLED", true),
+			Rating:            4.0,
+		},
+		Delhivery: DelhiveryConfig{
+			BaseURL:           getEnvOrDefault("DELHIVERY_BASE_URL", "https://track.delhivery.com"),
+			AccessToken:       getEnvOrDefault("DELHIVERY_ACCESS_TOKEN", "7882000764f1aa847f8e0addadb7262eb7ad8de6"),
+			ServiceabilityURL:  getEnvOrDefault("DELHIVERY_SERVICEABILITY_URL", "/api/dc/expected_tat"),
+			Timeout:           getEnvAsDurationOrDefault("DELHIVERY_TIMEOUT", 30*time.Second),
+			MaxRetries:        getEnvAsIntOrDefault("DELHIVERY_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("DELHIVERY_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("DELHIVERY_ENABLED", true),
+			Rating:            4.0,
 		},
 
 	}
