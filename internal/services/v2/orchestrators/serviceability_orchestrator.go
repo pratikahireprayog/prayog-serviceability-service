@@ -385,6 +385,7 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
         "component":         "serviceability_orchestrator",
         "action":            "check_serviceability",
         "total_partners":    len(partnerResults),
+		"partnerResults": partnerResults,
         "serviceable_count": len(response.Partners),
         "success":           response.Success,
     }).Info("V2 serviceability check completed")
@@ -550,7 +551,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 				"tenant_id":    tenantID,
 				"error":        err.Error(),
 			}).Debug("Failed to fetch tenant partner credentials, will use default credentials")
-		} else if credentials != nil && len(credentials) > 0 {
+		} else if len(credentials) > 0 {
 			// Store credentials in context for adapter to use
 			ctx = tenantcontext.WithPartnerCredentials(ctx, info.PartnerCode, credentials)
 			s.logger.WithFields(logrus.Fields{
@@ -721,22 +722,23 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				partnerResponse.Error = result.Result.ErrorMessage
 			}
 
+			// Determine if partner is Smile HubOps (or hyperlocal variant)
+			isHubOps := false
+			if result.PartnerInfo != nil {
+				partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
+				if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
+					isHubOps = true
+				}
+			}
+
+			// Always capture hub_details from HubOps even if not serviceable
+			if isHubOps && hubDetails != nil && topLevelHubDetails == nil {
+				topLevelHubDetails = hubDetails
+			}
+
 			// Only add to response if serviceable and no errors
 			if isServiceable && !hasError {
-				// If this partner is Smile HubOps, do NOT include it in partners array.
-				// Only set top-level hub_details if present.
-				isHubOps := false
-				if result.PartnerInfo != nil {
-					partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
-					if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
-						isHubOps = true
-					}
-				}
-
 				if isHubOps {
-					if hubDetails != nil {
-						topLevelHubDetails = hubDetails
-					}
 					// Count Smile HubOps as serviceable but skip adding to partners array
 					serviceableCount++
 				} else {
