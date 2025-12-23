@@ -3,7 +3,9 @@ package india_post_domestic
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
@@ -144,6 +146,64 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 
 	// Convert response to serviceability result
 	result := a.convertToServiceabilityResult(response, partnerInfo, pincodeToCheck)
+	
+	// Call HubOps API to get route information and add to hub_details
+	// This is called before returning the response as per requirements
+	if request.SourcePostalCode != nil && *request.SourcePostalCode != "" {
+		hubOpsResp, err := a.client.GetRouteByPincode(ctx, *request.SourcePostalCode, pincodeToCheck)
+		if err != nil {
+			// Check if this is a 400 error with "3PL is not available" message
+			errStr := err.Error()
+			if strings.Contains(errStr, "status 400") && strings.Contains(errStr, "3PL is not available") {
+				a.logger.WithFields(logrus.Fields{
+					"component":              "india_post_domestic_adapter",
+					"partner_code":           partnerInfo.PartnerCode,
+					"partner_id":             partnerID,
+					"source_postal_code":     *request.SourcePostalCode,
+					"destination_postal_code": pincodeToCheck,
+					"error":                  err.Error(),
+				}).Warn("3PL not available for destination pincode - marking as not serviceable")
+				
+				// Return not serviceable result
+				return &common.PartnerServiceabilityResult{
+					PartnerID:    partnerInfo.PartnerID,
+					PartnerCode:  partnerInfo.PartnerCode,
+					Services:     make([]models.ServiceV2, 0),
+					ResponseTime: time.Since(startTime),
+					Error:        err,
+					ErrorMessage: &[]string{"3PL is not available for destination pincode"}[0],
+					Metadata: map[string]interface{}{
+						"reason": "3PL is not available for destination pincode",
+						"pincode": pincodeToCheck,
+					},
+				}, nil
+			}
+			
+			a.logger.WithFields(logrus.Fields{
+				"component":              "india_post_domestic_adapter",
+				"partner_code":           partnerInfo.PartnerCode,
+				"partner_id":             partnerID,
+				"source_postal_code":     *request.SourcePostalCode,
+				"destination_postal_code": pincodeToCheck,
+				"error":                  err.Error(),
+			}).Warn("HubOps API call failed, continuing without hub_details")
+		} else if hubOpsResp != nil {
+			// Convert all keys to snake_case and add to metadata as hub_details
+			converted := convertKeysToSnakeCase(hubOpsResp)
+			if result.Metadata == nil {
+				result.Metadata = make(map[string]interface{})
+			}
+			result.Metadata["hub_details"] = converted
+			a.logger.WithFields(logrus.Fields{
+				"component":              "india_post_domestic_adapter",
+				"partner_code":           partnerInfo.PartnerCode,
+				"partner_id":             partnerID,
+				"source_postal_code":     *request.SourcePostalCode,
+				"destination_postal_code": pincodeToCheck,
+			}).Info("Successfully added hub_details to metadata (snake_case)")
+		}
+	}
+	
 	result.ResponseTime = time.Since(startTime)
 
 	a.logger.WithFields(logrus.Fields{
@@ -457,5 +517,46 @@ func getOfficeTypeName(officeTypeCode string) string {
 	default:
 		return "Post Office"
 	}
+}
+
+// convertKeysToSnakeCase recursively converts all map keys to snake_case
+func convertKeysToSnakeCase(input interface{}) interface{} {
+	switch v := input.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for k, val := range v {
+			out[toSnakeCase(k)] = convertKeysToSnakeCase(val)
+		}
+		return out
+	case []interface{}:
+		arr := make([]interface{}, len(v))
+		for i, elem := range v {
+			arr[i] = convertKeysToSnakeCase(elem)
+		}
+		return arr
+	default:
+		return input
+	}
+}
+
+var snakeCaseRegex1 = regexp.MustCompile("([a-z])([A-Z])")
+var snakeCaseRegex2 = regexp.MustCompile("([A-Z]+)([A-Z][a-z])")
+var snakeCaseRegex3 = regexp.MustCompile("([0-9])([A-Z])") // Digit before any uppercase (e.g., "3PL" -> "3_PL", "3Hub" -> "3_Hub")
+
+func toSnakeCase(s string) string {
+	if s == "" {
+		return s
+	}
+	// Replace spaces and hyphens with underscores first
+	s = strings.ReplaceAll(s, "-", "_")
+	s = strings.ReplaceAll(s, " ", "_")
+	// Handle digit before uppercase (e.g., "3PL" -> "3_PL", "3Hub" -> "3_Hub")
+	s = snakeCaseRegex3.ReplaceAllString(s, "${1}_${2}")
+	// Handle cases like JSONURL -> json_url (uppercase sequences before camelCase)
+	s = snakeCaseRegex2.ReplaceAllString(s, "${1}_${2}")
+	// Handle lowercase before uppercase (camelCase -> camel_case)
+	s = snakeCaseRegex1.ReplaceAllString(s, "${1}_${2}")
+	s = strings.ToLower(s)
+	return s
 }
 

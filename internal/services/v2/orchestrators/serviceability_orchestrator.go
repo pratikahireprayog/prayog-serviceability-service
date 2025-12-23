@@ -690,6 +690,18 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			// Metadata alone does not make a partner serviceable (it may just contain error info)
 			isServiceable := hasServices || (hasCapabilities && !hasError)
 
+			// Check if this is India Post Domestic - if so, extract hub_details for top level
+			if result.PartnerInfo != nil {
+				partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
+				if partnerCodeLower == "india_post_domestic" {
+					// Extract hub_details for top level, don't include in partner response
+					if hubDetails != nil {
+						topLevelHubDetails = hubDetails
+					}
+					hubDetails = nil // Don't include in partner response
+				}
+			}
+
 			partnerResponse := models.PartnerV2Response{
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
