@@ -743,9 +743,6 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 					partnerResponses = append(partnerResponses, partnerResponse)
 					serviceablePartnerResponses = append(serviceablePartnerResponses, partnerResponse)
 					serviceableCount++
-					
-					// Add hardcoded smile_courier partner response when India Post Domestic is processed
-					
 				}
 			}
 			// Non-serviceable partners (with errors or no services/capabilities/metadata) are excluded from the response
