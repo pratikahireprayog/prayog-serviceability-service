@@ -122,17 +122,22 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 			"Authorization",
 			"X-Request-ID",
 			"X-Requested-With",
-			"X-Tenant-ID", // COMMENTED FOR TESTING - Your API requires this
-			"tenantid",    // COMMENTED FOR TESTING - Your API requires this (lowercase variant)
+			"X-Tenant-ID",
+			"X-User-ID",
+			"tenantid",
+			"userid",
 			"User-Agent",
 			"Referer",
 			"sec-ch-ua", // Chrome security headers
 			"sec-ch-ua-mobile",
 			"sec-ch-ua-platform",
+			"Access-Control-Request-Method",
+			"Access-Control-Request-Headers",
 		}, ","),
 		AllowCredentials: false,
 		ExposeHeaders: strings.Join([]string{
 			"Content-Length",
+			"Content-Type",
 			"X-API-Version",
 			"X-Service-Name",
 			"X-Request-ID",
@@ -271,6 +276,17 @@ func (s *Server) setupRoutes() error {
 
 	// Create API v3 group under serviceability
 	v3 := serviceabilityGroup.Group("/v3")
+
+	// Explicitly handle OPTIONS requests for V3 routes to ensure CORS works
+	v3.Options("/*", func(c *fiber.Ctx) error {
+		s.logger.WithFields(logrus.Fields{
+			"method":  c.Method(),
+			"path":    c.Path(),
+			"origin":  c.Get("Origin"),
+			"headers": c.Get("Access-Control-Request-Headers"),
+		}).Debug("V3 CORS preflight OPTIONS request received")
+		return c.SendStatus(fiber.StatusNoContent)
+	})
 
 	// Create V3 serviceability handler if v2Orchestrator is available (V3 uses V2 orchestrator)
 	if s.v2Orchestrator != nil {
