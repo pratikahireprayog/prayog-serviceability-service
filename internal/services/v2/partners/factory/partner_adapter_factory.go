@@ -11,6 +11,7 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/aramex"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
+	"prayog-serviceability-service/internal/services/v2/partners/delhivery"
 	"prayog-serviceability-service/internal/services/v2/partners/dharmendra"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
@@ -26,7 +27,6 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
 	"prayog-serviceability-service/internal/services/v2/partners/sunil_baral"
 	"prayog-serviceability-service/internal/services/v2/partners/urbanbolt"
-	"prayog-serviceability-service/internal/services/v2/partners/delhivery"
 	"prayog-serviceability-service/internal/shared/config"
 
 	"github.com/sirupsen/logrus"
@@ -65,6 +65,9 @@ var adapterImplementationMap = map[string]string{
 	"INDIA_POST_DOMESTIC":    "india_post_domestic",    // Uppercase variant
 	"naqel":                  "naqel",                  // Direct mapping
 	"dharmendra":            "dharmendra",            // Direct mapping for Dharmendra ecomm
+	"xpressbees":            "dharmendra",            // XpressBees maps to dharmendra
+	"expressbees":           "dharmendra",            // expressbees maps to dharmendra
+	"XpressBees":            "dharmendra",            // XpressBees (capitalized) maps to dharmendra
 	"sunil_baral":            "sunil_baral",            // Direct mapping for Sunil Baral ecomm
 	"urbanbolt":              "urbanbolt",              // Direct mapping for UrbanBolt
 	"delhivery":              "delhivery",              // Direct mapping for Delhivery
@@ -100,12 +103,22 @@ func getPartnerDisplayName(code string) string {
 		"aramex":                   "Aramex",
 		"fedex":                    "FedEx",
 		"shipcube":                 "ShipCube",
-		"dharmendra":              "Dharmendra",
+		"dharmendra":              "XpressBees",
+		"xpressbees":              "XpressBees",
+		"expressbees":             "XpressBees",
+		"XpressBees":              "XpressBees",
 		"sunil_baral":              "Sunil Baral",
 		"urbanbolt":                "UrbanBolt",
 		"delhivery":                "Delhivery",
 	}
 
+	// Check case-insensitive first
+	codeLower := strings.ToLower(code)
+	if name, exists := nameMap[codeLower]; exists {
+		return name
+	}
+	
+	// Check exact match
 	if name, exists := nameMap[code]; exists {
 		return name
 	}

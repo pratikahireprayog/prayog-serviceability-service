@@ -148,6 +148,7 @@ type V2Filters struct {
 	ProductType       *string         `json:"product_type,omitempty"`
 	CountryCode       *string         `json:"country_code,omitempty"`
 	RequestedPartners []PartnerFilter `json:"requested_partners,omitempty"`
+	FailedPartners    []string        `json:"failed_partners,omitempty"`
 }
 
 // BulkServiceabilityV2Request represents bulk requests for v2

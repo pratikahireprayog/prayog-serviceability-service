@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -37,17 +38,19 @@ func (s *ServiceabilityService) CheckServiceability(ctx context.Context, request
 	// Convert V3 request to V2 request format
 	v2Request := request.ToV2Request()
 
-	// Try to fetch user-specific partners from partner service
-	// If this fails or returns empty, fall back to using all available partners (like V2 does)
 	var partners []partner_service.PartnerInfo
 	
 	if len(v2Request.Partners) > 0 {
 		// Partners specified in request - use them directly
 		// v2Request.Partners is already set from ToV2Request(), so we can proceed
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id":      tenantID,
+			"user_id":        userID,
+			"request_partners_count": len(v2Request.Partners),
+		}).Info("Using partners specified in request payload")
 	} else {
-		// No partners in request - try to fetch user-specific partners from partner service
-		// ONLY use them if we actually receive data (non-empty response)
-		// If API fails or returns empty, skip this and let normal flow continue
+		// No partners in request - MUST fetch from user-partners API
+		// Partners will ONLY be called if they are present in user-partners API response
 		s.logger.WithFields(logrus.Fields{
 			"tenant_id":      tenantID,
 			"user_id":        userID,
@@ -55,50 +58,70 @@ func (s *ServiceabilityService) CheckServiceability(ctx context.Context, request
 		}).Info("No partners in request, calling partner service API to fetch user partners")
 		
 		if s.partnerClient == nil {
-			s.logger.Warn("Partner client is nil, skipping partner service API call")
-			// Don't set v2Request.Partners - leave it empty so normal flow continues
-		} else {
-			partners, err := s.partnerClient.GetUserPartners(ctx, tenantID, userID)
+			s.logger.WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"user_id":   userID,
+			}).Error("Partner client is nil, cannot fetch user partners")
+			return nil, errors.NewServiceError(
+				"PARTNER_SERVICE_UNAVAILABLE",
+				"Partner service client is not configured. Cannot fetch user partners.",
+				503,
+				fmt.Errorf("partner service client is nil"),
+			)
+		}
+
+		var err error
+		partners, err = s.partnerClient.GetUserPartners(ctx, tenantID, userID)
 		if err != nil {
-			// API call failed - skip this functionality, let normal flow continue
+			// API call failed - return error, no fallback to default flow
 			s.logger.WithFields(logrus.Fields{
 				"tenant_id": tenantID,
 				"user_id":   userID,
 				"error":     err.Error(),
-			}).Info("Failed to fetch user partners from partner service, skipping partner filtering - will use normal serviceability flow")
-			// Don't set v2Request.Partners - leave it empty so normal flow continues
-		} else if len(partners) > 0 {
-			// API returned data - use only these partners
+			}).Error("Failed to fetch user partners from partner service")
+			return nil, errors.NewServiceError(
+				"PARTNER_SERVICE_ERROR",
+				fmt.Sprintf("Failed to fetch user partners: %v", err),
+				502,
+				err,
+			)
+		}
+
+		if len(partners) == 0 {
+			// No user-specific partners found - return empty response, no fallback
 			s.logger.WithFields(logrus.Fields{
-				"tenant_id":     tenantID,
-				"user_id":       userID,
-				"partners_count": len(partners),
-			}).Info("Received partners from partner service API, using only these partners for serviceability")
-
-			// Map fetched partners to V2 request partners
-			v2Partners := make([]modelsv1.PartnerFilter, len(partners))
-			for i, p := range partners {
-				var id string
-				if p.ID != "" {
-					id = p.ID
-				}
-
-				v2Partners[i] = modelsv1.PartnerFilter{
-					ID:   &id,
-					Code: p.Code,
-				}
-			}
-			v2Request.Partners = v2Partners
-		} else {
-		// No user-specific partners found - let V2 orchestrator use all available partners
-		// This matches V2 API behavior when no partners are specified
-		s.logger.WithFields(logrus.Fields{
 				"tenant_id": tenantID,
 				"user_id":   userID,
-			}).Info("Partner service API returned empty data, skipping partner filtering - will use normal serviceability flow")
-			// Don't set v2Request.Partners - leave it empty so normal flow continues
+			}).Info("Partner service API returned empty data, no partners available for user")
+			
+			// Return empty response with no partners
+			return &modelsv3.ServiceabilityV3Response{
+				Success:  false,
+				Partners: []modelsv3.PartnerV3Response{},
+			}, nil
+		}
+
+		// API returned data - use only these partners
+		s.logger.WithFields(logrus.Fields{
+			"tenant_id":     tenantID,
+			"user_id":       userID,
+			"partners_count": len(partners),
+		}).Info("Received partners from partner service API, using only these partners for serviceability")
+
+		// Map fetched partners to V2 request partners
+		v2Partners := make([]modelsv1.PartnerFilter, len(partners))
+		for i, p := range partners {
+			var id string
+			if p.ID != "" {
+				id = p.ID
+			}
+
+			v2Partners[i] = modelsv1.PartnerFilter{
+				ID:   &id,
+				Code: p.Code,
 			}
 		}
+		v2Request.Partners = v2Partners
 	}
 
 	s.logger.WithFields(logrus.Fields{
