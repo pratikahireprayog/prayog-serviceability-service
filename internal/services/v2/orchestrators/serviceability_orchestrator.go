@@ -334,7 +334,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
     startTime := time.Now()
     // Get eligible partners based on parcel category filtering
-    eligiblePartners, err := s.getEligiblePartners(ctx, req)
+    eligiblePartners, invalidPartners, err := s.getEligiblePartners(ctx, req)
     if err != nil {
         s.logger.WithFields(logrus.Fields{
             "component": "serviceability_orchestrator",
@@ -362,11 +362,18 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
         s.logger.WithFields(logrus.Fields{
             "component": "serviceability_orchestrator",
         }).Info("No eligible partners found, returning empty response")
-        return &models.ServiceabilityV2Response{
+        
+        // Calculate total requested partners (valid + invalid)
+        totalRequestedPartners := len(invalidPartners)
+        if len(req.Partners) > 0 {
+            totalRequestedPartners = len(req.Partners)
+        }
+        
+        emptyResponse := &models.ServiceabilityV2Response{
             Success:  false,
             Partners: []models.PartnerV2Response{},
             Metadata: &models.V2ResponseMetadata{
-                TotalPartners:    0,
+                TotalPartners:    totalRequestedPartners,
                 ServiceableCount: 0,
                 Filters: models.V2Filters{
                     CountryCode:       req.CountryCode,
@@ -375,11 +382,49 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
                     RequestedPartners: req.Partners,
                 },
             },
-        }, nil
+        }
+        // Add invalid partners to filters if any
+        if len(invalidPartners) > 0 {
+            emptyResponse.Metadata.Filters.FailedPartners = invalidPartners
+            emptyResponse.Metadata.PartnersFailed = len(invalidPartners)
+        }
+        return emptyResponse, nil
     }
 
     // Process results and build response
     response := s.buildV2Response(partnerResults, req)
+
+    // Calculate total requested partners (valid + invalid)
+    totalRequestedPartners := len(eligiblePartners) + len(invalidPartners)
+    if len(req.Partners) > 0 {
+        // If partners were explicitly requested, use that count
+        totalRequestedPartners = len(req.Partners)
+    }
+
+    // Add invalid partners to metadata filters instead of partners array
+    if len(invalidPartners) > 0 {
+        s.logger.WithFields(logrus.Fields{
+            "component":        "serviceability_orchestrator",
+            "invalid_partners": invalidPartners,
+        }).Info("Adding invalid partners to metadata filters")
+        
+        // Add invalid partners to metadata filters
+        if response.Metadata != nil {
+            // Ensure Filters is properly initialized
+            if response.Metadata.Filters.RequestedPartners == nil {
+                response.Metadata.Filters.RequestedPartners = req.Partners
+            }
+            response.Metadata.Filters.FailedPartners = invalidPartners
+            
+            // Update metadata to reflect failed partners count
+            response.Metadata.PartnersFailed += len(invalidPartners)
+        }
+    }
+
+    // Update TotalPartners to include all requested partners (valid + invalid)
+    if response.Metadata != nil {
+        response.Metadata.TotalPartners = totalRequestedPartners
+    }
 
     s.logger.WithFields(logrus.Fields{
         "component":         "serviceability_orchestrator",
@@ -388,6 +433,7 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
 		"partnerResults": partnerResults,
         "serviceable_count": len(response.Partners),
         "success":           response.Success,
+        "invalid_partners":  len(invalidPartners),
     }).Info("V2 serviceability check completed")
 
     // Set processing time in metadata
@@ -705,7 +751,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			partnerResponse := models.PartnerV2Response{
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
-				PartnerName:     "",  // No partner name in database
+				PartnerName:     s.getPartnerDisplayName(partnerCode),  // Get display name based on partner code
 				Rating:          0.0, // No rating in database
 				Services:        result.Result.Services,
 				PartnerServices: result.Result.PartnerServices,
@@ -1152,7 +1198,8 @@ func (s *serviceabilityOrchestrator) validateV2Request(req *models.Serviceabilit
 }
 
 // getEligiblePartners filters partners based on request attributes (e.g., parcel category)
-func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, req *models.ServiceabilityV2Request) ([]DatabasePartnerInfo, error) {
+// Returns valid partners, invalid partner codes, and error
+func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, req *models.ServiceabilityV2Request) ([]DatabasePartnerInfo, []string, error) {
 	s.logger.WithFields(logrus.Fields{
 		"component":       "serviceability_orchestrator",
 		"parcel_category": req.ParcelCategory,
@@ -1181,7 +1228,13 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 			}(),
 		}).Info("Using specifically requested partners from request body")
 
-		return s.filterRequestedPartners(ctx, req.Partners, allSupportedPartners)
+		validPartners, invalidPartners := s.filterRequestedPartners(ctx, req.Partners, allSupportedPartners)
+		// Continue with valid partners even if some are invalid
+		if len(validPartners) == 0 && len(invalidPartners) > 0 {
+			// All partners are invalid - return error
+			return nil, invalidPartners, fmt.Errorf("all requested partners are invalid: %v", invalidPartners)
+		}
+		return validPartners, invalidPartners, nil
 	}
 
 	// PRIORITY 2: If no specific partners requested, use parcel category filtering
@@ -1194,7 +1247,7 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 				PartnerID:   nil, // No database info available
 			})
 		}
-		return partnerInfos, nil
+		return partnerInfos, nil, nil
 	}
 
 	// If partner attribute mapping repository is not available, return all supported partners
@@ -1212,7 +1265,7 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 				PartnerID:   nil, // No database info available
 			})
 		}
-		return partnerInfos, nil
+		return partnerInfos, nil, nil
 	}
 
 	// Get partners that support the specific parcel category from database
@@ -1271,7 +1324,7 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 				PartnerID:   nil, // No database info available
 			})
 		}
-		return partnerInfos, nil
+		return partnerInfos, nil, nil
 	}
 
 	// Filter to only include partners that are both:
@@ -1319,12 +1372,12 @@ func (s *serviceabilityOrchestrator) getEligiblePartners(ctx context.Context, re
 		}
 	}
 
-	return eligiblePartners, nil
+	return eligiblePartners, nil, nil
 }
 
 // filterRequestedPartners filters partners based on requested partner codes from request body
-// STRICT VALIDATION: Returns error if ANY requested partner is not supported
-func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context, requestedPartners []models.PartnerFilter, allSupportedPartners []string) ([]DatabasePartnerInfo, error) {
+// Returns valid partners and invalid partner codes separately, continues with valid partners
+func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context, requestedPartners []models.PartnerFilter, allSupportedPartners []string) ([]DatabasePartnerInfo, []string) {
 	// Create a map of supported partners for quick lookup (case-insensitive)
 	supportedPartnerMap := make(map[string]string) // lowercase -> actual code
 	for _, partner := range allSupportedPartners {
@@ -1334,14 +1387,40 @@ func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context
 	filteredPartners := make([]DatabasePartnerInfo, 0, len(requestedPartners))
 	invalidPartners := make([]string, 0)
 
-	// Process each requested partner with STRICT validation
+	// Process each requested partner
 	for _, reqPartner := range requestedPartners {
 		partnerCodeLower := strings.ToLower(reqPartner.Code)
+		var matchedCode string
+		var isSupported bool
 		
-		// Check if the requested partner is supported
+		// First, check if the requested partner code exists directly in supported partners
 		if actualCode, exists := supportedPartnerMap[partnerCodeLower]; exists {
+			matchedCode = actualCode
+			isSupported = true
+		} else {
+			// If not found directly, try to map it using getImplementationCode
+			// This handles aliases like smile_ecomm -> smile_ecom
+			mappedCode := getImplementationCode(reqPartner.Code)
+			mappedCodeLower := strings.ToLower(mappedCode)
+			
+			// Check if the mapped code exists in supported partners
+			if actualCode, exists := supportedPartnerMap[mappedCodeLower]; exists {
+				matchedCode = actualCode
+				isSupported = true
+				s.logger.WithFields(logrus.Fields{
+					"component":        "serviceability_orchestrator",
+					"requested_code":   reqPartner.Code,
+					"mapped_code":      mappedCode,
+					"matched_code":     actualCode,
+				}).Info("Requested partner mapped to supported implementation")
+			}
+		}
+		
+		if isSupported {
+			// Use the original requested code (database code) for PartnerCode
+			// This preserves the database partner code in the response
 			partnerInfo := DatabasePartnerInfo{
-				PartnerCode: actualCode,
+				PartnerCode: reqPartner.Code, // Keep original requested code
 				PartnerID:   nil, // Will be populated if needed from database
 			}
 
@@ -1358,43 +1437,43 @@ func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context
 			s.logger.WithFields(logrus.Fields{
 				"component":        "serviceability_orchestrator",
 				"requested_code":   reqPartner.Code,
-				"matched_code":     actualCode,
+				"matched_code":     matchedCode,
 			}).Info("Requested partner is supported")
 		} else {
-			// STRICT: Collect invalid partners to return error
+			// Collect invalid partners to track in response
 			invalidPartners = append(invalidPartners, reqPartner.Code)
 			s.logger.WithFields(logrus.Fields{
 				"component":          "serviceability_orchestrator",
 				"requested_code":     reqPartner.Code,
 				"supported_partners": allSupportedPartners,
-			}).Error("Requested partner is not supported")
+			}).Warn("Requested partner is not supported, will skip and continue with valid partners")
 		}
 	}
 
-	// STRICT VALIDATION: If ANY partner is invalid, return error
 	if len(invalidPartners) > 0 {
-		errorMsg := fmt.Sprintf("invalid partner code(s): %v. Supported partners: %v", invalidPartners, allSupportedPartners)
 		s.logger.WithFields(logrus.Fields{
 			"component":        "serviceability_orchestrator",
 			"invalid_partners": invalidPartners,
-			"valid_partners":   allSupportedPartners,
-		}).Error("Request contains invalid partner codes")
-		
-		return nil, fmt.Errorf("%s", errorMsg)
+			"valid_count":      len(filteredPartners),
+			"invalid_count":    len(invalidPartners),
+		}).Info("Some requested partners are invalid, continuing with valid partners")
+	} else {
+		s.logger.WithFields(logrus.Fields{
+			"component":       "serviceability_orchestrator",
+			"requested_count": len(requestedPartners),
+			"filtered_count":  len(filteredPartners),
+		}).Info("All requested partners are valid")
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"component":       "serviceability_orchestrator",
-		"requested_count": len(requestedPartners),
-		"filtered_count":  len(filteredPartners),
-	}).Info("All requested partners are valid")
-
-	return filteredPartners, nil
+	return filteredPartners, invalidPartners
 }
 
 // getImplementationCode returns the implementation code for a given database partner code
 func getImplementationCode(dbPartnerCode string) string {
 	// This mapping should match the one in the factory
+	// Convert to lowercase for case-insensitive lookup
+	normalizedCode := strings.ToLower(dbPartnerCode)
+	
 	adapterImplementationMap := map[string]string{
 		"smile_ecomm":             "smile_ecom",
 		"smile_ecom":              "smile_ecom",
@@ -1409,17 +1488,68 @@ func getImplementationCode(dbPartnerCode string) string {
 		"aramex":                  "aramex",
 		"fedex":                   "fedex",
 		"shipcube":                "shipcube",
-		"india_post_domestic":     "india_post_domestic",
-		"INDIA_POST_DOMESTIC":     "india_post_domestic", // Uppercase variant
+		"india_post_domestic":     "india_post_domestic", // Handles both lowercase and uppercase (via lowercase conversion)
 		"naqel":                   "naqel",
 		"dharmendra":             "dharmendra",
+		"xpressbees":             "dharmendra",          // XpressBees maps to dharmendra
+		"expressbees":            "dharmendra",          // expressbees maps to dharmendra
 		"sunil_baral":             "sunil_baral",
+		"urbanbolt":               "urbanbolt",
+		"delhivery":               "delhivery",
 	}
 
-	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {
+	if implCode, exists := adapterImplementationMap[normalizedCode]; exists {
 		return implCode
 	}
 	return dbPartnerCode // Return original code if no mapping exists
+}
+
+// getPartnerDisplayName returns the display name for a partner code
+func (s *serviceabilityOrchestrator) getPartnerDisplayName(code string) string {
+	// Simple name mapping for known partners
+	nameMap := map[string]string{
+		"dhl":                    "DHL",
+		"smile_cargo":            "Smile Cargo",
+		"smile_ecomm":            "Smile Ecommerce",
+		"smile_ecom":             "Smile Ecommerce",
+		"shipyaari":              "Shipyaari",
+		"smile_courier":          "Smile Courier",
+		"smile_hubops":           "Smile HubOps",
+		"porter":                 "Porter",
+		"india_post_international": "India Post International",
+		"india_post_domestic":     "India Post Domestic",
+		"naqel":                  "Naqel",
+		"aramex":                 "Aramex",
+		"fedex":                  "FedEx",
+		"shipcube":               "ShipCube",
+		"dharmendra":             "XpressBees",
+		"xpressbees":             "XpressBees",
+		"expressbees":            "XpressBees",
+		"XpressBees":             "XpressBees",
+		"sunil_baral":            "Sunil Baral",
+		"urbanbolt":              "UrbanBolt",
+		"delhivery":              "Delhivery",
+	}
+
+	// Check case-insensitive first
+	codeLower := strings.ToLower(code)
+	if name, exists := nameMap[codeLower]; exists {
+		return name
+	}
+	
+	// Check exact match
+	if name, exists := nameMap[code]; exists {
+		return name
+	}
+
+	// Convert snake_case to Title Case for unknown codes
+	parts := strings.Split(code, "_")
+	for i, part := range parts {
+		if len(part) > 0 {
+			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // partnerResult represents the result of checking serviceability with a single partner
