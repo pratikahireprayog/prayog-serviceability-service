@@ -696,8 +696,27 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 
         if result.Error != nil {
 			// Handle partner errors (API failures, timeouts, etc.)
-			// Don't add error responses to the partners array
-			// They will be excluded from the final response
+			// Include them in the response so user can see what went wrong
+			if result.PartnerInfo != nil {
+				partnerID := "unknown"
+				if result.PartnerInfo.PartnerID != nil {
+					partnerID = result.PartnerInfo.PartnerID.String()
+				}
+				errorMsg := result.Error.Error()
+				partnerResponse := models.PartnerV2Response{
+					PartnerID:     partnerID,
+					PartnerCode:   result.PartnerInfo.PartnerCode,
+					PartnerName:   s.getPartnerDisplayName(result.PartnerInfo.PartnerCode),
+					Rating:       0.0,
+					Services:      []models.ServiceV2{},
+					Capabilities: make(map[string]interface{}),
+					Metadata:      make(map[string]interface{}),
+					Source:        "real_time",
+					IsServiceable: false,
+					Error:         &errorMsg,
+				}
+				partnerResponses = append(partnerResponses, partnerResponse)
+			}
 
         } else if result.Result != nil {
 			// Convert partner result to V2 response using database info
@@ -769,20 +788,21 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 			}
 
 			// Determine if partner is Smile HubOps (or hyperlocal variant)
-			isHubOps := false
-			if result.PartnerInfo != nil {
-				partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
-				if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
-					isHubOps = true
+				isHubOps := false
+				if result.PartnerInfo != nil {
+					partnerCodeLower := strings.ToLower(result.PartnerInfo.PartnerCode)
+					if partnerCodeLower == "smile_hubops" || partnerCodeLower == "smile_hyperlocal_hubops" {
+						isHubOps = true
+					}
 				}
-			}
 
 			// Always capture hub_details from HubOps even if not serviceable
 			if isHubOps && hubDetails != nil && topLevelHubDetails == nil {
-				topLevelHubDetails = hubDetails
-			}
+						topLevelHubDetails = hubDetails
+					}
 
-			// Only add to response if serviceable and no errors
+			// Add partner to response if serviceable, or if it has an error message (so user can see what went wrong)
+			// Always include partners that were requested, even if they have errors
 			if isServiceable && !hasError {
 				if isHubOps {
 					// Count Smile HubOps as serviceable but skip adding to partners array
@@ -792,8 +812,12 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 					serviceablePartnerResponses = append(serviceablePartnerResponses, partnerResponse)
 					serviceableCount++
 				}
+			} else if hasError {
+				// Include partners with errors in the response so user can see what went wrong
+				// But don't count them as serviceable
+				partnerResponses = append(partnerResponses, partnerResponse)
 			}
-			// Non-serviceable partners (with errors or no services/capabilities/metadata) are excluded from the response
+			// Partners with no services/capabilities and no errors are excluded from the response
 		}
 	}
 
@@ -1458,11 +1482,11 @@ func (s *serviceabilityOrchestrator) filterRequestedPartners(ctx context.Context
 			"invalid_count":    len(invalidPartners),
 		}).Info("Some requested partners are invalid, continuing with valid partners")
 	} else {
-		s.logger.WithFields(logrus.Fields{
-			"component":       "serviceability_orchestrator",
-			"requested_count": len(requestedPartners),
-			"filtered_count":  len(filteredPartners),
-		}).Info("All requested partners are valid")
+	s.logger.WithFields(logrus.Fields{
+		"component":       "serviceability_orchestrator",
+		"requested_count": len(requestedPartners),
+		"filtered_count":  len(filteredPartners),
+	}).Info("All requested partners are valid")
 	}
 
 	return filteredPartners, invalidPartners

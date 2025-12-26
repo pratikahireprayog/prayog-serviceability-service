@@ -109,7 +109,7 @@ func (u *UrbanBoltAdapter) CheckServiceability(ctx context.Context, request *mod
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			ResponseTime: time.Since(startTime),
-			Error:        fmt.Errorf(errorMsg),
+			Error:        fmt.Errorf("%s", errorMsg),
 		}, nil
 	}
 

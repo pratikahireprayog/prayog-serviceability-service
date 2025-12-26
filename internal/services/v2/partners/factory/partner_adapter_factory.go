@@ -117,7 +117,7 @@ func getPartnerDisplayName(code string) string {
 	if name, exists := nameMap[codeLower]; exists {
 		return name
 	}
-	
+
 	// Check exact match
 	if name, exists := nameMap[code]; exists {
 		return name
