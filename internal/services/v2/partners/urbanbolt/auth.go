@@ -106,6 +106,11 @@ func (a *Authenticator) Authenticate(ctx context.Context) error {
 		return fmt.Errorf("failed to parse auth response: %w", err)
 	}
 
+	// Check status if present (optional, but good for debugging)
+	if authResp.Status != "" && authResp.Status != "Success" {
+		return fmt.Errorf("authentication failed with status: %s", authResp.Status)
+	}
+
 	// Validate response
 	if authResp.AccessToken == "" {
 		return fmt.Errorf("invalid authentication response: access_token is empty")

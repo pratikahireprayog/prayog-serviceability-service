@@ -11,6 +11,8 @@ type AuthResponse struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"` // in seconds
 	TokenType   string `json:"token_type,omitempty"`
+	Expires     string `json:"expires,omitempty"`     // ISO timestamp when token expires
+	Status      string `json:"status,omitempty"`     // Response status (e.g., "Success")
 }
 
 // ServiceabilityRequest represents a request to UrbanBolt's serviceability API
