@@ -459,7 +459,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:          4.2,
 		},
 		SmileEcom: SmileEcomConfig{
-			TableName:    getEnvOrDefault("SMILE_ECOM_TABLE_NAME", "smile_ecom_serviceability"),
+			TableName:    getEnvOrDefault("SMILE_ECOM_TABLE_NAME", "ecomm_serviceability_pincodes"),
 			Enabled:      getEnvAsBoolOrDefault("SMILE_ECOM_ENABLED", true), // Enabled by default
 			Rating:       4.0,
 			CacheEnabled: getEnvAsBoolOrDefault("SMILE_ECOM_CACHE_ENABLED", true),
