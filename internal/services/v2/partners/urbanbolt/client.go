@@ -65,6 +65,9 @@ func (c *Client) CheckServiceability(ctx context.Context, pincodes []string) (*S
 	q.Set("pincodes", pincodeStr)
 	u.RawQuery = q.Encode()
 
+	// Log the request URL and pincodes being sent
+	fmt.Printf("[urbanbolt] Making serviceability request: URL=%s, pincodes=%v, pincodeStr=%s\n", u.String(), pincodes, pincodeStr)
+
 	// Create HTTP request
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {

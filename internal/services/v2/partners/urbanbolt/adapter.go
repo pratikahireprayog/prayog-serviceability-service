@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
+
+	"github.com/sirupsen/logrus"
 )
 
 // UrbanBoltAdapter implements the common.PartnerAdapter interface for UrbanBolt
@@ -187,6 +188,18 @@ func (u *UrbanBoltAdapter) transformResponse(resp *ServiceabilityResponse, partn
 		Metadata:     make(map[string]interface{}),
 	}
 
+	// Log full response for debugging
+	u.logger.WithFields(logrus.Fields{
+		"component":       "urbanbolt_adapter",
+		"status":          resp.Status,
+		"message":         resp.Message,
+		"data_count":      len(resp.Data),
+		"error_pincodes":  resp.ErrorPincodes,
+		"source_pincode":  sourcePincode,
+		"dest_pincode":    destPincode,
+		"full_response":   resp,
+	}).Info("UrbanBolt API response received")
+
 	// Check if response indicates success
 	if resp.Status != "Success" {
 		errorMsg := resp.Message
@@ -206,13 +219,44 @@ func (u *UrbanBoltAdapter) transformResponse(resp *ServiceabilityResponse, partn
 	sourcePincodeInt, _ := strconv.Atoi(sourcePincode)
 	destPincodeInt, _ := strconv.Atoi(destPincode)
 
+	// Log all pincodes in response data
+	pincodesInResponse := make([]int, 0, len(resp.Data))
+	for _, data := range resp.Data {
+		pincodesInResponse = append(pincodesInResponse, data.Pincode)
+	}
+	u.logger.WithFields(logrus.Fields{
+		"component":           "urbanbolt_adapter",
+		"source_pincode_int":  sourcePincodeInt,
+		"dest_pincode_int":    destPincodeInt,
+		"pincodes_in_response": pincodesInResponse,
+		"error_pincodes":      resp.ErrorPincodes,
+	}).Info("Checking pincode matching")
+
 	var sourceData, destData *PincodeServiceability
 	for _, data := range resp.Data {
 		if data.Pincode == sourcePincodeInt {
 			sourceData = &data
+			u.logger.WithFields(logrus.Fields{
+				"component":      "urbanbolt_adapter",
+				"pincode":        sourcePincode,
+				"pincode_int":    sourcePincodeInt,
+				"found":          true,
+				"is_active":      data.IsActive,
+				"inbound":        data.Inbound,
+				"outbound":       data.Outbound,
+			}).Info("Source pincode found in response")
 		}
 		if data.Pincode == destPincodeInt {
 			destData = &data
+			u.logger.WithFields(logrus.Fields{
+				"component":      "urbanbolt_adapter",
+				"pincode":        destPincode,
+				"pincode_int":    destPincodeInt,
+				"found":          true,
+				"is_active":      data.IsActive,
+				"inbound":        data.Inbound,
+				"outbound":       data.Outbound,
+			}).Info("Destination pincode found in response")
 		}
 	}
 
@@ -222,12 +266,29 @@ func (u *UrbanBoltAdapter) transformResponse(resp *ServiceabilityResponse, partn
 			"component":      "urbanbolt_adapter",
 			"source_found":    sourceData != nil,
 			"dest_found":      destData != nil,
+			"source_pincode":  sourcePincode,
+			"dest_pincode":    destPincode,
+			"source_pincode_int": sourcePincodeInt,
+			"dest_pincode_int":   destPincodeInt,
 			"error_pincodes":  resp.ErrorPincodes,
-		}).Info("Pincode not found in serviceable data")
+			"pincodes_in_response": pincodesInResponse,
+			"response_data":   resp.Data,
+		}).Warn("Pincode not found in serviceable data - UrbanBolt API returned error")
 		
-		errorMsg := "One or more pincodes are not serviceable"
+		// Build a more descriptive error message
+		var errorMsg string
 		if len(resp.ErrorPincodes) > 0 {
+			// Use the error pincodes from API response
 			errorMsg = fmt.Sprintf("Invalid pincodes: %s", strings.Join(resp.ErrorPincodes, ", "))
+		} else {
+			// If no error pincodes in response, identify which pincode is missing
+			if sourceData == nil && destData == nil {
+				errorMsg = fmt.Sprintf("Both pincodes are not serviceable: source (%s), destination (%s)", sourcePincode, destPincode)
+			} else if sourceData == nil {
+				errorMsg = fmt.Sprintf("Source pincode is not serviceable: %s", sourcePincode)
+			} else {
+				errorMsg = fmt.Sprintf("Destination pincode is not serviceable: %s", destPincode)
+			}
 		}
 		result.ErrorMessage = &errorMsg
 		return result

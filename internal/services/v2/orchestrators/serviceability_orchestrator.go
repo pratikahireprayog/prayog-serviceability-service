@@ -267,16 +267,20 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 			"rate_client_ready":  s.rateClient != nil,
 		}).Info("Fetching rates for all serviceable partners across strategy")
 
-		// Filter serviceable partners for rate fetching
-		serviceablePartners := make([]models.PartnerV2Response, 0)
+		// Filter partners for rate fetching - include all partners (serviceable and non-serviceable with errors)
+		// This allows us to get rates even for partners that have serviceability errors
+		partnersForRates := make([]models.PartnerV2Response, 0)
 		for _, partner := range response.Partners {
-			if partner.IsServiceable {
-				serviceablePartners = append(serviceablePartners, partner)
+			// Include partner if:
+			// 1. It's serviceable, OR
+			// 2. It has an error but was requested (so we can still try to get rates)
+			if partner.IsServiceable || partner.Error != nil {
+				partnersForRates = append(partnersForRates, partner)
 			}
 		}
-		s.logger.Info("serviceablePartners", serviceablePartners);
-		if len(serviceablePartners) > 0 {
-			ratesResponse, rateErr := s.fetchRatesForPartners(context.Background(), req, serviceablePartners)
+		s.logger.Info("serviceablePartners", partnersForRates);
+		if len(partnersForRates) > 0 {
+			ratesResponse, rateErr := s.fetchRatesForPartners(context.Background(), req, partnersForRates)
 			if rateErr != nil {
 				// Rate API call failed - clear services for all partners
 				s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, clearing services for all partners")
@@ -1039,6 +1043,17 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 	for _, successResp := range rates.Data.SuccessfulResponses {
 		partnerCode := strings.ToLower(successResp.Partner.Code)
 
+		// Log UrbanBolt rate response
+		if partnerCode == "urbanbolt" {
+			s.logger.WithFields(logrus.Fields{
+				"component":        "serviceability_orchestrator",
+				"partner_code":     partnerCode,
+				"partner_name":     successResp.Partner.Name,
+				"rates_count":      len(successResp.AvailableRates),
+				"raw_response":     successResp,
+			}).Info("UrbanBolt rate response received from rates API")
+		}
+
 		// Convert anonymous struct to our named struct type
 		partnerRates := make([]newintl.RateQuote, 0, len(successResp.AvailableRates))
 		for _, r := range successResp.AvailableRates {
@@ -1062,6 +1077,16 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 		}
 
 		ratesMap[partnerCode] = partnerRates
+
+		// Log UrbanBolt processed rates
+		if partnerCode == "urbanbolt" {
+			s.logger.WithFields(logrus.Fields{
+				"component":    "serviceability_orchestrator",
+				"partner_code": partnerCode,
+				"rates_count":  len(partnerRates),
+				"rates":        partnerRates,
+			}).Info("UrbanBolt rates processed and stored in ratesMap")
+		}
 	}
 
 	// Create a set of successful partner codes for quick lookup
@@ -1075,8 +1100,26 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 	for i := range partners {
 		partnerCode := strings.ToLower(partners[i].PartnerCode)
 		
+		// Log UrbanBolt rate merging process
+		if partnerCode == "urbanbolt" {
+			s.logger.WithFields(logrus.Fields{
+				"component":        "serviceability_orchestrator",
+				"partner_code":     partnerCode,
+				"partner_id":       partners[i].PartnerID,
+				"in_successful":    successfulPartnerCodes[partnerCode],
+				"rates_map_exists": ratesMap[partnerCode] != nil,
+			}).Info("Processing UrbanBolt rates merge")
+		}
+		
 		// If partner is not in successful responses, clear their services
 		if !successfulPartnerCodes[partnerCode] {
+			if partnerCode == "urbanbolt" {
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"partner_code": partnerCode,
+					"reason":       "Partner not in successful rate responses",
+				}).Warn("UrbanBolt not found in successful rate responses")
+			}
 			partners[i].Services = []models.ServiceV2{}
 			partners[i].PartnerServices = []models.ServiceV2{}
 			if partners[i].Metadata == nil {
@@ -1089,6 +1132,14 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 
 		// Partner is in successful responses, check if they have rates
 		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
+			if partnerCode == "urbanbolt" {
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"partner_code": partnerCode,
+					"rates_count":  len(availableRates),
+					"rates":        availableRates,
+				}).Info("UrbanBolt rates found and being merged into partner response")
+			}
 			services := make([]models.ServiceV2, 0, len(availableRates))
 
 			for _, rate := range availableRates {
