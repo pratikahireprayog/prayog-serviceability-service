@@ -79,7 +79,14 @@ func NewServiceabilityOrchestrator(
     // Register strategies (pattern only). Default delegates to existing flow via executeDefault.
     registry := map[string]StrategyConstructor{
         "default": func() OrchestrationStrategy {
-            return &dstrategy.DefaultStrategy{ExecuteFunc: s.executeDefault}
+            // Wrapper to match DefaultStrategy signature (without rates pointers)
+            executeDefaultWrapper := func(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
+                // Create dummy pointers for rates (won't be used in this path)
+                var ratesResp *supplyrates.RateQuoteResponse
+                var rateErr error
+                return s.executeDefault(ctx, req, &ratesResp, &rateErr)
+            }
+            return &dstrategy.DefaultStrategy{ExecuteFunc: executeDefaultWrapper}
         },
         // Minimal implementation uses partner factory; injected here
         "smile_primary_np_extension": func() OrchestrationStrategy {
@@ -146,6 +153,9 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 	var response *models.ServiceabilityV2Response
 	var err error
 	var strategyCode string
+	// Variables for rates API response (may be set by executeDefault in parallel)
+	var ratesResponse *supplyrates.RateQuoteResponse
+	var rateErr error
 	// PRIORITY 1: Check if specific partners are requested - if yes, detect if they're international
 	// Partners array takes priority over parcel_category
 	if req != nil && req.Partners != nil && len(req.Partners) > 0 {
@@ -247,7 +257,7 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 				"component": "serviceability_orchestrator",
 				"strategy":  "default",
 			}).Info("Falling back to default strategy")
-			response, err = s.executeDefault(timeoutCtx, req)
+			response, err = s.executeDefault(timeoutCtx, req, &ratesResponse, &rateErr)
 		} else {
 			// Delegate to non-default strategy
 			response, err = strat.Execute(timeoutCtx, req)
@@ -258,75 +268,81 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 		return nil, err
 	}
 
-	// CENTRALIZED RATE FETCHING: Fetch rates for ALL serviceable partners regardless of strategy
+	// CENTRALIZED RATE FETCHING: Use rates from parallel call or fetch if not already fetched
 	if response != nil && len(response.Partners) > 0 {
 		s.logger.WithFields(logrus.Fields{
 			"component":          "serviceability_orchestrator",
 			"strategy_used":      strategyCode,
 			"total_partners":     len(response.Partners),
 			"rate_client_ready":  s.rateClient != nil,
-		}).Info("Fetching rates for all serviceable partners across strategy")
+			"rates_already_fetched": ratesResponse != nil,
+		}).Info("Processing rates for all serviceable partners across strategy")
 
-		// Filter partners for rate fetching - include all partners (serviceable and non-serviceable with errors)
-		// This allows us to get rates even for partners that have serviceability errors
-		partnersForRates := make([]models.PartnerV2Response, 0)
-		for _, partner := range response.Partners {
-			// Include partner if:
-			// 1. It's serviceable, OR
-			// 2. It has an error but was requested (so we can still try to get rates)
-			if partner.IsServiceable || partner.Error != nil {
-				partnersForRates = append(partnersForRates, partner)
+		// If rates were not fetched in parallel (non-default strategy), fetch them now
+		if ratesResponse == nil && rateErr == nil {
+			// Filter partners for rate fetching - include all partners (serviceable and non-serviceable with errors)
+			// This allows us to get rates even for partners that have serviceability errors
+			partnersForRates := make([]models.PartnerV2Response, 0)
+			for _, partner := range response.Partners {
+				// Include partner if:
+				// 1. It's serviceable, OR
+				// 2. It has an error but was requested (so we can still try to get rates)
+				if partner.IsServiceable || partner.Error != nil {
+					partnersForRates = append(partnersForRates, partner)
+				}
+			}
+			s.logger.Info("serviceablePartners", partnersForRates);
+			if len(partnersForRates) > 0 {
+				ratesResponse, rateErr = s.fetchRatesForPartners(context.Background(), req, partnersForRates)
 			}
 		}
-		s.logger.Info("serviceablePartners", partnersForRates);
-		if len(partnersForRates) > 0 {
-			ratesResponse, rateErr := s.fetchRatesForPartners(context.Background(), req, partnersForRates)
-			if rateErr != nil {
-				// Rate API call failed - clear services for all partners
-				s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, clearing services for all partners")
-				for i := range response.Partners {
-					response.Partners[i].Services = []models.ServiceV2{}
-					response.Partners[i].PartnerServices = []models.ServiceV2{}
-					if response.Partners[i].Metadata == nil {
-						response.Partners[i].Metadata = make(map[string]interface{})
-					}
-					response.Partners[i].Metadata["rate_api_error"] = rateErr.Error()
-					response.Partners[i].Metadata["rates_available"] = false
+		
+		// Process rates response (either from parallel call or sequential call)
+		if rateErr != nil {
+			// Rate API call failed - clear services for all partners
+			s.logger.WithError(rateErr).Warn("Failed to fetch rates for partners, clearing services for all partners")
+			for i := range response.Partners {
+				response.Partners[i].Services = []models.ServiceV2{}
+				response.Partners[i].PartnerServices = []models.ServiceV2{}
+				if response.Partners[i].Metadata == nil {
+					response.Partners[i].Metadata = make(map[string]interface{})
 				}
-			} else if ratesResponse != nil && ratesResponse.Success {
-				s.logger.WithFields(logrus.Fields{
-					"component":        "serviceability_orchestrator",
-					"rates_found":      ratesResponse.Metadata.TotalRatesFound,
-					"partners_with_rates": len(ratesResponse.Data.SuccessfulResponses),
-				}).Info("Successfully fetched rates for partners")
+				response.Partners[i].Metadata["rate_api_error"] = rateErr.Error()
+				response.Partners[i].Metadata["rates_available"] = false
+			}
+		} else if ratesResponse != nil && ratesResponse.Success {
+			// Rates were fetched successfully (either in parallel or sequentially)
+			s.logger.WithFields(logrus.Fields{
+				"component":        "serviceability_orchestrator",
+				"rates_found":      ratesResponse.Metadata.TotalRatesFound,
+				"partners_with_rates": len(ratesResponse.Data.SuccessfulResponses),
+			}).Info("Successfully fetched rates for partners")
 
-				// Attach rates to partner responses
-				// s.attachRatesToPartnerResponses(&response.Partners, ratesResponse)
-				s.mergeRatesIntoPartners(response.Partners, ratesResponse)
-				// Update metadata to indicate rates are included
-				if response.Metadata != nil {
-					totalRatesFound := 0
-					for _, partner := range response.Partners {
-						for _, service := range partner.Services {
-							if service.Rate != nil {
-								totalRatesFound++
-							}
+			// Attach rates to partner responses
+			s.mergeRatesIntoPartners(response.Partners, ratesResponse)
+			// Update metadata to indicate rates are included
+			if response.Metadata != nil {
+				totalRatesFound := 0
+				for _, partner := range response.Partners {
+					for _, service := range partner.Services {
+						if service.Rate != nil {
+							totalRatesFound++
 						}
 					}
-					response.Metadata.RatesIncluded = totalRatesFound > 0
 				}
-			} else if ratesResponse != nil && !ratesResponse.Success {
-				// Rate API returned unsuccessful response - clear services for all partners
-				s.logger.WithField("message", ratesResponse.Message).Warn("Rate API returned unsuccessful response, clearing services for all partners")
-				for i := range response.Partners {
-					response.Partners[i].Services = []models.ServiceV2{}
-					response.Partners[i].PartnerServices = []models.ServiceV2{}
-					if response.Partners[i].Metadata == nil {
-						response.Partners[i].Metadata = make(map[string]interface{})
-					}
-					response.Partners[i].Metadata["rate_api_error"] = ratesResponse.Message
-					response.Partners[i].Metadata["rates_available"] = false
+				response.Metadata.RatesIncluded = totalRatesFound > 0
+			}
+		} else if ratesResponse != nil && !ratesResponse.Success {
+			// Rate API returned unsuccessful response - clear services for all partners
+			s.logger.WithField("message", ratesResponse.Message).Warn("Rate API returned unsuccessful response, clearing services for all partners")
+			for i := range response.Partners {
+				response.Partners[i].Services = []models.ServiceV2{}
+				response.Partners[i].PartnerServices = []models.ServiceV2{}
+				if response.Partners[i].Metadata == nil {
+					response.Partners[i].Metadata = make(map[string]interface{})
 				}
+				response.Partners[i].Metadata["rate_api_error"] = ratesResponse.Message
+				response.Partners[i].Metadata["rates_available"] = false
 			}
 		}
 	}
@@ -335,7 +351,8 @@ func (s *serviceabilityOrchestrator) CheckServiceability(ctx context.Context, re
 }
 
 // executeDefault runs the existing default orchestration flow
-func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *models.ServiceabilityV2Request) (*models.ServiceabilityV2Response, error) {
+// ratesResponsePtr and rateErrPtr are optional pointers to store rates API results for parallel execution
+func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *models.ServiceabilityV2Request, ratesResponsePtr **supplyrates.RateQuoteResponse, rateErrPtr *error) (*models.ServiceabilityV2Response, error) {
     startTime := time.Now()
     // Get eligible partners based on parcel category filtering
     eligiblePartners, invalidPartners, err := s.getEligiblePartners(ctx, req)
@@ -359,8 +376,67 @@ func (s *serviceabilityOrchestrator) executeDefault(ctx context.Context, req *mo
         }(),
     }).Info("Found eligible partners, starting serviceability checks")
 
+    // Prepare partners for rates API call (start in parallel with serviceability checks)
+    // Note: ratesResponse and rateErr are declared in outer scope (CheckServiceability function)
+    var ratesWg sync.WaitGroup
+    
+    // Start rates API call in parallel with partner checks if rate client is available
+    if s.rateClient != nil && len(eligiblePartners) > 0 {
+        ratesWg.Add(1)
+        go func() {
+            defer ratesWg.Done()
+            // Convert eligible partners to PartnerV2Response format for rates API
+            // We'll use all eligible partners - rates API can handle non-serviceable ones
+            partnersForRates := make([]models.PartnerV2Response, 0, len(eligiblePartners))
+            for _, partner := range eligiblePartners {
+                partnerIDStr := ""
+                if partner.PartnerID != nil {
+                    partnerIDStr = partner.PartnerID.String()
+                }
+                partnersForRates = append(partnersForRates, models.PartnerV2Response{
+                    PartnerID:   partnerIDStr,
+                    PartnerCode: partner.PartnerCode,
+                    // Assume serviceable for now - will be filtered later if needed
+                    IsServiceable: true,
+                })
+            }
+            
+            s.logger.WithFields(logrus.Fields{
+                "component":       "serviceability_orchestrator",
+                "action":          "fetch_rates_parallel",
+                "partners_count":  len(partnersForRates),
+            }).Info("Starting rates API call in parallel with partner checks")
+            
+            resp, err := s.fetchRatesForPartners(ctx, req, partnersForRates)
+            
+            // Use pointers to set outer scope variables
+            if ratesResponsePtr != nil {
+                *ratesResponsePtr = resp
+            }
+            if rateErrPtr != nil {
+                *rateErrPtr = err
+            }
+            
+            if err != nil {
+                s.logger.WithError(err).Warn("Rates API call completed with error (parallel execution)")
+            } else if resp != nil {
+                s.logger.WithFields(logrus.Fields{
+                    "component":        "serviceability_orchestrator",
+                    "action":           "fetch_rates_parallel",
+                    "rates_found":       resp.Metadata.TotalRatesFound,
+                    "partners_with_rates": len(resp.Data.SuccessfulResponses),
+                }).Info("Rates API call completed successfully (parallel execution)")
+            }
+        }()
+    }
+
     // Check serviceability with all eligible partners concurrently
     partnerResults := s.checkWithPartners(ctx, req, eligiblePartners)
+    
+    // Wait for rates API call to complete (if it was started)
+    if s.rateClient != nil && len(eligiblePartners) > 0 {
+        ratesWg.Wait()
+    }
 
     if len(eligiblePartners) == 0 {
         s.logger.WithFields(logrus.Fields{
@@ -1173,7 +1249,24 @@ func (s *serviceabilityOrchestrator) mergeRatesIntoPartners(
 				services = append(services, service)
 			}
 
+			partners[i].Services = services
 			partners[i].PartnerServices = services
+			
+			// If partner has rates, mark as serviceable even if it had an error initially
+			// Having rates means the partner can actually service the route
+			previousStatus := partners[i].IsServiceable
+			partners[i].IsServiceable = true
+			
+			if !previousStatus {
+				s.logger.WithFields(logrus.Fields{
+					"component":        "serviceability_orchestrator",
+					"partner_code":     partnerCode,
+					"rates_count":      len(availableRates),
+					"services_count":   len(services),
+					"previous_status":  previousStatus,
+				}).Info("Partner marked as serviceable due to available rates (was previously not serviceable)")
+			}
+			
 			if partners[i].Metadata == nil {
 				partners[i].Metadata = make(map[string]interface{})
 			}
