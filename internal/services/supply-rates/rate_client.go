@@ -94,6 +94,26 @@ type RatePackage struct {
 	} `json:"dimensions"`
 }
 
+// getRatePartnerCode returns the partner code format expected by the rates API
+// Some partners need lowercase, others need uppercase
+func getRatePartnerCode(partnerCode string) string {
+	// Partners that should be lowercase in rates API
+	lowercasePartners := map[string]bool{
+		"urbanbolt": true,
+		"xpressbees": true,
+		"expressbees": true,
+		"dharmendra": true,
+	}
+	
+	codeLower := strings.ToLower(partnerCode)
+	if lowercasePartners[codeLower] {
+		return codeLower
+	}
+	
+	// Default: uppercase for all other partners
+	return strings.ToUpper(partnerCode)
+}
+
 // NewRateClient creates a reusable client.
 func NewRateClient(logger *logrus.Logger) *RateClient {
 	if logger == nil {
@@ -122,10 +142,44 @@ func (rc *RateClient) GetRatesForPartners(
 	// 1️⃣ Build request payload
 	payload := rc.buildRatesRequestPayload(req, srcPin, srcCC, dstPin, dstCC, serviceable)
 
+	// Log the payload details before marshaling
+	partnerCodes := make([]string, 0, len(payload.Partners))
+	partnerDetails := make([]map[string]interface{}, 0, len(payload.Partners))
+	for _, p := range payload.Partners {
+		partnerCodes = append(partnerCodes, p.Code)
+		partnerDetails = append(partnerDetails, map[string]interface{}{
+			"id":   p.ID,
+			"code": p.Code,
+		})
+	}
+	
+	rc.Logger.WithFields(logrus.Fields{
+		"component":        "supply_rates_client",
+		"url":              rc.BaseURL,
+		"partners_count":   len(payload.Partners),
+		"partner_codes":    partnerCodes,
+		"partner_details":  partnerDetails,
+		"packages_count":   len(payload.Packages),
+		"source_location":  payload.SourceLocation,
+		"dest_location":    payload.DestinationLocation,
+		"metadata":         payload.Metadata,
+		"full_payload":     payload,
+	}).Info("Rates API request payload built")
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
+
+	// Log the JSON body being sent
+	rc.Logger.WithFields(logrus.Fields{
+		"component":  "supply_rates_client",
+		"url":        rc.BaseURL,
+		"method":     http.MethodPost,
+		"body_size":  len(body),
+		"body_json":  string(body),
+		"partners":   partnerCodes,
+	}).Info("Sending request to Supply Rate API")
 
 	// 2️⃣ Create HTTP request
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, rc.BaseURL, bytes.NewBuffer(body))
@@ -134,13 +188,6 @@ func (rc *RateClient) GetRatesForPartners(
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "Prayog-Serviceability-Service/1.0")
-
-	rc.Logger.WithFields(logrus.Fields{
-		"component": "supply_rates_client",
-		"url":       rc.BaseURL,
-		"partners":  len(payload.Partners),
-		"packages":  len(payload.Packages),
-	}).Info("Calling Supply Rate API")
 
 	// 3️⃣ Execute HTTP request
 	resp, err := rc.Client.Do(httpReq)
@@ -331,9 +378,11 @@ func (rc *RateClient) buildRatesRequestPayload(
 	// Build partners list
 	partners := make([]RatePartnerEntry, 0, len(serviceable))
 	for _, p := range serviceable {
+		// Get the partner code for rates API (some partners need lowercase, others uppercase)
+		ratePartnerCode := getRatePartnerCode(p.PartnerCode)
 		partners = append(partners, RatePartnerEntry{
 			ID:   p.PartnerID,
-			Code: strings.ToUpper(p.PartnerCode),
+			Code: ratePartnerCode,
 		})
 	}
 
