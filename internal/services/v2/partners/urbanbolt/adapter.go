@@ -2,184 +2,190 @@ package urbanbolt
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/shared/config"
 	"prayog-serviceability-service/internal/shared/models/v1"
+	"prayog-serviceability-service/internal/shared/repositories/v1"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // UrbanBoltAdapter implements the common.PartnerAdapter interface for UrbanBolt
 type UrbanBoltAdapter struct {
-	*common.HTTPBaseAdapter
-	client *Client
-	config config.UrbanBoltConfig
-	logger *logrus.Logger
+	repository repositories.UrbanboltRepository
+	config     config.UrbanBoltConfig
+	logger     *logrus.Logger
 }
 
 // NewUrbanBoltAdapter creates a new UrbanBolt adapter
-func NewUrbanBoltAdapter(cfg config.UrbanBoltConfig) common.PartnerAdapter {
-	// Create partner config
-	partnerConfig := common.GetPartnerConfigDefaults("urbanbolt", "UrbanBolt", common.AdapterTypeHTTP)
-	partnerConfig.Timeout = cfg.Timeout
-	partnerConfig.Enabled = cfg.Enabled
-
-	// Update endpoints
-	partnerConfig.Endpoints = map[string]string{
-		"base_url":           cfg.BaseURL,
-		"auth_token_path":     cfg.AuthTokenPath,
-		"serviceability_url":  cfg.ServiceabilityURL,
-	}
-
-	// Update auth config
-	partnerConfig.Auth = common.AuthConfig{
-		Type: common.AuthTypeJWT,
-		Credentials: map[string]string{
-			"username": cfg.Username,
-			"password": cfg.Password,
-		},
-		TokenURL: cfg.AuthTokenPath,
-	}
-
-	// Create base adapter
-	baseAdapter := common.NewHTTPBaseAdapter(partnerConfig)
-
-	// Create UrbanBolt specific components
-	auth := NewAuthenticator(cfg)
-	client := NewClient(cfg, auth)
-
-	// Set HTTP client and authenticator
-	baseAdapter.SetHTTPClient(client)
-	baseAdapter.SetAuthenticator(auth)
-
-	// Initialize logger
+func NewUrbanBoltAdapter(cfg config.UrbanBoltConfig, db *sql.DB) common.PartnerAdapter {
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
-	adapter := &UrbanBoltAdapter{
-		HTTPBaseAdapter: baseAdapter,
-		client:          client,
-		config:          cfg,
-		logger:          logger,
+	// Create gorm.DB from sql.DB
+	var gormDB *gorm.DB
+	var err error
+	if db != nil {
+		gormDB, err = gorm.Open(postgres.New(postgres.Config{
+			Conn: db,
+		}), &gorm.Config{})
+		if err != nil {
+			logger.WithError(err).Warn("Failed to create gorm.DB from sql.DB, repository operations may fail")
+		}
 	}
 
-	return adapter
+	// Create repository
+	var repo repositories.UrbanboltRepository
+	if gormDB != nil {
+		repo = repositories.NewUrbanboltRepository(gormDB, cfg.TableName)
+	} else {
+		logger.Warn("No database connection available for UrbanBolt repository")
+	}
+
+	logger.WithFields(logrus.Fields{
+		"partner":    "UrbanBolt",
+		"table_name": cfg.TableName,
+		"enabled":    cfg.Enabled,
+	}).Info("Creating UrbanBolt adapter")
+
+	return &UrbanBoltAdapter{
+		repository: repo,
+		config:     cfg,
+		logger:     logger,
+	}
 }
 
-// CheckServiceability checks serviceability for the request
+// GetAdapterType returns the adapter type
+func (u *UrbanBoltAdapter) GetAdapterType() common.AdapterType {
+	return common.AdapterTypeDatabase
+}
+
+// IsEnabled returns whether the adapter is enabled
+func (u *UrbanBoltAdapter) IsEnabled() bool {
+	return u.config.Enabled
+}
+
+// CheckServiceability checks if UrbanBolt can service the given request
 func (u *UrbanBoltAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
-	u.logger.WithFields(logrus.Fields{
-		"component":       "urbanbolt_adapter",
-		"action":          "check_serviceability",
-		"partner_code":    partnerInfo.PartnerCode,
-		"partner_id":      partnerInfo.PartnerID,
-		"source_postal":  request.SourcePostalCode,
-		"dest_postal":     request.DestinationPostalCode,
-	}).Info("Starting UrbanBolt serviceability check")
+	partnerID := ""
+	if partnerInfo.PartnerID != nil {
+		partnerID = partnerInfo.PartnerID.String()
+	}
 
-	// Validate request
-	if err := common.ValidateServiceabilityRequest(request); err != nil {
-		u.RecordRequest(time.Since(startTime), false)
+	u.logger.WithFields(logrus.Fields{
+		"component":    "urbanbolt_adapter",
+		"action":        "check_serviceability_start",
+		"partner_code":  partnerInfo.PartnerCode,
+		"partner_id":    partnerID,
+	}).Info("Starting UrbanBolt adapter serviceability check")
+
+	// Validate requirements
+	if err := u.validateRequirements(request); err != nil {
+		return &common.PartnerServiceabilityResult{
+			PartnerID:    partnerInfo.PartnerID,
+			PartnerCode:  partnerInfo.PartnerCode,
+			Services:     make([]models.ServiceV2, 0),
+			ResponseTime: time.Since(startTime),
+			Error:        err,
+			ErrorMessage: &[]string{fmt.Sprintf("UrbanBolt validation failed: %v", err)}[0],
+		}, nil
+	}
+
+	// Check if repository is available
+	if u.repository == nil {
+		errMsg := "UrbanBolt repository not available"
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
 			ResponseTime: time.Since(startTime),
-			Error:        err,
+			ErrorMessage: &errMsg,
 		}, nil
 	}
 
-	// Get pincodes from request
+	// Get source/dest pincodes
 	sourcePincode := getSourcePincode(request)
 	destPincode := getDestinationPincode(request)
 
-		if sourcePincode == "" || destPincode == "" {
-		errorMsg := "source and destination pincodes are required for UrbanBolt"
-		u.logger.WithFields(logrus.Fields{
-			"component": "urbanbolt_adapter",
-			"error":     errorMsg,
-		}).Warn("Missing pincodes - returning non-serviceable")
-		u.RecordRequest(time.Since(startTime), false)
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			ResponseTime: time.Since(startTime),
-			Error:        fmt.Errorf("%s", errorMsg),
-		}, nil
-	}
-
-	// Prepare pincodes list (UrbanBolt accepts multiple pincodes)
-	pincodes := []string{sourcePincode, destPincode}
-
-	// Make API call
-	response, err := u.client.CheckServiceability(ctx, pincodes)
+	// Check Source Pincode
+	sourceData, err := u.repository.CheckServiceabilityByPincode(ctx, sourcePincode)
 	if err != nil {
-		u.logger.WithFields(logrus.Fields{
-			"component": "urbanbolt_adapter",
-			"error":     err.Error(),
-		}).Error("API call failed - returning non-serviceable")
-		u.RecordRequest(time.Since(startTime), false)
-		return &common.PartnerServiceabilityResult{
-			PartnerID:    partnerInfo.PartnerID,
-			PartnerCode:  partnerInfo.PartnerCode,
-			ResponseTime: time.Since(startTime),
-			Error:        err,
-		}, nil
+		return u.createNonServiceableResult(partnerInfo, startTime, fmt.Sprintf("Source pincode %s not serviceable active", sourcePincode)), nil
 	}
 
-	// Transform response
-	result := u.transformResponse(response, partnerInfo, sourcePincode, destPincode)
-	result.ResponseTime = time.Since(startTime)
+	// Check Destination Pincode
+	destData, err := u.repository.CheckServiceabilityByPincode(ctx, destPincode)
+	if err != nil {
+		return u.createNonServiceableResult(partnerInfo, startTime, fmt.Sprintf("Destination pincode %s not serviceable active", destPincode)), nil
+	}
 
-	// Record successful request
-	u.RecordRequest(time.Since(startTime), true)
+	// Check Logic: Source Outbound && Dest Inbound
+	if !sourceData.Outbound {
+		return u.createNonServiceableResult(partnerInfo, startTime, fmt.Sprintf("Source pincode %s does not support outbound", sourcePincode)), nil
+	}
+	if !destData.Inbound {
+		return u.createNonServiceableResult(partnerInfo, startTime, fmt.Sprintf("Destination pincode %s does not support inbound", destPincode)), nil
+	}
+
+	// Make sure Service Types match? Or just take the intersection?
+	// User data has service_type column "SDD,NDD".
+	// We can compute common service types or just list all potential services and let the system filter.
+	// For now, let's use the Destination services as the main driver, checked against Source support?
+	// Actually, usually the Route or Destination defines the service type (e.g. NDD to that dest).
+	// We will follow the logic of converting the data to result.
+
+	result := u.convertToServiceabilityResult(sourceData, destData, partnerInfo)
+	result.ResponseTime = time.Since(startTime)
+	
+	u.logger.WithFields(logrus.Fields{
+		"component":      "urbanbolt_adapter",
+		"partner_code":   partnerInfo.PartnerCode,
+		"pincode_src":    sourcePincode,
+		"pincode_dst":    destPincode,
+		"is_serviceable": len(result.Services) > 0,
+	}).Info("UrbanBolt serviceability check completed")
 
 	return result, nil
 }
 
-// Initialize performs any necessary initialization
-func (u *UrbanBoltAdapter) Initialize(ctx context.Context) error {
-	if err := u.HTTPBaseAdapter.Initialize(ctx); err != nil {
-		return err
+func (u *UrbanBoltAdapter) createNonServiceableResult(partnerInfo common.PartnerInfo, startTime time.Time, reason string) *common.PartnerServiceabilityResult {
+	return &common.PartnerServiceabilityResult{
+		PartnerID:    partnerInfo.PartnerID,
+		PartnerCode:  partnerInfo.PartnerCode,
+		Services:     make([]models.ServiceV2, 0),
+		ResponseTime: time.Since(startTime),
+		Metadata: map[string]interface{}{
+			"reason": reason,
+		},
+	}
+}
+
+// validateRequirements validates specific requirements
+func (u *UrbanBoltAdapter) validateRequirements(request *models.ServiceabilityV2Request) error {
+	src := getSourcePincode(request)
+	dst := getDestinationPincode(request)
+	
+	if src == "" || dst == "" {
+		return fmt.Errorf("both source and destination pincodes are required")
 	}
 
-	// Authenticate with UrbanBolt
-	if err := u.GetAuthenticator().Authenticate(ctx); err != nil {
-		u.SetHealthStatus("unhealthy")
-		return err
+	if len(src) != 6 || len(dst) != 6 {
+		return fmt.Errorf("pincodes must be 6 digits")
 	}
 
-	u.SetHealthStatus("healthy")
 	return nil
 }
 
-// IsHealthy checks if the UrbanBolt adapter is healthy
-func (u *UrbanBoltAdapter) IsHealthy(ctx context.Context) bool {
-	// Check base health
-	if !u.HTTPBaseAdapter.IsHealthy(ctx) {
-		return false
-	}
-
-	// Check if configuration is valid (don't require authentication for health check)
-	// Authentication will happen when needed or during Initialize
-	if !u.config.Enabled {
-		return false
-	}
-	if u.config.BaseURL == "" || u.config.Username == "" || u.config.Password == "" {
-		return false
-	}
-
-	return true
-}
-
-// transformResponse converts UrbanBolt response to standard format
-func (u *UrbanBoltAdapter) transformResponse(resp *ServiceabilityResponse, partnerInfo common.PartnerInfo, sourcePincode, destPincode string) *common.PartnerServiceabilityResult {
+// convertToServiceabilityResult converts database result to common format
+func (u *UrbanBoltAdapter) convertToServiceabilityResult(sourceData, destData *repositories.UrbanboltPincode, partnerInfo common.PartnerInfo) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -188,189 +194,84 @@ func (u *UrbanBoltAdapter) transformResponse(resp *ServiceabilityResponse, partn
 		Metadata:     make(map[string]interface{}),
 	}
 
-	// Log full response for debugging
-	u.logger.WithFields(logrus.Fields{
-		"component":       "urbanbolt_adapter",
-		"status":          resp.Status,
-		"message":         resp.Message,
-		"data_count":      len(resp.Data),
-		"error_pincodes":  resp.ErrorPincodes,
-		"source_pincode":  sourcePincode,
-		"dest_pincode":    destPincode,
-		"full_response":   resp,
-	}).Info("UrbanBolt API response received")
-
-	// Check if response indicates success
-	if resp.Status != "Success" {
-		errorMsg := resp.Message
-		if errorMsg == "" {
-			errorMsg = fmt.Sprintf("UrbanBolt API returned status: %s", resp.Status)
-		}
-		u.logger.WithFields(logrus.Fields{
-			"component": "urbanbolt_adapter",
-			"status":    resp.Status,
-			"message":   resp.Message,
-		}).Info("Non-serviceable response")
-		result.ErrorMessage = &errorMsg
-		return result
-	}
-
-	// Check if we have serviceability data for the requested pincodes
-	sourcePincodeInt, _ := strconv.Atoi(sourcePincode)
-	destPincodeInt, _ := strconv.Atoi(destPincode)
-
-	// Log all pincodes in response data
-	pincodesInResponse := make([]int, 0, len(resp.Data))
-	for _, data := range resp.Data {
-		pincodesInResponse = append(pincodesInResponse, data.Pincode)
-	}
-	u.logger.WithFields(logrus.Fields{
-		"component":           "urbanbolt_adapter",
-		"source_pincode_int":  sourcePincodeInt,
-		"dest_pincode_int":    destPincodeInt,
-		"pincodes_in_response": pincodesInResponse,
-		"error_pincodes":      resp.ErrorPincodes,
-	}).Info("Checking pincode matching")
-
-	var sourceData, destData *PincodeServiceability
-	for _, data := range resp.Data {
-		if data.Pincode == sourcePincodeInt {
-			sourceData = &data
-			u.logger.WithFields(logrus.Fields{
-				"component":      "urbanbolt_adapter",
-				"pincode":        sourcePincode,
-				"pincode_int":    sourcePincodeInt,
-				"found":          true,
-				"is_active":      data.IsActive,
-				"inbound":        data.Inbound,
-				"outbound":       data.Outbound,
-			}).Info("Source pincode found in response")
-		}
-		if data.Pincode == destPincodeInt {
-			destData = &data
-			u.logger.WithFields(logrus.Fields{
-				"component":      "urbanbolt_adapter",
-				"pincode":        destPincode,
-				"pincode_int":    destPincodeInt,
-				"found":          true,
-				"is_active":      data.IsActive,
-				"inbound":        data.Inbound,
-				"outbound":       data.Outbound,
-			}).Info("Destination pincode found in response")
-		}
-	}
-
-	// If either pincode is not serviceable, return non-serviceable
-	if sourceData == nil || destData == nil {
-		u.logger.WithFields(logrus.Fields{
-			"component":      "urbanbolt_adapter",
-			"source_found":    sourceData != nil,
-			"dest_found":      destData != nil,
-			"source_pincode":  sourcePincode,
-			"dest_pincode":    destPincode,
-			"source_pincode_int": sourcePincodeInt,
-			"dest_pincode_int":   destPincodeInt,
-			"error_pincodes":  resp.ErrorPincodes,
-			"pincodes_in_response": pincodesInResponse,
-			"response_data":   resp.Data,
-		}).Warn("Pincode not found in serviceable data - UrbanBolt API returned error")
+	// Capabilities
+	result.Capabilities["is_serviceable"] = true
+	result.Capabilities["source_pincode"] = sourceData.Pincode
+	result.Capabilities["dest_pincode"] = destData.Pincode
+	result.Capabilities["pickup_available"] = sourceData.Outbound
+	result.Capabilities["delivery_available"] = destData.Inbound
+	result.Capabilities["rtn_available"] = sourceData.RTN || destData.RTN // Logical OR or AND? Usually if one supports it? Let's say dest supports RTN pickup?
+    // Actually RTN usually means Return to Origin is supported.
+	
+	// Parse Service Types from Destination (and maybe Source intersection)
+	// Example: "SDD,NDD"
+	// We'll simplisticly take Destination's service types as the services offered to that destination.
+	serviceTypes := strings.Split(destData.ServiceType, ",")
+	for _, st := range serviceTypes {
+		st = strings.TrimSpace(st)
+		if st == "" { continue }
 		
-		// Build a more descriptive error message
-		var errorMsg string
-		if len(resp.ErrorPincodes) > 0 {
-			// Use the error pincodes from API response
-			errorMsg = fmt.Sprintf("Invalid pincodes: %s", strings.Join(resp.ErrorPincodes, ", "))
-		} else {
-			// If no error pincodes in response, identify which pincode is missing
-			if sourceData == nil && destData == nil {
-				errorMsg = fmt.Sprintf("Both pincodes are not serviceable: source (%s), destination (%s)", sourcePincode, destPincode)
-			} else if sourceData == nil {
-				errorMsg = fmt.Sprintf("Source pincode is not serviceable: %s", sourcePincode)
-			} else {
-				errorMsg = fmt.Sprintf("Destination pincode is not serviceable: %s", destPincode)
-			}
-		}
-		result.ErrorMessage = &errorMsg
-		return result
-	}
-
-	// Both pincodes are serviceable - build capabilities
-	isServiceable := (sourceData.IsActive && destData.IsActive) && 
-		((sourceData.Outbound && destData.Inbound) || (sourceData.Inbound && destData.Outbound))
-
-	if !isServiceable {
-		errorMsg := "Route is not serviceable"
-		result.ErrorMessage = &errorMsg
-		return result
-	}
-
-	// Parse service types from comma-separated string
-	serviceTypes := strings.Split(sourceData.ServiceType, ",")
-	for i, st := range serviceTypes {
-		serviceTypes[i] = strings.TrimSpace(st)
-	}
-
-	// Build services from available service types
-	for _, serviceType := range serviceTypes {
-		if serviceType == "" {
-			continue
-		}
-
-		// Map UrbanBolt service types to standard service codes
-		serviceCode := strings.ToLower(strings.ReplaceAll(serviceType, ",", "_"))
-		serviceName := serviceType
-
-		// Determine delivery mode based on service type
+		// Map 'SDD' -> Standard? 'NDD' -> Next Day?
+		// We can just create services with these codes.
+		
 		deliveryMode := "standard"
-		if strings.Contains(serviceType, "2HR") || strings.Contains(serviceType, "PTP") {
+		if st == "SDD" || st == "NDD" || st == "2HR" { // NDD is fast, SDD is Same Day (fast)
 			deliveryMode = "express"
 		}
 
-		result.Services = append(result.Services, models.ServiceV2{
-			ServiceCode:   serviceCode,
-			ServiceName:   serviceName,
+		svc := models.ServiceV2{
+			ServiceCode:   "URBANBOLT_" + st,
+			ServiceName:   "UrbanBolt " + st,
 			Pickup:        sourceData.Outbound,
 			Delivery:      destData.Inbound,
-			ProductTypes:  map[string]bool{"general": true},
 			DeliveryModes: map[string]bool{deliveryMode: true},
-		})
+			ProductTypes:  map[string]bool{"general": true},
+			TATDays: 2, // Default
+		}
+		
+		if st == "SDD" { svc.TATDays = 0 }
+		if st == "NDD" { svc.TATDays = 1 }
+		
+		result.Services = append(result.Services, svc)
 	}
-
-	// Set capabilities
-	result.Capabilities["inbound"] = destData.Inbound
-	result.Capabilities["outbound"] = sourceData.Outbound
-	result.Capabilities["rtn"] = sourceData.RTN || destData.RTN
-	result.Capabilities["pickup_available"] = sourceData.Outbound
-	result.Capabilities["delivery_available"] = destData.Inbound
-	result.Capabilities["is_serviceable"] = true
-	result.Capabilities["service_center"] = sourceData.ServiceCenter
-	result.Capabilities["city"] = sourceData.City
-	result.Capabilities["state"] = sourceData.State
-	result.Capabilities["region"] = sourceData.Region
-	result.Capabilities["zone"] = sourceData.Zone
-	result.Capabilities["route_code"] = sourceData.RouteCode
-	result.Capabilities["available_service_types"] = serviceTypes
-
-	// Set metadata
-	result.Metadata["api_version"] = "v1"
-	result.Metadata["adapter_type"] = "http_jwt_auth"
-	result.Metadata["response_status"] = resp.Status
-	result.Metadata["source_pincode_data"] = sourceData
-	result.Metadata["dest_pincode_data"] = destData
-
-	// Store raw partner services
-	result.PartnerServices = resp.Data
-
+	
+	result.Metadata["route_code"] = destData.RouteCode
+	result.Metadata["zone"] = destData.Zone
+	
 	return result
 }
 
-// Helper functions to extract data from standard request
+// Initialize
+func (u *UrbanBoltAdapter) Initialize(ctx context.Context) error {
+	return nil
+}
+
+// IsHealthy
+func (u *UrbanBoltAdapter) IsHealthy(ctx context.Context) bool {
+	return u.config.Enabled && u.repository != nil
+}
+
+// GetMetrics
+func (u *UrbanBoltAdapter) GetMetrics() *common.PartnerMetrics {
+	return &common.PartnerMetrics{
+		PartnerCode:  "urbanbolt",
+		HealthStatus: "healthy",
+	}
+}
+
+// Shutdown
+func (u *UrbanBoltAdapter) Shutdown(ctx context.Context) error {
+	return nil
+}
+
+
+// Helpers (copied/adapted from previous file)
 func getSourcePincode(req *models.ServiceabilityV2Request) string {
 	if req.SourcePostalCode != nil {
 		return *req.SourcePostalCode
 	}
 	if req.PostalCode != nil {
-		return *req.PostalCode
+		return *req.PostalCode // Fallback if applicable
 	}
 	return ""
 }
@@ -381,4 +282,3 @@ func getDestinationPincode(req *models.ServiceabilityV2Request) string {
 	}
 	return ""
 }
-

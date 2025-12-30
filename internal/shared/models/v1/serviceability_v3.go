@@ -39,6 +39,7 @@ type PartnerV3Response struct {
 	PartnerID       string                 `json:"partner_id"`
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
+	LogoURL         string                 `json:"logo_url,omitempty"`
 	Rating          float64                `json:"rating"`
 	Source          string                 `json:"source,omitempty"`
 	IsServiceable   bool                   `json:"is_serviceable"`
@@ -94,6 +95,7 @@ func PartnerV3ResponseFromV2(v2Partner *PartnerV2Response) *PartnerV3Response {
 		PartnerID:      v2Partner.PartnerID,
 		PartnerCode:    v2Partner.PartnerCode,
 		PartnerName:    v2Partner.PartnerName,
+		LogoURL:        v2Partner.LogoURL,
 		Rating:         v2Partner.Rating,
 		Source:         v2Partner.Source,
 		IsServiceable:  v2Partner.IsServiceable,

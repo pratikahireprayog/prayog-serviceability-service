@@ -344,6 +344,7 @@ type UrbanBoltConfig struct {
 	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
 	Enabled           bool          `yaml:"enabled" json:"enabled"`
 	Rating            float64       `yaml:"rating" json:"rating"`
+	TableName         string        `yaml:"table_name" json:"table_name"`
 }
 
 // DelhiveryConfig configuration for Delhivery partner adapter
@@ -632,6 +633,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			RetryDelay:        getEnvAsDurationOrDefault("URBANBOLT_RETRY_DELAY", 1*time.Second),
 			Enabled:           getEnvAsBoolOrDefault("URBANBOLT_ENABLED", true),
 			Rating:            4.0,
+			TableName:         getEnvOrDefault("URBANBOLT_TABLE_NAME", "urbanbolt_serviceability_pincodes"),
 		},
 		Delhivery: DelhiveryConfig{
 			BaseURL:           getEnvOrDefault("DELHIVERY_BASE_URL", "https://track.delhivery.com"),

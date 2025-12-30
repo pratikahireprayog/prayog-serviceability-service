@@ -787,6 +787,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 					PartnerID:     partnerID,
 					PartnerCode:   result.PartnerInfo.PartnerCode,
 					PartnerName:   s.getPartnerDisplayName(result.PartnerInfo.PartnerCode),
+					LogoURL:       s.getPartnerLogoURL(result.PartnerInfo.PartnerCode),
 					Rating:       0.0,
 					Services:      []models.ServiceV2{},
 					Capabilities: make(map[string]interface{}),
@@ -851,6 +852,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
 				PartnerName:     s.getPartnerDisplayName(partnerCode),  // Get display name based on partner code
+				LogoURL:         s.getPartnerLogoURL(partnerCode),       // Get logo URL based on partner code
 				Rating:          0.0, // No rating in database
 				Services:        result.Result.Services,
 				PartnerServices: result.Result.PartnerServices,
@@ -1718,6 +1720,63 @@ func (s *serviceabilityOrchestrator) getPartnerDisplayName(code string) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// getPartnerLogoURL returns the logo URL for a partner code
+// Logo URLs can be stored as:
+// - Static file paths (e.g., "/static/logos/partner.png")
+// - CDN URLs (e.g., "https://cdn.example.com/logos/partner.png")
+// - Environment variable based URLs
+func (s *serviceabilityOrchestrator) getPartnerLogoURL(code string) string {
+	// Base URL for partner logos (can be configured via environment variable)
+	baseURL := os.Getenv("PARTNER_LOGO_BASE_URL")
+	if baseURL == "" {
+		baseURL = "/logos" // Default to static path served by the application
+	}
+	
+	// Ensure base URL doesn't end with slash
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	
+	// Logo mapping for known partners
+	// You can add more partners here as you get their logos
+	logoMap := map[string]string{
+		"dhl":                      "dhl.png",
+		"smile_cargo":              "smile_cargo.png",
+		"smile_ecomm":              "ShreeMarutilogo.png",
+		"smile_ecom":               "ShreeMarutilogo.png",
+		"shipyaari":                "shipyaari.png",
+		"smile_courier":            "smile_courier.png",
+		"smile_hubops":             "smile_hubops.png",
+		"porter":                   "porter.png",
+		"india_post_international": "india_post_international.png",
+		"india_post_domestic":      "india_post_domestic.png",
+		"naqel":                    "naqel.png",
+		"aramex":                   "aramex.png",
+		"fedex":                    "fedex.png",
+		"shipcube":                 "shipcube.png",
+		"dharmendra":               "XpressBeesLogo.png",
+		"xpressbees":               "XpressBeesLogo.png",
+		"expressbees":              "XpressBeesLogo.png",
+		"XpressBees":               "XpressBeesLogo.png",
+		"sunil_baral":              "sunil_baral.png",
+		"urbanbolt":                "UrabanBolt.jpg",
+		"delhivery":                "Delhiverylogo.png",
+	}
+
+	// Check case-insensitive first
+	codeLower := strings.ToLower(code)
+	var logoFile string
+	if logo, exists := logoMap[codeLower]; exists {
+		logoFile = logo
+	} else if logo, exists := logoMap[code]; exists {
+		logoFile = logo
+	} else {
+		// Default: use partner code as filename (lowercase, replace underscores with hyphens)
+		logoFile = strings.ReplaceAll(codeLower, "_", "-") + ".png"
+	}
+
+	// Return full URL
+	return fmt.Sprintf("%s/%s", baseURL, logoFile)
 }
 
 // partnerResult represents the result of checking serviceability with a single partner
