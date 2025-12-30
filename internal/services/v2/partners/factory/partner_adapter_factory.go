@@ -556,7 +556,7 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 
 	// Initialize UrbanBolt adapter
 	if f.config.UrbanBolt.Enabled {
-		f.implementations["urbanbolt"] = urbanbolt.NewUrbanBoltAdapter(f.config.UrbanBolt)
+		f.implementations["urbanbolt"] = urbanbolt.NewUrbanBoltAdapter(f.config.UrbanBolt, f.db)
 		f.logger.WithFields(logrus.Fields{
 			"component": "partner_adapter_factory",
 			"adapter":   "urbanbolt",
