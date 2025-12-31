@@ -130,16 +130,17 @@ type TenantPartnerCredentialsData struct {
 	TenantID    string            `json:"tenant_id"`
 	PartnerCode string            `json:"partner_code"`
 	Credentials map[string]string `json:"credentials"`
+	LogoURL     string            `json:"logo_url,omitempty"`
 }
 
 // GetTenantPartnerCredentials fetches tenant-specific credentials for a partner
-// Returns the credentials map if found, or nil if not found (not an error - fallback to defaults)
-func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, tenantID, partnerCode string) (map[string]string, error) {
+// Returns the credentials map and optional logo URL if found, or nil/empty string if not found
+func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, tenantID, partnerCode string) (map[string]string, string, error) {
 	url := fmt.Sprintf("%s/partner/v1/tenant-credentials?tenant_id=%s&partner_code=%s", c.baseURL, tenantID, partnerCode)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add required headers
@@ -160,7 +161,7 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"partner_code": partnerCode,
 			"error":        err.Error(),
 		}).Debug("Failed to fetch tenant partner credentials, will use default credentials")
-		return nil, nil // Return nil, not error - expected behavior for missing credentials
+		return nil, "", nil // Return nil, not error - expected behavior for missing credentials
 	}
 	defer resp.Body.Close()
 
@@ -170,7 +171,7 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"tenant_id":    tenantID,
 			"partner_code": partnerCode,
 		}).Debug("Tenant partner credentials not found, will use default credentials")
-		return nil, nil
+		return nil, "", nil
 	}
 
 	// If other error status, log warning and return nil (fallback to defaults)
@@ -180,7 +181,7 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"partner_code": partnerCode,
 			"status_code":  resp.StatusCode,
 		}).Debug("Partner service returned non-200 status for tenant credentials, will use default credentials")
-		return nil, nil
+		return nil, "", nil
 	}
 
 	var parsedResp TenantPartnerCredentialsResponse
@@ -190,7 +191,7 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"partner_code": partnerCode,
 			"error":        err.Error(),
 		}).Debug("Failed to decode tenant credentials response, will use default credentials")
-		return nil, nil
+		return nil, "", nil
 	}
 
 	if !parsedResp.Success {
@@ -198,7 +199,7 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"tenant_id":    tenantID,
 			"partner_code": partnerCode,
 		}).Debug("Partner service returned unsuccessful response for tenant credentials, will use default credentials")
-		return nil, nil
+		return nil, "", nil
 	}
 
 	// Return credentials if available
@@ -207,10 +208,15 @@ func (c *PartnerServiceClient) GetTenantPartnerCredentials(ctx context.Context, 
 			"tenant_id":        tenantID,
 			"partner_code":     partnerCode,
 			"credentials_count": len(parsedResp.Data.Credentials),
+			"has_logo_url":     parsedResp.Data.LogoURL != "",
 		}).Info("Successfully fetched tenant partner credentials")
-		return parsedResp.Data.Credentials, nil
+		return parsedResp.Data.Credentials, parsedResp.Data.LogoURL, nil
 	}
 
-	// No credentials in response
-	return nil, nil
+	// No credentials in response, but maybe logo?
+	if parsedResp.Data.LogoURL != "" {
+		return nil, parsedResp.Data.LogoURL, nil
+	}
+
+	return nil, "", nil
 }
