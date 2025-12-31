@@ -485,12 +485,7 @@ func (s *Server) setupRoutes() error {
 		}
 	}
 
-	// Logo management
-	logoHandler := handlers.NewLogoHandler(s.logger)
-	routes.RegisterLogoRoutes(v1, logoHandler)
-	
-	// Serve static files for logos
-	s.app.Static("/logos", "./assets/logos")
+
 
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
 

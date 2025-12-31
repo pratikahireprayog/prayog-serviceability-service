@@ -621,6 +621,15 @@ func (s *serviceabilityOrchestrator) checkWithPartners(ctx context.Context, req 
 	return results
 }
 
+// partnerResult represents the result of checking serviceability with a single partner
+type partnerResult struct {
+	PartnerCode string
+	Result      *common.PartnerServiceabilityResult
+	Error       error
+	PartnerInfo *DatabasePartnerInfo
+	LogoPath    string // Path to logo file from partner service
+}
+
 // checkWithPartner checks serviceability with a single partner
 func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *models.ServiceabilityV2Request, info DatabasePartnerInfo) partnerResult {
 	s.logger.WithFields(logrus.Fields{
@@ -667,8 +676,10 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 
 	// Fetch tenant-specific credentials if tenant_id is present in context
 	tenantID, hasTenantID := tenantcontext.GetTenantID(ctx)
+	var logoPath string
+	s.logger.Info("aaaaaaaaaaaaaaaaa",tenantID, hasTenantID)
 	if hasTenantID && s.partnerServiceClient != nil {
-		credentials, err := s.partnerServiceClient.GetTenantPartnerCredentials(ctx, tenantID, info.PartnerCode)
+		credentials, logo, err := s.partnerServiceClient.GetTenantPartnerCredentials(ctx, tenantID, info.PartnerCode)
 		if err != nil {
 			// Log warning but continue - will fallback to default credentials
 			s.logger.WithFields(logrus.Fields{
@@ -677,21 +688,24 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 				"tenant_id":    tenantID,
 				"error":        err.Error(),
 			}).Debug("Failed to fetch tenant partner credentials, will use default credentials")
-		} else if len(credentials) > 0 {
-			// Store credentials in context for adapter to use
-			ctx = tenantcontext.WithPartnerCredentials(ctx, info.PartnerCode, credentials)
-			s.logger.WithFields(logrus.Fields{
-				"component":         "serviceability_orchestrator",
-				"partner_code":      info.PartnerCode,
-				"tenant_id":         tenantID,
-				"credentials_count": len(credentials),
-			}).Info("Using tenant-specific credentials for partner")
 		} else {
-			s.logger.WithFields(logrus.Fields{
-				"component":    "serviceability_orchestrator",
-				"partner_code": info.PartnerCode,
-				"tenant_id":    tenantID,
-			}).Debug("No tenant-specific credentials found, will use default credentials from env")
+			logoPath = logo
+			if len(credentials) > 0 {
+				// Store credentials in context for adapter to use
+				ctx = tenantcontext.WithPartnerCredentials(ctx, info.PartnerCode, credentials)
+				s.logger.WithFields(logrus.Fields{
+					"component":         "serviceability_orchestrator",
+					"partner_code":      info.PartnerCode,
+					"tenant_id":         tenantID,
+					"credentials_count": len(credentials),
+				}).Info("Using tenant-specific credentials for partner")
+			} else {
+				s.logger.WithFields(logrus.Fields{
+					"component":    "serviceability_orchestrator",
+					"partner_code": info.PartnerCode,
+					"tenant_id":    tenantID,
+				}).Debug("No tenant-specific credentials found (but call succeeded), will use default credentials from env")
+			}
 		}
 	}
 
@@ -706,6 +720,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 		return partnerResult{
 			PartnerCode: info.PartnerCode, // No longer needed since adapter sets it
 			Error:       err,
+			LogoPath:    logoPath,
 		}
 	}
 
@@ -718,6 +733,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 		return partnerResult{
 			PartnerCode: info.PartnerCode,
 			Result:      nil, // Explicitly set to nil
+			LogoPath:    logoPath,
 		}
 	}
 
@@ -734,6 +750,7 @@ func (s *serviceabilityOrchestrator) checkWithPartner(ctx context.Context, req *
 	return partnerResult{
 		PartnerCode: info.PartnerCode,
 		Result:      result,
+		LogoPath:    logoPath,
 	}
 }
 
@@ -787,7 +804,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 					PartnerID:     partnerID,
 					PartnerCode:   result.PartnerInfo.PartnerCode,
 					PartnerName:   s.getPartnerDisplayName(result.PartnerInfo.PartnerCode),
-					LogoURL:       s.getPartnerLogoURL(result.PartnerInfo.PartnerCode),
+					LogoURL:       s.getPartnerLogoURL(result.PartnerInfo.PartnerCode, result.LogoPath),
 					Rating:       0.0,
 					Services:      []models.ServiceV2{},
 					Capabilities: make(map[string]interface{}),
@@ -852,7 +869,7 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 				PartnerID:       partnerID,
 				PartnerCode:     partnerCode,
 				PartnerName:     s.getPartnerDisplayName(partnerCode),  // Get display name based on partner code
-				LogoURL:         s.getPartnerLogoURL(partnerCode),       // Get logo URL based on partner code
+				LogoURL:         s.getPartnerLogoURL(partnerCode, result.LogoPath),       // Get logo URL based on partner code and override path
 				Rating:          0.0, // No rating in database
 				Services:        result.Result.Services,
 				PartnerServices: result.Result.PartnerServices,
@@ -994,6 +1011,41 @@ func (s *serviceabilityOrchestrator) buildV2Response(partnerResults []partnerRes
 	}
 
 	return response
+}
+
+// getPartnerLogoURL returns the logo URL for a partner code
+func (s *serviceabilityOrchestrator) getPartnerLogoURL(code string, overridePath string) string {
+	// Base URL for partner logos (can be configured via environment variable)
+	// Should act as the S3 bucket root URL
+	baseURL := os.Getenv("PARTNER_LOGO_BASE_URL")
+	if baseURL == "" {
+		baseURL = "" // No default S3 bucket
+	}
+	
+	// Ensure base URL doesn't end with slash
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	
+	// VALIDATION: If we have an override path from the partner service, favor that
+	if overridePath != "" {
+		// If it's already a full URL, return it
+		if strings.HasPrefix(overridePath, "http://") || strings.HasPrefix(overridePath, "https://") {
+			return overridePath
+		}
+		// Otherwise join with base URL (S3 bucket)
+		// Assuming overridePath is something like "partnerLogos/logo.png"
+		if baseURL != "" {
+			// Ensure no double slash
+			overridePath = strings.TrimPrefix(overridePath, "/")
+			return fmt.Sprintf("%s/%s", baseURL, overridePath)
+		}
+		// If no base URL, return path as is (relative)
+		return overridePath
+	}
+
+
+
+	// If no logo path from partner service, return empty string as requested
+	return ""
 }
 
 // fetchRatesForPartners fetches rates for all serviceable partners in one batch
@@ -1722,70 +1774,7 @@ func (s *serviceabilityOrchestrator) getPartnerDisplayName(code string) string {
 	return strings.Join(parts, " ")
 }
 
-// getPartnerLogoURL returns the logo URL for a partner code
-// Logo URLs can be stored as:
-// - Static file paths (e.g., "/static/logos/partner.png")
-// - CDN URLs (e.g., "https://cdn.example.com/logos/partner.png")
-// - Environment variable based URLs
-func (s *serviceabilityOrchestrator) getPartnerLogoURL(code string) string {
-	// Base URL for partner logos (can be configured via environment variable)
-	baseURL := os.Getenv("PARTNER_LOGO_BASE_URL")
-	if baseURL == "" {
-		baseURL = "/logos" // Default to static path served by the application
-	}
-	
-	// Ensure base URL doesn't end with slash
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	
-	// Logo mapping for known partners
-	// You can add more partners here as you get their logos
-	logoMap := map[string]string{
-		"dhl":                      "dhl.png",
-		"smile_cargo":              "smile_cargo.png",
-		"smile_ecomm":              "ShreeMarutilogo.png",
-		"smile_ecom":               "ShreeMarutilogo.png",
-		"shipyaari":                "shipyaari.png",
-		"smile_courier":            "smile_courier.png",
-		"smile_hubops":             "smile_hubops.png",
-		"porter":                   "porter.png",
-		"india_post_international": "india_post_international.png",
-		"india_post_domestic":      "india_post_domestic.png",
-		"naqel":                    "naqel.png",
-		"aramex":                   "aramex.png",
-		"fedex":                    "fedex.png",
-		"shipcube":                 "shipcube.png",
-		"dharmendra":               "XpressBeesLogo.png",
-		"xpressbees":               "XpressBeesLogo.png",
-		"expressbees":              "XpressBeesLogo.png",
-		"XpressBees":               "XpressBeesLogo.png",
-		"sunil_baral":              "sunil_baral.png",
-		"urbanbolt":                "UrabanBolt.jpg",
-		"delhivery":                "Delhiverylogo.png",
-	}
 
-	// Check case-insensitive first
-	codeLower := strings.ToLower(code)
-	var logoFile string
-	if logo, exists := logoMap[codeLower]; exists {
-		logoFile = logo
-	} else if logo, exists := logoMap[code]; exists {
-		logoFile = logo
-	} else {
-		// Default: use partner code as filename (lowercase, replace underscores with hyphens)
-		logoFile = strings.ReplaceAll(codeLower, "_", "-") + ".png"
-	}
-
-	// Return full URL
-	return fmt.Sprintf("%s/%s", baseURL, logoFile)
-}
-
-// partnerResult represents the result of checking serviceability with a single partner
-type partnerResult struct {
-	PartnerCode string
-	Result      *common.PartnerServiceabilityResult
-	Error       error
-	PartnerInfo *DatabasePartnerInfo // Added field to store partner database info
-}
 
 // DatabasePartnerInfo holds partner information from the database
 type DatabasePartnerInfo struct {
