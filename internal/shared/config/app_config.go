@@ -252,7 +252,7 @@ func maskSensitiveValue(value string) string {
 	return value[:2] + strings.Repeat("*", len(value)-4) + value[len(value)-2:]
 }
 
-// LogAllEnvVars logs all environment variables (including sensitive ones)
+// LogAllEnvVars logs all environment variables with sensitive values masked
 func LogAllEnvVars(logger *logrus.Logger) {
 	if logger == nil {
 		return
@@ -288,19 +288,21 @@ func LogAllEnvVars(logger *logrus.Logger) {
 		}
 	}
 
-	// Log each environment variable (no masking)
+	// Log each environment variable
 	for _, key := range keys {
 		value := envMap[key]
-		icon := "📌"
 		if isSensitiveEnvVar(key) {
-			icon = "🔐"
+			maskedValue := maskSensitiveValue(value)
+			logger.WithFields(logrus.Fields{
+				"key":   key,
+				"value": maskedValue,
+			}).Info("  🔐 " + key + "=" + maskedValue)
+		} else {
+			logger.WithFields(logrus.Fields{
+				"key":   key,
+				"value": value,
+			}).Info("  📌 " + key + "=" + value)
 		}
-
-		logger.WithFields(logrus.Fields{
-			"key":       key,
-			"value":     value,
-			"sensitive": isSensitiveEnvVar(key),
-		}).Info("  " + icon + " " + key + "=" + value)
 	}
 
 	logger.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
