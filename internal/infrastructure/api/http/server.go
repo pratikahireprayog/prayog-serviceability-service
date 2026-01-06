@@ -197,10 +197,6 @@ func (s *Server) setupRoutes() error {
 	// Setup health check routes under serviceability prefix
 	routes.RegisterHealthRoutes(serviceabilityGroup, healthHandler)
 
-	// Setup environment variables routes
-	envHandler := handlers.NewEnvHandler(s.logger)
-	routes.RegisterEnvRoutes(serviceabilityGroup, envHandler)
-
 	// Create API version group under serviceability
 	v1 := serviceabilityGroup.Group("/v1")
 
