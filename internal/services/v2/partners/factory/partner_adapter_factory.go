@@ -11,6 +11,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/aramex"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/delcaper"
+	"prayog-serviceability-service/internal/services/v2/partners/delhivery"
+	"prayog-serviceability-service/internal/services/v2/partners/dharmendra"
 	"prayog-serviceability-service/internal/services/v2/partners/dhl"
 	"prayog-serviceability-service/internal/services/v2/partners/fedex"
 	"prayog-serviceability-service/internal/services/v2/partners/india_post_domestic"
@@ -23,6 +25,8 @@ import (
 	"prayog-serviceability-service/internal/services/v2/partners/smile_courier"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_ecom"
 	"prayog-serviceability-service/internal/services/v2/partners/smile_hubops"
+	"prayog-serviceability-service/internal/services/v2/partners/sunil_baral"
+	"prayog-serviceability-service/internal/services/v2/partners/urbanbolt"
 	"prayog-serviceability-service/internal/shared/config"
 
 	"github.com/sirupsen/logrus"
@@ -60,12 +64,22 @@ var adapterImplementationMap = map[string]string{
 	"india_post_domestic":    "india_post_domestic",    // Direct mapping for domestic India shipments
 	"INDIA_POST_DOMESTIC":    "india_post_domestic",    // Uppercase variant
 	"naqel":                  "naqel",                  // Direct mapping
+	"dharmendra":            "dharmendra",            // Direct mapping for Dharmendra ecomm
+	"xpressbees":            "dharmendra",            // XpressBees maps to dharmendra
+	"expressbees":           "dharmendra",            // expressbees maps to dharmendra
+	"XpressBees":            "dharmendra",            // XpressBees (capitalized) maps to dharmendra
+	"sunil_baral":            "sunil_baral",            // Direct mapping for Sunil Baral ecomm
+	"urbanbolt":              "urbanbolt",              // Direct mapping for UrbanBolt
+	"delhivery":              "delhivery",              // Direct mapping for Delhivery
 	// Any partner code not in this map will get a generic adapter
 }
 
 // getImplementationCode returns the implementation code for a given database partner code
+// Case-insensitive lookup - converts to lowercase before checking the map
 func getImplementationCode(dbPartnerCode string) string {
-	if implCode, exists := adapterImplementationMap[dbPartnerCode]; exists {
+	// Convert to lowercase for case-insensitive lookup
+	normalizedCode := strings.ToLower(dbPartnerCode)
+	if implCode, exists := adapterImplementationMap[normalizedCode]; exists {
 		return implCode
 	}
 	return dbPartnerCode // Return original code if no mapping exists
@@ -89,8 +103,22 @@ func getPartnerDisplayName(code string) string {
 		"aramex":                   "Aramex",
 		"fedex":                    "FedEx",
 		"shipcube":                 "ShipCube",
+		"dharmendra":              "XpressBees",
+		"xpressbees":              "XpressBees",
+		"expressbees":             "XpressBees",
+		"XpressBees":              "XpressBees",
+		"sunil_baral":              "Sunil Baral",
+		"urbanbolt":                "UrbanBolt",
+		"delhivery":                "Delhivery",
 	}
 
+	// Check case-insensitive first
+	codeLower := strings.ToLower(code)
+	if name, exists := nameMap[codeLower]; exists {
+		return name
+	}
+
+	// Check exact match
 	if name, exists := nameMap[code]; exists {
 		return name
 	}
@@ -258,6 +286,14 @@ func (f *partnerAdapterFactory) GetAdapterConfig(dbPartnerCode string) (interfac
 		return f.config.IndiaPostDomestic, nil
 	case "naqel":
 		return f.config.Naqel, nil
+	case "dharmendra":
+		return f.config.Dharmendra, nil
+	case "sunil_baral":
+		return f.config.SunilBaral, nil
+	case "urbanbolt":
+		return f.config.UrbanBolt, nil
+	case "delhivery":
+		return f.config.Delhivery, nil
 	default:
 		return nil, fmt.Errorf("no configuration found for partner: %s", dbPartnerCode)
 	}
@@ -486,6 +522,64 @@ func (f *partnerAdapterFactory) initializeImplementations() {
 			"component": "partner_adapter_factory",
 			"adapter":   "naqel",
 		}).Warn("Naqel adapter not enabled in config")
+	}
+
+	// Initialize Dharmendra adapter for ecomm serviceability (database-based)
+	if f.config.Dharmendra.Enabled {
+		f.implementations["dharmendra"] = dharmendra.NewAdapter(f.config.Dharmendra, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "dharmendra",
+			"table_name": f.config.Dharmendra.TableName,
+		}).Info("Initialized dharmendra adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "dharmendra",
+		}).Warn("Dharmendra adapter not enabled in config")
+	}
+
+	// Initialize Sunil Baral adapter for ecomm serviceability (database-based)
+	if f.config.SunilBaral.Enabled {
+		f.implementations["sunil_baral"] = sunil_baral.NewAdapter(f.config.SunilBaral, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "sunil_baral",
+			"table_name": f.config.SunilBaral.TableName,
+		}).Info("Initialized sunil_baral adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "sunil_baral",
+		}).Warn("Sunil Baral adapter not enabled in config")
+	}
+
+	// Initialize UrbanBolt adapter
+	if f.config.UrbanBolt.Enabled {
+		f.implementations["urbanbolt"] = urbanbolt.NewUrbanBoltAdapter(f.config.UrbanBolt, f.db)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "urbanbolt",
+		}).Info("Initialized urbanbolt adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "urbanbolt",
+		}).Warn("UrbanBolt adapter not enabled in config")
+	}
+
+	// Initialize Delhivery adapter
+	if f.config.Delhivery.Enabled {
+		f.implementations["delhivery"] = delhivery.NewDelhiveryAdapter(f.config.Delhivery)
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delhivery",
+		}).Info("Initialized delhivery adapter")
+	} else {
+		f.logger.WithFields(logrus.Fields{
+			"component": "partner_adapter_factory",
+			"adapter":   "delhivery",
+		}).Warn("Delhivery adapter not enabled in config")
 	}
 	
 	f.logger.WithFields(logrus.Fields{

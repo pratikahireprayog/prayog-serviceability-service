@@ -33,6 +33,10 @@ type PartnerAdaptersConfig struct {
 	IndiaPostDomestic IndiaPostDomesticConfig `yaml:"india_post_domestic" json:"india_post_domestic"`
 	IndiaPostIntl     IndiaPostConfig         `yaml:"india_post_intl" json:"india_post_intl"`
 	Naqel             NaqelConfig             `yaml:"naqel" json:"naqel"`
+	Dharmendra        DharmendraConfig        `yaml:"dharmendra" json:"dharmendra"`
+	SunilBaral        SunilBaralConfig        `yaml:"sunil_baral" json:"sunil_baral"`
+	UrbanBolt         UrbanBoltConfig         `yaml:"urbanbolt" json:"urbanbolt"`
+	Delhivery         DelhiveryConfig         `yaml:"delhivery" json:"delhivery"`
 }
 
 // ShipyaariConfig configuration for Shipyaari partner adapter
@@ -311,6 +315,50 @@ type NaqelConfig struct {
 	SandboxMode   bool          `yaml:"sandbox_mode" json:"sandbox_mode"`
 }
 
+// DharmendraConfig configuration for Dharmendra partner adapter (ecomm, database-based)
+type DharmendraConfig struct {
+	TableName string        `yaml:"table_name" json:"table_name"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Rating    float64       `yaml:"rating" json:"rating"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+}
+
+// SunilBaralConfig configuration for Sunil Baral partner adapter (ecomm, database-based)
+type SunilBaralConfig struct {
+	TableName string        `yaml:"table_name" json:"table_name"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Rating    float64       `yaml:"rating" json:"rating"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+}
+
+// UrbanBoltConfig configuration for UrbanBolt partner adapter
+type UrbanBoltConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	Username          string        `yaml:"username" json:"username"`
+	Password          string        `yaml:"password" json:"password"`
+	AuthTokenPath     string        `yaml:"auth_token_path" json:"auth_token_path"`
+	ServiceabilityURL string        `yaml:"serviceability_url" json:"serviceability_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	TokenExpiryBuffer time.Duration `yaml:"token_expiry_buffer" json:"token_expiry_buffer"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
+	TableName         string        `yaml:"table_name" json:"table_name"`
+}
+
+// DelhiveryConfig configuration for Delhivery partner adapter
+type DelhiveryConfig struct {
+	BaseURL           string        `yaml:"base_url" json:"base_url"`
+	AccessToken       string        `yaml:"access_token" json:"access_token"`
+	ServiceabilityURL string        `yaml:"serviceability_url" json:"serviceability_url"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	MaxRetries        int           `yaml:"max_retries" json:"max_retries"`
+	RetryDelay        time.Duration `yaml:"retry_delay" json:"retry_delay"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Rating            float64       `yaml:"rating" json:"rating"`
+}
+
 
 // LoadIntegrationConfig loads integration configuration from environment variables
 func LoadIntegrationConfig() IntegrationConfig {
@@ -404,7 +452,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 		},
 		SmileCourier: SmileCourierConfig{
 			BaseURL:         getEnvOrDefault("SMILE_COURIER_BASE_URL", "https://apis.delcaper.com"),
-			CheckServiceURL: "/serviceability/courier",
+			CheckServiceURL: "/serviceability/v1/courier/pincode/v2",
 			Timeout:         getEnvAsDurationOrDefault("SMILE_COURIER_TIMEOUT", 30*time.Second),
 			MaxRetries:      getEnvAsIntOrDefault("SMILE_COURIER_MAX_RETRIES", 3),
 			RetryDelay:      getEnvAsDurationOrDefault("SMILE_COURIER_RETRY_DELAY", 1*time.Second),
@@ -412,7 +460,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Rating:          4.2,
 		},
 		SmileEcom: SmileEcomConfig{
-			TableName:    getEnvOrDefault("SMILE_ECOM_TABLE_NAME", "smile_ecom_serviceability"),
+			TableName:    getEnvOrDefault("SMILE_ECOM_TABLE_NAME", "ecomm_serviceability_pincodes"),
 			Enabled:      getEnvAsBoolOrDefault("SMILE_ECOM_ENABLED", true), // Enabled by default
 			Rating:       4.0,
 			CacheEnabled: getEnvAsBoolOrDefault("SMILE_ECOM_CACHE_ENABLED", true),
@@ -522,7 +570,7 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Username:          getEnvOrDefault("INDIA_POST_INTL_USERNAME", "9999999999"),
 			Password:          getEnvOrDefault("INDIA_POST_INTL_PASSWORD", "Dop@1234"),
 			LoginURL:          getEnvOrDefault("INDIA_POST_INTL_LOGIN_URL", "/v1/access/login"),
-			TariffURL:         getEnvOrDefault("INDIA_POST_INTL_TARIFF_URL", "/v1/international-tariff/calculate"),
+			TariffURL:         getEnvOrDefault("INDIA_POST_INTL_TARIFF_URL", "/v1/international-tariff/itps"), // Actual endpoint from API docs
 			Timeout:           getEnvAsDurationOrDefault("INDIA_POST_INTL_TIMEOUT", 30*time.Second),
 			TokenExpiryBuffer: getEnvAsDurationOrDefault("INDIA_POST_INTL_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
 			MaxRetries:        getEnvAsIntOrDefault("INDIA_POST_INTL_MAX_RETRIES", 3),
@@ -560,6 +608,42 @@ func LoadIntegrationConfig() IntegrationConfig {
 			Enabled:    getEnvAsBoolOrDefault("NAQEL_ENABLED", true),
 			Rating:     4.0,
 			SandboxMode: getEnvAsBoolOrDefault("NAQEL_SANDBOX_MODE", true),
+		},
+		Dharmendra: DharmendraConfig{
+			TableName: getEnvOrDefault("DHARMENDRA_TABLE_NAME", "dharmendra_pincodes"),
+			Timeout:   getEnvAsDurationOrDefault("DHARMENDRA_TIMEOUT", 30*time.Second),
+			Enabled:   getEnvAsBoolOrDefault("DHARMENDRA_ENABLED", true),
+			Rating:    4.0,
+		},
+		SunilBaral: SunilBaralConfig{
+			TableName: getEnvOrDefault("SUNIL_BARAL_TABLE_NAME", "sunil_baral_pincodes"),
+			Timeout:   getEnvAsDurationOrDefault("SUNIL_BARAL_TIMEOUT", 30*time.Second),
+			Enabled:   getEnvAsBoolOrDefault("SUNIL_BARAL_ENABLED", true),
+			Rating:    4.0,
+		},
+		UrbanBolt: UrbanBoltConfig{
+			BaseURL:           getEnvOrDefault("URBANBOLT_BASE_URL", "https://uat.urbanebolt.in"),
+			Username:          getEnvOrDefault("URBANBOLT_USERNAME", "info@urbanebolt.com"),
+			Password:          getEnvOrDefault("URBANBOLT_PASSWORD", "EKIcygsLVV5RCtPZ"),
+			AuthTokenPath:     getEnvOrDefault("URBANBOLT_AUTH_TOKEN_PATH", "/api/v1/auth/getToken/"),
+			ServiceabilityURL:  getEnvOrDefault("URBANBOLT_SERVICEABILITY_URL", "/api/v1/location/pincodes/"),
+			Timeout:           getEnvAsDurationOrDefault("URBANBOLT_TIMEOUT", 30*time.Second),
+			TokenExpiryBuffer: getEnvAsDurationOrDefault("URBANBOLT_TOKEN_EXPIRY_BUFFER", 5*time.Minute),
+			MaxRetries:        getEnvAsIntOrDefault("URBANBOLT_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("URBANBOLT_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("URBANBOLT_ENABLED", true),
+			Rating:            4.0,
+			TableName:         getEnvOrDefault("URBANBOLT_TABLE_NAME", "urbanbolt_serviceability_pincodes"),
+		},
+		Delhivery: DelhiveryConfig{
+			BaseURL:           getEnvOrDefault("DELHIVERY_BASE_URL", "https://track.delhivery.com"),
+			AccessToken:       getEnvOrDefault("DELHIVERY_ACCESS_TOKEN", "7882000764f1aa847f8e0addadb7262eb7ad8de6"),
+			ServiceabilityURL:  getEnvOrDefault("DELHIVERY_SERVICEABILITY_URL", "/api/dc/expected_tat"),
+			Timeout:           getEnvAsDurationOrDefault("DELHIVERY_TIMEOUT", 30*time.Second),
+			MaxRetries:        getEnvAsIntOrDefault("DELHIVERY_MAX_RETRIES", 3),
+			RetryDelay:        getEnvAsDurationOrDefault("DELHIVERY_RETRY_DELAY", 1*time.Second),
+			Enabled:           getEnvAsBoolOrDefault("DELHIVERY_ENABLED", true),
+			Rating:            4.0,
 		},
 
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -15,8 +16,10 @@ import (
 	"github.com/sirupsen/logrus"
 
 	handlers "prayog-serviceability-service/internal/infrastructure/api/http/v1/handlers"
+	v1middleware "prayog-serviceability-service/internal/infrastructure/api/http/v1/middleware"
 	routes "prayog-serviceability-service/internal/infrastructure/api/http/v1/routes"
 	"prayog-serviceability-service/internal/infrastructure/db"
+	"prayog-serviceability-service/internal/infrastructure/external/partner_service"
 	dataServices "prayog-serviceability-service/internal/services/v1/data"
 	integrationServices "prayog-serviceability-service/internal/services/v1/integration"
 	"prayog-serviceability-service/internal/services/v2/orchestrators"
@@ -28,6 +31,9 @@ import (
 	// Add imports for geo location routes and handlers
 	v1handlers "prayog-serviceability-service/api/handlers/v1"
 	v1routes "prayog-serviceability-service/api/routes/v1"
+	v3handlers "prayog-serviceability-service/internal/infrastructure/api/http/v3/handlers"
+	v3routes "prayog-serviceability-service/internal/infrastructure/api/http/v3/routes"
+	v3 "prayog-serviceability-service/internal/services/v3"
 )
 
 // Server represents the HTTP server with all dependencies
@@ -116,17 +122,22 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 			"Authorization",
 			"X-Request-ID",
 			"X-Requested-With",
-			"X-Tenant-ID", // COMMENTED FOR TESTING - Your API requires this
-			"tenantid",    // COMMENTED FOR TESTING - Your API requires this (lowercase variant)
+			"X-Tenant-ID",
+			"X-User-ID",
+			"tenantid",
+			"userid",
 			"User-Agent",
 			"Referer",
 			"sec-ch-ua", // Chrome security headers
 			"sec-ch-ua-mobile",
 			"sec-ch-ua-platform",
+			"Access-Control-Request-Method",
+			"Access-Control-Request-Headers",
 		}, ","),
 		AllowCredentials: false,
 		ExposeHeaders: strings.Join([]string{
 			"Content-Length",
+			"Content-Type",
 			"X-API-Version",
 			"X-Service-Name",
 			"X-Request-ID",
@@ -165,6 +176,9 @@ func setupMiddleware(app *fiber.App, logger *logrus.Logger) {
 		c.Set("X-API-Version", "v1")
 		return c.Next()
 	})
+
+	// Tenant middleware to extract tenant_id and user_id from headers
+	app.Use(v1middleware.TenantMiddleware())
 }
 
 // setupRoutes configures all application routes
@@ -263,6 +277,17 @@ func (s *Server) setupRoutes() error {
 	// Create API v3 group under serviceability
 	v3 := serviceabilityGroup.Group("/v3")
 
+	// Explicitly handle OPTIONS requests for V3 routes to ensure CORS works
+	v3.Options("/*", func(c *fiber.Ctx) error {
+		s.logger.WithFields(logrus.Fields{
+			"method":  c.Method(),
+			"path":    c.Path(),
+			"origin":  c.Get("Origin"),
+			"headers": c.Get("Access-Control-Request-Headers"),
+		}).Debug("V3 CORS preflight OPTIONS request received")
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
 	// Create V3 serviceability handler if v2Orchestrator is available (V3 uses V2 orchestrator)
 	if s.v2Orchestrator != nil {
 		v3ServiceabilityHandler, err := s.createServiceabilityV3Handler()
@@ -272,14 +297,13 @@ func (s *Server) setupRoutes() error {
 			v3.All("/*", func(c *fiber.Ctx) error {
 				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 					"error": fiber.Map{
-						"code":    "SERVICE_UNAVAILABLE",
-						"message": "V3 serviceability features are temporarily unavailable",
+						"code": "SERVICE_UNAVAILABLE",
 					},
 				})
 			})
 		} else {
 			// Register V3 serviceability routes under /serviceability/v3/
-			v1routes.RegisterServiceabilityV3Routes(v3, v3ServiceabilityHandler)
+			v3routes.RegisterServiceabilityV3Routes(v3, v3ServiceabilityHandler)
 		}
 
 		// Add a status route for the V3 serviceability service
@@ -461,7 +485,10 @@ func (s *Server) setupRoutes() error {
 		}
 	}
 
+
+
 	s.logger.Info("✅ Routes configured successfully - some features may be disabled due to database unavailability")
+
 	return nil
 }
 
@@ -547,13 +574,6 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 		}
 	}
 
-	// If geolocation service is not available, log a warning
-	if geolocationService == nil {
-		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
-		// Create a dummy geolocation service for graceful degradation
-		geolocationService = dataServices.NewGeolocationService(nil)
-	}
-
 	// Create V2 serviceability handler
 	v2ServiceabilityHandler := handlers.NewServiceabilityV2Handler(
 		s.v2Orchestrator,
@@ -566,7 +586,7 @@ func (s *Server) createServiceabilityV2Handler() (*handlers.ServiceabilityV2Hand
 }
 
 // createServiceabilityV3Handler creates a V3 serviceability handler with all dependencies
-func (s *Server) createServiceabilityV3Handler() (*handlers.ServiceabilityV3Handler, error) {
+func (s *Server) createServiceabilityV3Handler() (*v3handlers.ServiceabilityHandler, error) {
 	// Check if V2 orchestrator is available (V3 uses V2 orchestrator)
 	if s.v2Orchestrator == nil {
 		return nil, fmt.Errorf("V2 orchestrator is required for V3 API")
@@ -576,29 +596,21 @@ func (s *Server) createServiceabilityV3Handler() (*handlers.ServiceabilityV3Hand
 	validatorSetup := utils.NewValidatorSetup()
 	validator := validatorSetup.GetValidator()
 
-	// Create geolocation service for country code resolution
-	var geolocationService dataServices.GeolocationService
-	if s.dbManager != nil {
-		// Create repository factory from database connection
-		db := s.dbManager.GetDB()
-		if db != nil {
-			repoFactory := repositories.NewRepositoryFactory(db)
-			geoLocationRepo := repoFactory.GetGeoLocationRepository()
-			geolocationService = dataServices.NewGeolocationService(geoLocationRepo)
-		}
+	// Create Partner Service Client
+	// Read partner service URL from environment variable (required)
+	partnerServiceURL := os.Getenv("PARTNER_SERVICE_URL")
+	if partnerServiceURL == "" {
+		return nil, fmt.Errorf("PARTNER_SERVICE_URL environment variable is required for V3 API")
 	}
+	// Make sure to import "prayog-serviceability-service/internal/infrastructure/external/partner_service"
+	partnerClient := partner_service.NewPartnerServiceClient(partnerServiceURL, s.logger)
 
-	// If geolocation service is not available, log a warning
-	if geolocationService == nil {
-		s.logger.Warn("Geolocation service is not available - country code resolution will be disabled")
-		// Create a dummy geolocation service for graceful degradation
-		geolocationService = dataServices.NewGeolocationService(nil)
-	}
+	// Create V3 Service
+	v3Service := v3.NewServiceabilityService(s.v2Orchestrator, partnerClient, s.logger)
 
 	// Create V3 serviceability handler
-	v3ServiceabilityHandler := handlers.NewServiceabilityV3Handler(
-		s.v2Orchestrator,
-		geolocationService,
+	v3ServiceabilityHandler := v3handlers.NewServiceabilityHandler(
+		v3Service,
 		validator,
 		s.logger,
 	)

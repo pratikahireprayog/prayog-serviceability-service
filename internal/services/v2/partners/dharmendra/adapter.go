@@ -1,4 +1,4 @@
-package smile_ecom
+package dharmendra
 
 import (
 	"context"
@@ -17,15 +17,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// SmileEcomAdapter implements the common.PartnerAdapter interface for Smile Ecom database operations
-type SmileEcomAdapter struct {
-	repository repositories.EcommRepository
-	config     config.SmileEcomConfig
+// Adapter implements the PartnerAdapter interface for Dharmendra
+type Adapter struct {
+	repository repositories.DharmendraRepository
+	config     config.DharmendraConfig
 	logger     *logrus.Logger
 }
 
-// NewSmileEcomAdapter creates a new Smile Ecom adapter
-func NewSmileEcomAdapter(cfg config.SmileEcomConfig, db *sql.DB) common.PartnerAdapter {
+// NewAdapter creates a new Dharmendra adapter instance
+func NewAdapter(cfg config.DharmendraConfig, db *sql.DB) *Adapter {
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
@@ -42,38 +42,38 @@ func NewSmileEcomAdapter(cfg config.SmileEcomConfig, db *sql.DB) common.PartnerA
 	}
 
 	// Create repository
-	var ecommRepo repositories.EcommRepository
+	var dharmendraRepo repositories.DharmendraRepository
 	if gormDB != nil {
-		ecommRepo = repositories.NewEcommRepository(gormDB, cfg.TableName)
+		dharmendraRepo = repositories.NewDharmendraRepository(gormDB, cfg.TableName)
 	} else {
-		logger.Warn("No database connection available for Ecomm repository")
+		logger.Warn("No database connection available for Dharmendra repository")
 	}
 
 	logger.WithFields(logrus.Fields{
-		"partner":    "Smile Ecom",
+		"partner":    "Dharmendra",
 		"table_name": cfg.TableName,
 		"enabled":    cfg.Enabled,
-	}).Info("Creating Smile Ecom adapter")
+	}).Info("Creating Dharmendra adapter")
 
-	return &SmileEcomAdapter{
-		repository: ecommRepo,
+	return &Adapter{
+		repository: dharmendraRepo,
 		config:     cfg,
 		logger:     logger,
 	}
 }
 
 // GetAdapterType returns the adapter type
-func (s *SmileEcomAdapter) GetAdapterType() common.AdapterType {
+func (a *Adapter) GetAdapterType() common.AdapterType {
 	return common.AdapterTypeDatabase
 }
 
 // IsEnabled returns whether the adapter is enabled
-func (s *SmileEcomAdapter) IsEnabled() bool {
-	return s.config.Enabled
+func (a *Adapter) IsEnabled() bool {
+	return a.config.Enabled
 }
 
-// CheckServiceability checks if Smile Ecom can service the given request
-func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
+// CheckServiceability checks if Dharmendra can service the given request
+func (a *Adapter) CheckServiceability(ctx context.Context, request *models.ServiceabilityV2Request, partnerInfo common.PartnerInfo) (*common.PartnerServiceabilityResult, error) {
 	startTime := time.Now()
 
 	partnerID := ""
@@ -81,22 +81,22 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *mod
 		partnerID = partnerInfo.PartnerID.String()
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"component":    "smile_ecom_adapter",
-		"action":        "check_serviceability_start",
-		"partner_code":  partnerInfo.PartnerCode,
-		"partner_id":    partnerID,
-	}).Info("Starting Smile Ecom adapter serviceability check")
+	a.logger.WithFields(logrus.Fields{
+		"component":    "dharmendra_adapter",
+		"action":       "check_serviceability_start",
+		"partner_code": partnerInfo.PartnerCode,
+		"partner_id":   partnerID,
+	}).Info("Starting Dharmendra adapter serviceability check")
 
-	// Validate Smile Ecom specific requirements
-	if err := s.validateRequirements(request); err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"component":    "smile_ecom_adapter",
-			"event":         "validation_failed",
-			"partner_code":  partnerInfo.PartnerCode,
-			"partner_id":    partnerID,
-			"error":         err.Error(),
-		}).Warn("Smile Ecom validation failed")
+	// Validate Dharmendra specific requirements
+	if err := a.validateRequirements(request); err != nil {
+		a.logger.WithFields(logrus.Fields{
+			"component":    "dharmendra_adapter",
+			"event":        "validation_failed",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   partnerID,
+			"error":        err.Error(),
+		}).Warn("Dharmendra validation failed")
 
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -104,22 +104,22 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *mod
 			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Error:        err,
-			ErrorMessage: &[]string{fmt.Sprintf("Smile Ecom validation failed: %v", err)}[0],
+			ErrorMessage: &[]string{fmt.Sprintf("Dharmendra validation failed: %v", err)}[0],
 			Metadata: map[string]interface{}{
-				"reason": "Smile Ecom validation failed",
+				"reason": "Dharmendra validation failed",
 			},
 		}, nil
 	}
 
 	// Determine which pincode to check
-	// For Smile Ecom, we need the destination pincode
+	// For Dharmendra, we need the destination pincode
 	var pincodeToCheck string
 	if request.DestinationPostalCode != nil && *request.DestinationPostalCode != "" {
 		pincodeToCheck = *request.DestinationPostalCode
 	} else if request.PostalCode != nil && *request.PostalCode != "" {
 		pincodeToCheck = *request.PostalCode
 	} else {
-		err := fmt.Errorf("destination postal code is required for Smile Ecom")
+		err := fmt.Errorf("destination postal code is required for Dharmendra")
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -130,16 +130,16 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *mod
 		}, nil
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"component":    "smile_ecom_adapter",
-		"partner_code":  partnerInfo.PartnerCode,
-		"partner_id":    partnerID,
-		"pincode":       pincodeToCheck,
-	}).Info("Checking serviceability for Smile Ecom")
+	a.logger.WithFields(logrus.Fields{
+		"component":    "dharmendra_adapter",
+		"partner_code": partnerInfo.PartnerCode,
+		"partner_id":   partnerID,
+		"pincode":      pincodeToCheck,
+	}).Info("Checking serviceability for Dharmendra")
 
 	// Check if repository is available
-	if s.repository == nil {
-		errMsg := "Smile Ecom repository not available"
+	if a.repository == nil {
+		errMsg := "Dharmendra repository not available"
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
 			PartnerCode:  partnerInfo.PartnerCode,
@@ -152,15 +152,15 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *mod
 	}
 
 	// Check serviceability in database
-	pincodeData, err := s.repository.CheckServiceabilityByPincode(ctx, pincodeToCheck)
+	pincodeData, err := a.repository.CheckServiceabilityByPincode(ctx, pincodeToCheck)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"component":    "smile_ecom_adapter",
-			"partner_code":  partnerInfo.PartnerCode,
-			"partner_id":    partnerID,
-			"pincode":       pincodeToCheck,
-			"error":         err.Error(),
-		}).Warn("Smile Ecom pincode not found in database")
+		a.logger.WithFields(logrus.Fields{
+			"component":    "dharmendra_adapter",
+			"partner_code": partnerInfo.PartnerCode,
+			"partner_id":   partnerID,
+			"pincode":      pincodeToCheck,
+			"error":        err.Error(),
+		}).Warn("Dharmendra pincode not found in database")
 
 		return &common.PartnerServiceabilityResult{
 			PartnerID:    partnerInfo.PartnerID,
@@ -168,34 +168,34 @@ func (s *SmileEcomAdapter) CheckServiceability(ctx context.Context, request *mod
 			Services:     make([]models.ServiceV2, 0),
 			ResponseTime: time.Since(startTime),
 			Metadata: map[string]interface{}{
-				"reason":  "Pincode not serviceable by Smile Ecom",
+				"reason":  "Pincode not serviceable by Dharmendra",
 				"pincode": pincodeToCheck,
 			},
 		}, nil
 	}
 
 	// Convert database result to serviceability result
-	result := s.convertToServiceabilityResult(pincodeData, partnerInfo, pincodeToCheck)
+	result := a.convertToServiceabilityResult(pincodeData, partnerInfo, pincodeToCheck)
 	result.ResponseTime = time.Since(startTime)
 
-	s.logger.WithFields(logrus.Fields{
-		"component":      "smile_ecom_adapter",
+	a.logger.WithFields(logrus.Fields{
+		"component":      "dharmendra_adapter",
 		"partner_code":   partnerInfo.PartnerCode,
 		"partner_id":     partnerID,
 		"pincode":        pincodeToCheck,
 		"is_serviceable": len(result.Services) > 0,
 		"response_time":  result.ResponseTime,
-	}).Info("Smile Ecom serviceability check completed")
+	}).Info("Dharmendra serviceability check completed")
 
 	return result, nil
 }
 
-// validateRequirements validates Smile Ecom specific requirements
-func (s *SmileEcomAdapter) validateRequirements(request *models.ServiceabilityV2Request) error {
-	// Smile Ecom requires either destination postal code or generic postal code
+// validateRequirements validates Dharmendra specific requirements
+func (a *Adapter) validateRequirements(request *models.ServiceabilityV2Request) error {
+	// Dharmendra requires either destination postal code or generic postal code
 	if (request.DestinationPostalCode == nil || *request.DestinationPostalCode == "") &&
 		(request.PostalCode == nil || *request.PostalCode == "") {
-		return fmt.Errorf("postal code is required for Smile Ecom serviceability")
+		return fmt.Errorf("postal code is required for Dharmendra serviceability")
 	}
 
 	// Validate pincode format (6 digits for Indian pincodes)
@@ -219,7 +219,7 @@ func (s *SmileEcomAdapter) validateRequirements(request *models.ServiceabilityV2
 }
 
 // convertToServiceabilityResult converts database result to common format
-func (s *SmileEcomAdapter) convertToServiceabilityResult(pincodeData *repositories.EcommPincode, partnerInfo common.PartnerInfo, pincode string) *common.PartnerServiceabilityResult {
+func (a *Adapter) convertToServiceabilityResult(pincodeData *repositories.DharmendraPincode, partnerInfo common.PartnerInfo, pincode string) *common.PartnerServiceabilityResult {
 	result := &common.PartnerServiceabilityResult{
 		PartnerID:    partnerInfo.PartnerID,
 		PartnerCode:  partnerInfo.PartnerCode,
@@ -232,24 +232,42 @@ func (s *SmileEcomAdapter) convertToServiceabilityResult(pincodeData *repositori
 	// FM (First Mile) = Pickup capability
 	// LM (Last Mile) = Delivery capability
 	capabilities := map[string]interface{}{
-		"pincode":          pincode,
-		"is_serviceable":   true,
-		"parcel_category":  "ecomm",
-		"city":             pincodeData.City,
-		"state":            pincodeData.State,
-		"cod_available":    pincodeData.COD,
-		"pickup_available":   pincodeData.FM,  // First Mile = Pickup
-		"delivery_available": pincodeData.LM,  // Last Mile = Delivery
-		"fm":               pincodeData.FM,    // First Mile (for backward compatibility)
-		"lm":               pincodeData.LM,    // Last Mile (for backward compatibility)
+		"pincode":        pincode,
+		"is_serviceable": true,
+		"parcel_category": "ecomm",
+		"city":           pincodeData.City,
+		"state":          pincodeData.State,
+		"hub_code":       pincodeData.HubCode,
+		"hub_name":       pincodeData.HubName,
+		"zone":           pincodeData.Zone,
+		"cod_available":  pincodeData.COD,
+		"pickup_available": pincodeData.FM,  // First Mile = Pickup
+		"delivery_available": pincodeData.LM, // Last Mile = Delivery
+		"fm":             pincodeData.FM,     // First Mile (for backward compatibility)
+		"lm":             pincodeData.LM,     // Last Mile (for backward compatibility)
+	}
+
+	// Build delivery modes based on available options
+	deliveryModes := make(map[string]bool)
+	if pincodeData.Surface {
+		deliveryModes["surface"] = true
+	}
+	if pincodeData.Air {
+		deliveryModes["air"] = true
+	}
+	if pincodeData.Rail {
+		deliveryModes["rail"] = true
+	}
+	if len(deliveryModes) == 0 {
+		deliveryModes["standard"] = true
 	}
 
 	// Create service entry
 	// FM (First Mile) maps to Pickup capability
 	// LM (Last Mile) maps to Delivery capability
 	service := models.ServiceV2{
-		ServiceCode: "SMILE_ECOM_STANDARD",
-		ServiceName: "Smile Ecom Standard",
+		ServiceCode: "DHARMENDRA_STANDARD",
+		ServiceName: "Dharmendra Standard",
 		TATDays:     3, // Default TAT, can be enhanced based on zone/distance
 		IsCOD:       pincodeData.COD,
 		Pickup:      pincodeData.FM, // First Mile = Pickup available
@@ -258,9 +276,7 @@ func (s *SmileEcomAdapter) convertToServiceabilityResult(pincodeData *repositori
 		ProductTypes: map[string]bool{
 			"ecommerce": true,
 		},
-		DeliveryModes: map[string]bool{
-			"standard": true,
-		},
+		DeliveryModes: deliveryModes,
 	}
 
 	result.Services = append(result.Services, service)
@@ -270,28 +286,29 @@ func (s *SmileEcomAdapter) convertToServiceabilityResult(pincodeData *repositori
 	result.Metadata["pincode"] = pincode
 	result.Metadata["is_serviceable"] = true
 	result.Metadata["parcel_category"] = "ecomm"
-	result.Metadata["serviceability"] = pincodeData.Serviceability
+	result.Metadata["district"] = pincodeData.DistrictName
+	result.Metadata["to_pay"] = pincodeData.ToPay
 
 	return result
 }
 
 // Initialize implements PartnerAdapter interface
-func (s *SmileEcomAdapter) Initialize(ctx context.Context) error {
-	s.logger.Info("Smile Ecom adapter initialized successfully")
+func (a *Adapter) Initialize(ctx context.Context) error {
+	a.logger.Info("Dharmendra adapter initialized successfully")
 	return nil
 }
 
 // IsHealthy implements PartnerAdapter interface
-func (s *SmileEcomAdapter) IsHealthy(ctx context.Context) bool {
-	if !s.config.Enabled {
+func (a *Adapter) IsHealthy(ctx context.Context) bool {
+	if !a.config.Enabled {
 		return false
 	}
 	// Simple health check - verify config is valid
-	return s.config.TableName != ""
+	return a.config.TableName != ""
 }
 
 // GetMetrics implements PartnerAdapter interface
-func (s *SmileEcomAdapter) GetMetrics() *common.PartnerMetrics {
+func (a *Adapter) GetMetrics() *common.PartnerMetrics {
 	return &common.PartnerMetrics{
 		PartnerCode:         "", // Will be set by orchestrator from database
 		TotalRequests:       0,  // TODO: Implement actual metrics
@@ -304,8 +321,8 @@ func (s *SmileEcomAdapter) GetMetrics() *common.PartnerMetrics {
 }
 
 // Shutdown implements PartnerAdapter interface
-func (s *SmileEcomAdapter) Shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down Smile Ecom adapter")
+func (a *Adapter) Shutdown(ctx context.Context) error {
+	a.logger.Info("Shutting down Dharmendra adapter")
 	return nil
 }
 

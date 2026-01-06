@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	services "prayog-serviceability-service/internal/services/v1/data"
 	"prayog-serviceability-service/internal/services/v2/partners/common"
 	"prayog-serviceability-service/internal/services/v2/partners/factory"
 	modelsv1 "prayog-serviceability-service/internal/shared/models/v1"
@@ -23,18 +24,27 @@ import (
 
 // InternationalStrategy orchestrates international flow using HubOps by-pincode → DHL & adapters
 type InternationalStrategy struct {
-	PartnerFactory factory.PartnerAdapterFactory
-	Logger         *logrus.Logger
-	ratesClient    *http.Client
+	PartnerFactory     factory.PartnerAdapterFactory
+	Logger             *logrus.Logger
+	ratesClient        *http.Client
+	geolocationService services.GeolocationService
 }
 
-func NewInternationalStrategy(pf factory.PartnerAdapterFactory) *InternationalStrategy {
+func NewInternationalStrategy(pf factory.PartnerAdapterFactory, geolocationService services.GeolocationService) *InternationalStrategy {
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 	
+	// Log geolocation service availability
+	if geolocationService == nil {
+		logger.Warn("Geolocation service is nil when creating InternationalStrategy")
+	} else {
+		logger.Debug("Geolocation service is available for InternationalStrategy")
+	}
+	
 	return &InternationalStrategy{
-		PartnerFactory: pf,
-		Logger:         logger,
+		PartnerFactory:     pf,
+		Logger:             logger,
+		geolocationService: geolocationService,
 		ratesClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -128,9 +138,7 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 		return s.buildErrorResponse("Source postal code missing", startTime), nil
 	}
 
-	srcCC, dstCC := resolveCountryCodes(req)
-
-	// 1) HubOps lookup (best-effort)
+	srcCC, dstCC := s.resolveCountryCodes(ctx, req, sourcePin)	// 1) HubOps lookup (best-effort)
 	hubResp, err := s.fetchHubByPincode(ctx, sourcePin)
 	if err != nil {
 		s.Logger.WithError(err).WithFields(logrus.Fields{
@@ -160,7 +168,7 @@ func (s *InternationalStrategy) Execute(ctx context.Context, req *modelsv1.Servi
 
 	// Determine partners to call
 	// If specific partners are requested, use only those; otherwise use default international partners
-	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "indiapost", "naqel"}
+	partnerCodes := []string{"dhl", "aramex", "fedex", "shipcube", "india_post_international", "naqel"}
 	if len(req.Partners) > 0 {
 		partnerCodes = make([]string, 0, len(req.Partners))
 		for _, p := range req.Partners {
@@ -284,175 +292,6 @@ func (s *InternationalStrategy) ensurePartnerDefaults(partner modelsv1.PartnerV2
 	return partner
 }
 
-func (s *InternationalStrategy) getRatesForPartners(
-	ctx context.Context, 
-	req *modelsv1.ServiceabilityV2Request, 
-	srcPin, srcCC, dstPin, dstCC string, 
-	serviceable []modelsv1.PartnerV2Response,
-) (*RateQuoteResponse, error) {
-	ratesURL := os.Getenv("SUPPLY_RATE_URL")
-	if ratesURL == "" {
-		return nil, fmt.Errorf("SUPPLY_RATE_URL Not Found");
-	}
-	
-	payload := s.buildRatesRequestPayload(req, srcPin, srcCC, dstPin, dstCC, serviceable)
-	b, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal rates payload: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, ratesURL, bytes.NewBuffer(b))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rates request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("User-Agent", "Prayog-Serviceability-Service/1.0")
-
-	s.Logger.WithFields(logrus.Fields{
-		"component":   "international_strategy",
-		"rates_url":   ratesURL,
-		"partners":    len(payload.Partners),
-		"packages":    len(payload.Packages),
-	}).Info("Calling rates API")
-
-	// Ensure client is initialized
-	if s.ratesClient == nil {
-		s.ratesClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
-	resp, err := s.ratesClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("rates API call failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read rates response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.Logger.WithFields(logrus.Fields{
-			"status": resp.StatusCode,
-			"body":   string(bodyBytes),
-		}).Warn("Rates API returned non-200 status")
-		return nil, fmt.Errorf("rates API returned status %d", resp.StatusCode)
-	}
-
-	var rateResp RateQuoteResponse
-	if err := json.Unmarshal(bodyBytes, &rateResp); err != nil {
-		return nil, fmt.Errorf("failed to parse rates response: %w", err)
-	}
-
-	if !rateResp.Success {
-		s.Logger.WithField("message", rateResp.Message).Warn("Rates API returned unsuccessful response")
-		return nil, fmt.Errorf("rates API returned error: %s", rateResp.Message)
-	}
-
-	s.Logger.WithFields(logrus.Fields{
-		"component":          "international_strategy",
-		"rates_found":        rateResp.Metadata.TotalRatesFound,
-		"partners_succeeded": rateResp.Metadata.PartnersSucceeded,
-		"response_time_ms":   rateResp.Metadata.ResponseTimeMs,
-	}).Info("Successfully retrieved rates from API")
-
-	return &rateResp, nil
-}
-
-func (s *InternationalStrategy) buildRatesRequestPayload(
-	req *modelsv1.ServiceabilityV2Request, 
-	srcPin, srcCC, dstPin, dstCC string, 
-	serviceable []modelsv1.PartnerV2Response,
-) RateRequestPayload {
-	// Build packages
-	pkgs := make([]RatePackage, 0)
-	if req != nil && len(req.Packages) > 0 {
-		for _, p := range req.Packages {
-			var rp RatePackage
-			
-			// Weight
-			w := defaultWeight(req)
-			if p.Weight != nil && p.Weight.Value > 0 {
-				w = p.Weight.Value
-			}
-			rp.Weight.Value = w
-			rp.Weight.Unit = "kg"
-			
-			// Dimensions
-			l := defaultLen(req)
-			wid := defaultWid(req)
-			h := defaultHei(req)
-			
-			if p.Dimensions != nil {
-				if p.Dimensions.Length > 0 {
-					l = p.Dimensions.Length
-				}
-				if p.Dimensions.Width > 0 {
-					wid = p.Dimensions.Width
-				}
-				if p.Dimensions.Height > 0 {
-					h = p.Dimensions.Height
-				}
-			}
-			
-			rp.Dimensions.Length = l
-			rp.Dimensions.Width = wid
-			rp.Dimensions.Height = h
-			rp.Dimensions.Unit = "cm"
-			
-			pkgs = append(pkgs, rp)
-		}
-	} else {
-		// Default package
-		var rp RatePackage
-		rp.Weight.Value = 1
-		rp.Weight.Unit = "kg"
-		rp.Dimensions.Length = 10
-		rp.Dimensions.Width = 10
-		rp.Dimensions.Height = 10
-		rp.Dimensions.Unit = "cm"
-		pkgs = append(pkgs, rp)
-	}
-
-	// Build partners list
-	partners := make([]RatePartnerEntry, 0, len(serviceable))
-	for _, p := range serviceable {
-		partners = append(partners, RatePartnerEntry{
-			ID:   p.PartnerID,
-			Code: strings.ToUpper(p.PartnerCode),
-		})
-	}
-
-	// Build metadata
-	meta := map[string]string{
-		"currency":      "INR",
-		"service_type":  "express",
-		"flow":          "international",
-	}
-
-	// Allow overrides via env
-	if cur := os.Getenv("RATE_CURRENCY"); cur != "" {
-		meta["currency"] = cur
-	}
-	if st := os.Getenv("RATE_SERVICE_TYPE"); st != "" {
-		meta["service_type"] = st
-	}
-
-	return RateRequestPayload{
-		SourceLocation: RateLocation{
-			PostalCode:  srcPin,
-			CountryCode: srcCC,
-		},
-		DestinationLocation: RateLocation{
-			PostalCode:  dstPin,
-			CountryCode: dstCC,
-		},
-		Packages: pkgs,
-		Partners: partners,
-		Metadata: meta,
-	}
-}
-
 type RateQuote struct {
 	RateID       string
 	Service      string
@@ -466,99 +305,30 @@ type RateQuote struct {
 	}
 }
 
-// func (s *InternationalStrategy) mergeRatesIntoPartners(
-//     partners []modelsv1.PartnerV2Response,
-//     rates *supplyrates.RateQuoteResponse,
-// ) {
-// 	// Create a map for quick lookup: partnerCode -> available rates
-// 	ratesMap := make(map[string][]RateQuote)
-
-// 	// Populate the map from API response
-// 	for _, successResp := range rates.Data.SuccessfulResponses {
-// 		partnerCode := strings.ToLower(successResp.Partner.Code)
-
-// 		// Convert anonymous struct to our named struct type
-// 		partnerRates := make([]RateQuote, 0, len(successResp.AvailableRates))
-// 		for _, r := range successResp.AvailableRates {
-// 			partnerRates = append(partnerRates, RateQuote{
-// 				RateID:       r.RateID,
-// 				Service:      r.Service,
-// 				DeliveryDays: r.DeliveryDays,
-// 				Price: struct {
-// 					Currency    string
-// 					Amount      float64
-// 					Type        string
-// 					ServiceType string
-// 				}{
-// 					Currency:    r.Price.Currency,
-// 					Amount:      r.Price.Amount,
-// 					Type:        r.Price.Type,
-// 					ServiceType: r.Price.ServiceType,
-// 				},
-// 			})
-// 		}
-
-// 		ratesMap[partnerCode] = partnerRates
-// 	}
-
-// 	// Merge rates into partners
-// 	for i := range partners {
-// 		partnerCode := strings.ToLower(partners[i].PartnerCode)
-// 		if availableRates, exists := ratesMap[partnerCode]; exists && len(availableRates) > 0 {
-// 			services := make([]modelsv1.ServiceV2, 0, len(availableRates))
-
-// 			for _, rate := range availableRates {
-// 				service := modelsv1.ServiceV2{
-// 					ServiceCode: rate.Price.ServiceType,
-// 					ServiceName: rate.Service,
-// 					TATDays:     rate.DeliveryDays,
-// 					IsCOD:       false,
-// 					Pickup:      true,
-// 					Delivery:    true,
-// 					Insurance:   true,
-// 					ProductTypes: map[string]bool{
-// 						"commercial":   true,
-// 						"document":     true,
-// 						"non_document": true,
-// 					},
-// 					DeliveryModes: map[string]bool{
-// 						"express":  strings.Contains(strings.ToLower(rate.Service), "express"),
-// 						"standard": !strings.Contains(strings.ToLower(rate.Service), "express"),
-// 					},
-// 					Rate: &modelsv1.Rate{
-// 						RateID: rate.RateID,
-// 						Price: modelsv1.Price{
-// 							Currency: rate.Price.Currency,
-// 							Amount:   rate.Price.Amount,
-// 							Type:     rate.Price.Type,
-// 						},
-// 					},
-// 				}
-// 				services = append(services, service)
-// 			}
-
-// 			partners[i].PartnerServices = services
-// 			if partners[i].Metadata == nil {
-// 				partners[i].Metadata = make(map[string]interface{})
-// 			}
-// 			partners[i].Metadata["rates_available"] = true
-// 			partners[i].Metadata["rates_count"] = len(availableRates)
-// 		}
-// 	}
-// }
-
 func (s *InternationalStrategy) callPartnerViaAdapter(
 	ctx context.Context,
 	partnerCode string,
 	req *modelsv1.ServiceabilityV2Request,
 	srcPin, dstPin, srcCC, dstCC string,
 ) modelsv1.PartnerV2Response {
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   partnerCode,
+		"src_cc":    srcCC,
+		"dst_cc":    dstCC,
+		"src_pin":   srcPin,
+		"dst_pin":   dstPin,
+		"action":    "getting_adapter",
+	}).Info("Getting adapter for partner")
+	
 	adapter, found := s.PartnerFactory.GetAdapter(partnerCode)
 	
 	if !found || adapter == nil {
 		s.Logger.WithFields(logrus.Fields{
 			"component": "international_strategy", 
 			"partner":   partnerCode,
+			"found":     found,
+			"adapter_nil": adapter == nil,
 		}).Warn("Adapter missing or nil")
 		return modelsv1.PartnerV2Response{
 		PartnerCode:   partnerCode,
@@ -582,9 +352,34 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 	serviceReq := s.buildAdapterRequest(req, srcPin, dstPin, srcCC, dstCC)
 	partnerInfo := common.PartnerInfo{PartnerCode: partnerCode}
 
+	s.Logger.WithFields(logrus.Fields{
+		"component": "international_strategy",
+		"partner":   partnerCode,
+		"action":    "calling_adapter",
+		"src_cc":    srcCC,
+		"dst_cc":    dstCC,
+		"src_pin":   srcPin,
+		"dst_pin":   dstPin,
+	}).Info("Calling adapter CheckServiceability")
+
 	startTime := time.Now()
 	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
 	responseTimeMs := time.Since(startTime).Milliseconds()
+	
+	s.Logger.WithFields(logrus.Fields{
+		"component":      "international_strategy",
+		"partner":       partnerCode,
+		"action":        "adapter_call_completed",
+		"has_error":     err != nil,
+		"has_result":    result != nil,
+		"services_count": func() int {
+			if result != nil {
+				return len(result.Services)
+			}
+			return 0
+		}(),
+		"response_time_ms": responseTimeMs,
+	}).Info("Adapter CheckServiceability completed")
 
 	if err != nil {
 		s.Logger.WithError(err).WithFields(logrus.Fields{
@@ -622,7 +417,7 @@ func (s *InternationalStrategy) callPartnerViaAdapter(
 		return s.convertShipCubeResult(result, srcCC, dstCC, responseTimeMs)
 	case "fedex":
 		return s.convertFedExResult(result, srcCC, dstCC, responseTimeMs)
-	case "indiapost": 
+	case "india_post_international": 
 		return s.convertIndiaPostInternationalResult(result, srcCC, dstCC, responseTimeMs)
 	case "naqel":
 		return s.convertNaqelResult(result, srcCC, dstCC, responseTimeMs)
@@ -729,33 +524,6 @@ func resolveSourcePin(req *modelsv1.ServiceabilityV2Request) string {
 	return ""
 }
 
-// default dimension/weight helpers (no hardcoded "magic" other than safe fallbacks)
-func defaultWeight(req *modelsv1.ServiceabilityV2Request) float64 {
-	if req != nil && len(req.Packages) > 0 && req.Packages[0].Weight != nil && req.Packages[0].Weight.Value > 0 {
-		return req.Packages[0].Weight.Value
-	}
-	// fallback 1 kg
-	return 1.0
-}
-
-func defaultLen(req *modelsv1.ServiceabilityV2Request) float64 {
-	if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Length > 0 {
-		return req.Packages[0].Dimensions.Length
-	}
-	return 10.0
-}
-func defaultWid(req *modelsv1.ServiceabilityV2Request) float64 {
-	if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Width > 0 {
-		return req.Packages[0].Dimensions.Width
-	}
-	return 10.0
-}
-func defaultHei(req *modelsv1.ServiceabilityV2Request) float64 {
-	if req != nil && len(req.Packages) > 0 && req.Packages[0].Dimensions != nil && req.Packages[0].Dimensions.Height > 0 {
-		return req.Packages[0].Dimensions.Height
-	}
-	return 10.0
-}
 
 // -----------------------------
 // Pin & country resolution
@@ -781,22 +549,79 @@ func resolveHubSourcePin(hubResp *modelsv1.HubOpsResponse, fallback string) stri
 	return fallback
 }
 
-func resolveCountryCodes(req *modelsv1.ServiceabilityV2Request) (string, string) {
-	src := "IN"
-	dst := "US"
+// resolveCountryCodes resolves country codes from request or geolocation service
+func (s *InternationalStrategy) resolveCountryCodes(ctx context.Context, req *modelsv1.ServiceabilityV2Request, sourcePin string) (string, string) {
+	src := ""
+	dst := ""
+	
 	if req == nil {
 		return src, dst
 	}
+	
+	s.Logger.WithFields(logrus.Fields{
+		"component":          "international_strategy",
+		"geolocationService": s.geolocationService != nil,
+	}).Debug("Resolving country codes")
+	
+	// Resolve source country code
 	if req.SourceCountryCode != nil && *req.SourceCountryCode != "" {
 		src = strings.ToUpper(*req.SourceCountryCode)
-	} else if req.CountryCode != nil && *req.CountryCode != "" {
-		src = strings.ToUpper(*req.CountryCode)
+	} else if sourcePin != "" && s.geolocationService != nil {
+		// Fetch from geolocation service using source postal code
+		srcCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, sourcePin)
+		if err != nil {
+			s.Logger.WithError(err).WithFields(logrus.Fields{
+				"component":  "international_strategy",
+				"source_pin": sourcePin,
+			}).Warn("Failed to get source country code by postal code")
+		} else if srcCCPtr != nil {
+			src = strings.ToUpper(*srcCCPtr)
+			s.Logger.WithFields(logrus.Fields{
+				"component":  "international_strategy",
+				"source_pin": sourcePin,
+				"country_code": src,
+			}).Debug("Resolved source country code from geolocation service")
+		}
+	} else if sourcePin != "" && s.geolocationService == nil {
+		s.Logger.WithFields(logrus.Fields{
+			"component":  "international_strategy",
+			"source_pin": sourcePin,
+		}).Warn("Geolocation service is nil, cannot resolve source country code")
 	}
+
+	// Resolve destination country code
+	dstPin := resolveDestinationPin(req)
 	if req.DestinationCountryCode != nil && *req.DestinationCountryCode != "" {
 		dst = strings.ToUpper(*req.DestinationCountryCode)
-	} else if req.CountryCode != nil && *req.CountryCode != "" {
-		dst = strings.ToUpper(*req.CountryCode)
+	} else if dstPin != "" && s.geolocationService != nil {
+		// Fetch from geolocation service using destination postal code
+		dstCCPtr, err := s.geolocationService.GetCountryCodeByPostalCode(ctx, dstPin)
+		if err != nil {
+			s.Logger.WithError(err).WithFields(logrus.Fields{
+				"component":      "international_strategy",
+				"destination_pin": dstPin,
+			}).Warn("Failed to get destination country code by postal code")
+		} else if dstCCPtr != nil {
+			dst = strings.ToUpper(*dstCCPtr)
+			s.Logger.WithFields(logrus.Fields{
+				"component":      "international_strategy",
+				"destination_pin": dstPin,
+				"country_code":   dst,
+			}).Debug("Resolved destination country code from geolocation service")
+		}
+	} else if dstPin != "" && s.geolocationService == nil {
+		s.Logger.WithFields(logrus.Fields{
+			"component":      "international_strategy",
+			"destination_pin": dstPin,
+		}).Warn("Geolocation service is nil, cannot resolve destination country code")
 	}
+	
+	s.Logger.WithFields(logrus.Fields{
+		"component":          "international_strategy",
+		"source_country":     src,
+		"destination_country": dst,
+	}).Info("Resolved country codes")
+	
 	return src, dst
 }
 
@@ -893,7 +718,7 @@ func getPartnerName(code string) string {
 		"aramex":    "Aramex",
 		"fedex":     "FedEx",
 		"shipcube":  "ShipCube",
-		"indiapost": "India Post",
+		"india_post_international": "India Post International",
 		"naqel":     "Naqel",
 	}
 	if n, ok := names[strings.ToLower(code)]; ok {
@@ -903,7 +728,6 @@ func getPartnerName(code string) string {
 }
 
 // normalizeInternationalPartnerCode normalizes partner codes to standard international partner codes
-// Handles variants like "india_post_international" -> "indiapost"
 func normalizeInternationalPartnerCode(code string) string {
 	code = strings.ToLower(code)
 	
@@ -913,8 +737,7 @@ func normalizeInternationalPartnerCode(code string) string {
 		"fedex":                    "fedex",
 		"aramex":                   "aramex",
 		"shipcube":                 "shipcube",
-		"indiapost":                "indiapost",
-		"india_post_international": "indiapost",
+		"india_post_international": "india_post_international",
 		"naqel":                    "naqel",
 	}
 	
@@ -937,15 +760,6 @@ func generatePartnerID() string {
 	return uuid.New().String()
 }
 
-func getHubCity(h *modelsv1.HubOpsResponse) string {
-	if h == nil || h.NearestInternationalHub == nil || h.NearestInternationalHub.City == nil {
-		return "Unknown City"
-	}
-	if *h.NearestInternationalHub.City == "" {
-		return "Unknown City"
-	}
-	return *h.NearestInternationalHub.City
-}
 
 func toFloat(s string) (float64, bool) {
 	var f float64
@@ -1289,54 +1103,6 @@ func (s *InternationalStrategy) convertGenericResult(res *common.PartnerServicea
 	}
 }
 
-func (s *InternationalStrategy) callShipCubeViaAdapter(
-	ctx context.Context,
-	req *modelsv1.ServiceabilityV2Request,
-	srcPin, dstPin, srcCC, dstCC, srcCity, dstCity string,
-) modelsv1.PartnerV2Response {
-
-	adapter, found := s.PartnerFactory.GetAdapter("shipcube")
-	if !found || adapter == nil {
-		s.Logger.Warn("ShipCube adapter not available")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	serviceReq := &modelsv1.ServiceabilityV2Request{
-		SourcePostalCode:       &srcPin,
-		DestinationPostalCode:  &dstPin,
-		SourceCountryCode:      &srcCC,
-		DestinationCountryCode: &dstCC,
-		Packages:               req.Packages,
-	}
-
-	partnerInfo := common.PartnerInfo{
-		PartnerCode: "shipcube",
-	}
-
-	startTime := time.Now()
-	result, err := adapter.CheckServiceability(ctx, serviceReq, partnerInfo)
-	responseTime := time.Since(startTime).Milliseconds()
-	
-	if err != nil {
-		s.Logger.WithError(err).Warn("ShipCube adapter call failed")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	resp := s.convertShipCubeResult(result, srcCC, dstCC, responseTime)
-	if resp.PartnerCode == "" {
-		s.Logger.Warn("ShipCube response empty after conversion")
-		return modelsv1.PartnerV2Response{}
-	}
-
-	s.Logger.WithFields(logrus.Fields{
-		"component": "international_strategy",
-		"partner":   "shipcube",
-		"services":  len(resp.Services),
-	}).Info("ShipCube partner response prepared successfully")
-
-	return resp
-}
-
 // callIndiaPostInternationalViaAdapter - uses India Post International adapter for serviceability check
 func (s *InternationalStrategy) callIndiaPostInternationalViaAdapter(
 	ctx context.Context,
@@ -1416,15 +1182,9 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 
 	isServiceable := len(result.Services) > 0
 
-	partnerResp := modelsv1.PartnerV2Response{
-		PartnerCode: result.PartnerCode,
-		PartnerName: "India Post International",
-		Rating:      0,
-	}
-
-	// Use partner ID from result if available
+	partnerID := ""
 	if result.PartnerID != nil {
-		partnerResp.PartnerID = result.PartnerID.String()
+		partnerID = result.PartnerID.String()
 	}
 
 	// If serviceable, map services
@@ -1441,21 +1201,34 @@ func (s *InternationalStrategy) convertIndiaPostInternationalResult(
 				Insurance:     svc.Insurance,
 				ProductTypes:  svc.ProductTypes,
 				DeliveryModes: svc.DeliveryModes,
+				Rate:          svc.Rate,
 			}
 			services = append(services, service)
 		}
 	}
-	partnerResp.PartnerServices = services
-
-	// Attach metadata for context
+	// Build metadata
+	metadata := map[string]interface{}{
+		"source_country_code":      srcCC,
+		"destination_country_code": dstCC,
+		"flow":                     "international",
+	}
 	if result.Metadata != nil {
-		partnerResp.Metadata = result.Metadata
-	} else {
-		partnerResp.Metadata = map[string]interface{}{
-			"source_country_code":      srcCC,
-			"destination_country_code": dstCC,
-			"flow":                     "international",
+		// Merge result metadata
+		for k, v := range result.Metadata {
+			metadata[k] = v
 		}
+	}
+
+	partnerResp := modelsv1.PartnerV2Response{
+		PartnerID:       partnerID,
+		PartnerCode:     result.PartnerCode,
+		PartnerName:     "India Post International",
+		Rating:          0,
+		Source:          "real_time",
+		IsServiceable:   isServiceable, // CRITICAL: This was missing!
+		PartnerServices: services,
+		ResponseTimeMs:  responseTimeMs,
+		Metadata:        metadata,
 	}
 
 	// Add error if present

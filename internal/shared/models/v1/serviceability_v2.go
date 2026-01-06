@@ -91,6 +91,7 @@ type PartnerV2Response struct {
 	PartnerID       string                 `json:"partner_id"`
 	PartnerCode     string                 `json:"partner_code"`
 	PartnerName     string                 `json:"partner_name,omitempty"`
+	LogoURL         string                 `json:"logo_url,omitempty"`
 	Rating          float64                `json:"rating"`
 	Source          string                 `json:"source,omitempty"` // "real_time", "cache", etc.
 	IsServiceable   bool                   `json:"is_serviceable"`
@@ -148,6 +149,7 @@ type V2Filters struct {
 	ProductType       *string         `json:"product_type,omitempty"`
 	CountryCode       *string         `json:"country_code,omitempty"`
 	RequestedPartners []PartnerFilter `json:"requested_partners,omitempty"`
+	FailedPartners    []string        `json:"failed_partners,omitempty"`
 }
 
 // BulkServiceabilityV2Request represents bulk requests for v2

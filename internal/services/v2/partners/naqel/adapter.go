@@ -114,7 +114,7 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
-	// Extract postal codes and country codes
+	// Extract postal codes
 	sourcePostalCode := ""
 	if request.SourcePostalCode != nil {
 		sourcePostalCode = *request.SourcePostalCode
@@ -124,29 +124,6 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	if request.DestinationPostalCode != nil {
 		destinationPostalCode = *request.DestinationPostalCode
 	}
-
-	sourceCountryCode := ""
-	if request.SourceCountryCode != nil && *request.SourceCountryCode != "" {
-		sourceCountryCode = *request.SourceCountryCode
-	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		sourceCountryCode = *request.CountryCode
-	}
-
-	destinationCountryCode := ""
-	if request.DestinationCountryCode != nil && *request.DestinationCountryCode != "" {
-		destinationCountryCode = *request.DestinationCountryCode
-	} else if request.CountryCode != nil && *request.CountryCode != "" {
-		destinationCountryCode = *request.CountryCode
-	}
-
-	a.logger.WithFields(logrus.Fields{
-		"component":                "naqel_adapter",
-		"partner_code":             partnerInfo.PartnerCode,
-		"source_postal_code":       sourcePostalCode,
-		"destination_postal_code":  destinationPostalCode,
-		"source_country_code":      sourceCountryCode,
-		"destination_country_code": destinationCountryCode,
-	}).Info("Resolving city codes from postal codes")
 
 	// Check if repository is available
 	if a.repository == nil {
@@ -162,17 +139,21 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		}, nil
 	}
 
+	// Get city codes from postal codes (if needed)
+	// For now, assuming postal codes are being used as city codes
+	sourceCityCode := sourcePostalCode
+	destCityCode := destinationPostalCode
+
 	a.logger.WithFields(logrus.Fields{
 		"component":              "naqel_adapter",
-		"source_city_code":       sourcePostalCode,
-		"destination_city_code":  destinationPostalCode,
-	}).Info("City codes resolved, checking serviceability in database")
+		"source_city_code":       sourceCityCode,
+		"destination_city_code":  destCityCode,
+	}).Info("Checking serviceability in database")
 
-	// Check serviceability in database
+	// Check serviceability in database - this will return locations with country codes from database
 	sourceLocation, destLocation, err := a.repository.CheckServiceabilityByCityCodes(
-		ctx, sourcePostalCode, destinationPostalCode, sourceCountryCode, destinationCountryCode,
+		ctx, sourceCityCode, destCityCode,
 	)
-
 	
 	if err != nil {
 		errMsg := fmt.Sprintf("Serviceability check failed: %v", err)
@@ -183,11 +164,26 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 			ErrorMessage: &errMsg,
 			Metadata: map[string]interface{}{
 				"reason":             "Database serviceability check failed",
-				"source_city_code":   sourcePostalCode,
-				"dest_city_code":     destinationPostalCode,
+				"source_city_code":   sourceCityCode,
+				"dest_city_code":     destCityCode,
 			},
 		}, nil
 	}
+
+	// Extract country codes from database locations (from naqel_cities table)
+	sourceCountryCode := sourceLocation.CountryCode
+	destCountryCode := destLocation.CountryCode
+
+	a.logger.WithFields(logrus.Fields{
+		"component":                "naqel_adapter",
+		"partner_code":             partnerInfo.PartnerCode,
+		"source_postal_code":       sourcePostalCode,
+		"destination_postal_code":  destinationPostalCode,
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destCountryCode,
+		"source_city_code":         sourceCityCode,
+		"destination_city_code":    destCityCode,
+	}).Info("Serviceability check successful, country codes retrieved from database")
 
 	// Call SOAP API to get transit days
 	transitDays, err := a.client.GetTransitDays(ctx, sourcePostalCode, destinationPostalCode, sourceLocation.StationCode, destLocation.StationCode)
@@ -228,10 +224,10 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 		ResponseTime: time.Since(startTime),
 		Metadata: map[string]interface{}{
 			"flow":                     "international",
-			"source_country_code":      sourceCountryCode,
-			"destination_country_code": destinationCountryCode,
-			"source_city_code":         sourcePostalCode,
-			"destination_city_code":    destinationPostalCode,
+			"source_country_code":      sourceCountryCode,      // From database (naqel_cities table)
+			"destination_country_code": destCountryCode,        // From database (naqel_cities table)
+			"source_city_code":         sourceCityCode,
+			"destination_city_code":    destCityCode,
 			"source_location":          sourceLocation.LocationEn,
 			"destination_location":     destLocation.LocationEn,
 			"transit_days":             transitDays,
@@ -241,8 +237,10 @@ func (a *Adapter) CheckServiceability(ctx context.Context, request *models.Servi
 	a.logger.WithFields(logrus.Fields{
 		"component":                "naqel_adapter",
 		"partner_code":             partnerInfo.PartnerCode,
-		"source_city_code":         sourcePostalCode,
-		"destination_city_code":    destinationPostalCode,
+		"source_city_code":         sourceCityCode,
+		"destination_city_code":    destCityCode,
+		"source_country_code":      sourceCountryCode,
+		"destination_country_code": destCountryCode,
 		"transit_days":             transitDays,
 		"is_serviceable":           true,
 	}).Info("Naqel serviceability check completed successfully")
@@ -258,13 +256,6 @@ func (a *Adapter) validateNaqelRequirements(request *models.ServiceabilityV2Requ
 
 	if request.DestinationPostalCode == nil || *request.DestinationPostalCode == "" {
 		return fmt.Errorf("destination postal code is required for Naqel shipments")
-	}
-
-	// Validate country codes
-	if request.SourceCountryCode == nil || *request.SourceCountryCode == "" {
-		if request.CountryCode == nil || *request.CountryCode == "" {
-			return fmt.Errorf("country code is required for Naqel shipments")
-		}
 	}
 
 	return nil

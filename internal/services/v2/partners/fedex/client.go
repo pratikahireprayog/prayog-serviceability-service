@@ -63,16 +63,36 @@ func NewFedExClient(config config.FedExConfig) *FedExClient {
 }
 
 // authenticate gets or refreshes the OAuth token
-func (c *FedExClient) authenticate(ctx context.Context) error {
+// credentials is optional - if provided and contains client_id/client_secret, uses them; otherwise uses default config
+func (c *FedExClient) authenticate(ctx context.Context, credentials map[string]string) error {
     if c.token != "" && time.Now().Before(c.tokenExpiry) {
         return nil
+    }
+
+    // Use tenant credentials if provided, otherwise fallback to default config
+    clientID := c.config.ClientID
+    clientSecret := c.config.ClientSecret
+    
+    if credentials != nil {
+        if id, ok := credentials["client_id"]; ok && id != "" {
+            clientID = id
+            c.logger.WithFields(logrus.Fields{
+                "partner": "FedEx",
+            }).Debug("Using tenant-specific client_id for authentication")
+        }
+        if secret, ok := credentials["client_secret"]; ok && secret != "" {
+            clientSecret = secret
+            c.logger.WithFields(logrus.Fields{
+                "partner": "FedEx",
+            }).Debug("Using tenant-specific client_secret for authentication")
+        }
     }
 
     authURL := c.config.BaseURL + "/oauth/token"
     
     formData := fmt.Sprintf("grant_type=client_credentials&client_id=%s&client_secret=%s",
-        c.config.ClientID,
-        c.config.ClientSecret,
+        clientID,
+        clientSecret,
     )
 
     req, err := http.NewRequestWithContext(ctx, "POST", authURL, strings.NewReader(formData))
@@ -125,8 +145,9 @@ func (c *FedExClient) authenticate(ctx context.Context) error {
 }
 
 // GetRates calls FedEx rates API
-func (c *FedExClient) GetRates(ctx context.Context, request RateRequest) (*RateResponse, error) {
-	if err := c.authenticate(ctx); err != nil {
+// credentials is optional - if provided, uses tenant-specific credentials for authentication
+func (c *FedExClient) GetRates(ctx context.Context, request RateRequest, credentials map[string]string) (*RateResponse, error) {
+	if err := c.authenticate(ctx, credentials); err != nil {
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
@@ -191,7 +212,8 @@ func (c *FedExClient) GetRates(ctx context.Context, request RateRequest) (*RateR
 }
 
 // CheckServiceability checks serviceability using rates API
-func (c *FedExClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest) (*ServiceabilityResponse, error) {
+// credentials is optional - if provided, uses tenant-specific credentials for authentication
+func (c *FedExClient) CheckServiceability(ctx context.Context, request ServiceabilityRequest, credentials map[string]string) (*ServiceabilityResponse, error) {
 	// Build minimal rates request matching the exact FedEx payload structure
 	ratesReq := RateRequest{
 		AccountNumber: AccountNumber{
@@ -232,7 +254,7 @@ func (c *FedExClient) CheckServiceability(ctx context.Context, request Serviceab
 		"weight":            request.Weight,
 	}).Info("Checking FedEx serviceability")
 
-	ratesResp, err := c.GetRates(ctx, ratesReq)
+	ratesResp, err := c.GetRates(ctx, ratesReq, credentials)
 	if err != nil {
 		return nil, fmt.Errorf("serviceability check failed: %w", err)
 	}
