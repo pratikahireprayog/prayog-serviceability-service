@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 // DBConfig contains database configuration
@@ -215,4 +217,91 @@ func enforceSSLMode() string {
 		// Unknown/invalid SSL mode, default to require
 		return "require"
 	}
+}
+
+// isSensitiveEnvVar checks if an environment variable name indicates sensitive data
+func isSensitiveEnvVar(key string) bool {
+	keyUpper := strings.ToUpper(key)
+	sensitivePatterns := []string{
+		"PASSWORD",
+		"SECRET",
+		"KEY",
+		"TOKEN",
+		"AUTH",
+		"CREDENTIAL",
+		"PIN",
+		"PRIVATE",
+	}
+	for _, pattern := range sensitivePatterns {
+		if strings.Contains(keyUpper, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// maskSensitiveValue masks sensitive values for logging
+func maskSensitiveValue(value string) string {
+	if len(value) == 0 {
+		return ""
+	}
+	if len(value) <= 4 {
+		return "****"
+	}
+	// Show first 2 and last 2 characters, mask the rest
+	return value[:2] + strings.Repeat("*", len(value)-4) + value[len(value)-2:]
+}
+
+// LogAllEnvVars logs all environment variables (including sensitive ones)
+func LogAllEnvVars(logger *logrus.Logger) {
+	if logger == nil {
+		return
+	}
+
+	logger.Info("📋 Environment Variables Configuration:")
+	logger.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	// Get all environment variables from the system
+	allEnvVars := os.Environ()
+	
+	// Parse and collect key-value pairs
+	envMap := make(map[string]string)
+	keys := make([]string, 0)
+	
+	for _, env := range allEnvVars {
+		if len(env) > 0 {
+			if idx := strings.Index(env, "="); idx > 0 {
+				key := env[:idx]
+				value := env[idx+1:]
+				envMap[key] = value
+				keys = append(keys, key)
+			}
+		}
+	}
+
+	// Sort keys for consistent output
+	for i := 0; i < len(keys)-1; i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+
+	// Log each environment variable (no masking)
+	for _, key := range keys {
+		value := envMap[key]
+		icon := "📌"
+		if isSensitiveEnvVar(key) {
+			icon = "🔐"
+		}
+
+		logger.WithFields(logrus.Fields{
+			"key":       key,
+			"value":     value,
+			"sensitive": isSensitiveEnvVar(key),
+		}).Info("  " + icon + " " + key + "=" + value)
+	}
+
+	logger.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }

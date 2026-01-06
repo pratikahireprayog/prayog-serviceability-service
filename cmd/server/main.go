@@ -134,6 +134,9 @@ func initConfig(logger *logrus.Logger) (*config.AppConfig, error) {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Log all environment variables with sensitive values masked
+	config.LogAllEnvVars(logger)
+
 	logger.Info("✅ Configuration initialized successfully")
 	return appConfig, nil
 }
